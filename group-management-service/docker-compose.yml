@@ -1,0 +1,21 @@
+services:
+  group-management-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5005:5005"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5005
+    networks:
+      - group-management-network
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
+networks:
+  group-management-network:
+    driver: bridge
+
