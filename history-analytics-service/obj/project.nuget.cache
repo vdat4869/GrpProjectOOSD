@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "vLw/jB+I6EA=",
+  "dgSpecHash": "FH08RR1mgkQ=",
   "success": true,
-  "projectFilePath": "C:\\ev-coownership-system\\services\\history-analytics-service\\HistoryAnalyticsService.csproj",
+  "projectFilePath": "D:\\.vs\\GrpProjectOOSD\\history-analytics-service\\HistoryAnalyticsService.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\inusa\\.nuget\\packages\\automapper\\12.0.1\\automapper.12.0.1.nupkg.sha512",
     "C:\\Users\\inusa\\.nuget\\packages\\automapper.extensions.microsoft.dependencyinjection\\12.0.1\\automapper.extensions.microsoft.dependencyinjection.12.0.1.nupkg.sha512",
