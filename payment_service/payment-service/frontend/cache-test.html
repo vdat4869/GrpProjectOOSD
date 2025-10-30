@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Clear Verification</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 40px;
+            max-width: 600px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-top: 0;
+        }
+        .status {
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            font-size: 18px;
+            text-align: center;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 2px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 2px solid #f5c6cb;
+        }
+        .steps {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .steps ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .steps li {
+            margin: 8px 0;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .button {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            margin: 10px 5px;
+            transition: transform 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        .button:hover {
+            transform: scale(1.05);
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧹 Cache Clear Verification</h1>
+        
+        <div id="status" class="status success">
+            ✅ <strong>Cache is Clear!</strong><br>
+            This page loaded successfully without old cached files.
+        </div>
+
+        <div class="steps">
+            <h3>If you still see errors on your main app:</h3>
+            <ol>
+                <li>Press <code>Ctrl + Shift + Delete</code></li>
+                <li>Select "Cached images and files"</li>
+                <li>Choose "All time"</li>
+                <li>Click "Clear data"</li>
+                <li>Press <code>Ctrl + Shift + R</code> on your app</li>
+            </ol>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="http://localhost:5173" class="button">🚀 Go to Main App</a>
+            <button onclick="window.location.href='http://localhost:5173?t=' + Date.now()" class="button">🔄 Hard Refresh & Go</button>
+        </div>
+
+        <div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-radius: 8px;">
+            <strong>💡 Pro Tip:</strong> Use <code>Ctrl + Shift + N</code> to open Incognito mode.
+            Incognito never uses cache, so errors won't appear there!
+        </div>
+
+        <script>
+            // Check if any old scripts are loaded
+            console.log('✅ Cache test page loaded successfully');
+            console.log('📊 Scripts loaded:', document.scripts.length);
+            
+            // Check for jQuery
+            if (typeof jQuery !== 'undefined' || typeof $ !== 'undefined') {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').innerHTML = 
+                    '❌ <strong>Cache NOT Cleared!</strong><br>jQuery is still loaded from cache.';
+                console.error('❌ jQuery detected - cache not cleared');
+            } else {
+                console.log('✅ No jQuery detected - cache is clean!');
+            }
+
+            // Log all loaded scripts
+            Array.from(document.scripts).forEach((script, i) => {
+                console.log(`Script ${i + 1}:`, script.src || 'inline');
+            });
+
+            // Check for custom.min.js or jquery.bundles.js
+            const hasOldScripts = Array.from(document.scripts).some(script => 
+                script.src.includes('custom.min.js') || 
+                script.src.includes('jquery.bundles.js')
+            );
+
+            if (hasOldScripts) {
+                document.getElementById('status').className = 'status error';
+                document.getElementById('status').innerHTML = 
+                    '❌ <strong>Old Scripts Detected!</strong><br>Cache is not cleared properly.';
+                console.error('❌ Old scripts found:', Array.from(document.scripts).map(s => s.src));
+            }
+
+            console.log('%c🎉 If you see this message with ✅, your cache is working correctly!', 
+                       'color: green; font-size: 16px; font-weight: bold;');
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "promoCodes": [
+    {
+      "code": "MMB",
+      "discount": 10,
+      "description": "Giảm 10% tổng chi phí"
+    },
+    {
+      "code": "BBG",
+      "discount": 30,
+      "description": "Giảm 30% tổng chi phí"
+    },
+    {
+      "code": "VAIGAY",
+      "discount": 50,
+      "description": "Giảm 50% tổng chi phí"
+    },
+    {
+      "code": "CHAYGO",
+      "discount": 70,
+      "description": "Giảm 70% tổng chi phí"
+    },
+    {
+      "code": "IAMGAY",
+      "discount": 90,
+      "description": "Giảm 90% tổng chi phí"
+    }
+  ]
+}
+

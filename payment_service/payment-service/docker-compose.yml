@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  payment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5003:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Server=sqlserver;Database=PaymentServiceDb;User Id=sa;Password=YourPassword123!;TrustServerCertificate=true;
+      - Jwt__Authority=http://auth-service:5001
+      - Jwt__Issuer=EVCoOwnershipSystem
+      - Jwt__Audience=PaymentService
+    depends_on:
+      - sqlserver
+      - rabbitmq
+    networks:
+      - ev-coownership-network
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourPassword123!
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - ev-coownership-network
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - ev-coownership-network
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+  rabbitmq_data:
+
+networks:
+  ev-coownership-network:
+    driver: bridge

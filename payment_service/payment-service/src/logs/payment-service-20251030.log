@@ -1,0 +1,226 @@
+2025-10-30 08:06:18.720 +07:00 [INF] Executed DbCommand (13ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 08:06:18.798 +07:00 [INF] Executed DbCommand (34ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 08:06:18.804 +07:00 [INF] Starting Payment Service
+2025-10-30 08:06:18.842 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 08:06:18.888 +07:00 [INF] Creating key {7f6e3946-b610-416a-9f90-58406923ccee} with creation date 2025-10-30 01:06:18Z, activation date 2025-10-30 01:06:18Z, and expiration date 2026-01-28 01:06:18Z.
+2025-10-30 08:06:18.905 +07:00 [INF] Writing data to file 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys\key-7f6e3946-b610-416a-9f90-58406923ccee.xml'.
+2025-10-30 08:06:18.961 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 08:06:18.963 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 08:06:18.964 +07:00 [INF] Hosting environment: Production
+2025-10-30 08:06:18.964 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 08:51:51.510 +07:00 [INF] Application is shutting down...
+2025-10-30 08:52:24.354 +07:00 [INF] Executed DbCommand (16ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 08:52:24.455 +07:00 [INF] Executed DbCommand (41ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 08:52:24.460 +07:00 [INF] Starting Payment Service
+2025-10-30 08:52:24.477 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 08:52:24.517 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 08:52:24.520 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 08:52:24.521 +07:00 [INF] Hosting environment: Production
+2025-10-30 08:52:24.521 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 09:03:58.314 +07:00 [INF] Application is shutting down...
+2025-10-30 10:23:50.653 +07:00 [INF] Executed DbCommand (12ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 10:23:50.728 +07:00 [INF] Executed DbCommand (34ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 10:23:50.733 +07:00 [INF] Starting Payment Service
+2025-10-30 10:23:50.748 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 10:23:50.833 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 10:23:50.835 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 10:23:50.837 +07:00 [INF] Hosting environment: Production
+2025-10-30 10:23:50.838 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 10:33:05.020 +07:00 [INF] Application is shutting down...
+2025-10-30 10:33:52.174 +07:00 [INF] Executed DbCommand (13ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 10:33:52.245 +07:00 [INF] Executed DbCommand (34ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 10:33:52.250 +07:00 [INF] Starting Payment Service
+2025-10-30 10:33:52.263 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 10:33:52.299 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 10:33:52.301 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 10:33:52.302 +07:00 [INF] Hosting environment: Production
+2025-10-30 10:33:52.303 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 11:08:39.635 +07:00 [INF] Application is shutting down...
+2025-10-30 12:11:34.607 +07:00 [INF] Executed DbCommand (26ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 12:11:34.723 +07:00 [INF] Executed DbCommand (23ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 12:11:34.738 +07:00 [INF] Starting Payment Service
+2025-10-30 12:11:34.775 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 12:11:34.939 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 12:11:34.941 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 12:11:34.943 +07:00 [INF] Hosting environment: Production
+2025-10-30 12:11:34.944 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 12:23:04.479 +07:00 [INF] Application is shutting down...
+2025-10-30 13:45:48.531 +07:00 [INF] Executed DbCommand (17ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 13:45:48.599 +07:00 [INF] Executed DbCommand (13ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 13:45:48.606 +07:00 [INF] Starting Payment Service
+2025-10-30 13:45:48.621 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 13:45:48.677 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 13:45:48.679 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 13:45:48.680 +07:00 [INF] Hosting environment: Production
+2025-10-30 13:45:48.681 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 13:46:27.449 +07:00 [INF] Application is shutting down...
+2025-10-30 13:58:09.535 +07:00 [INF] Executed DbCommand (12ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 13:58:09.588 +07:00 [INF] Executed DbCommand (14ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 13:58:09.593 +07:00 [INF] Starting Payment Service
+2025-10-30 13:58:09.609 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 13:58:09.651 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 13:58:09.654 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 13:58:09.655 +07:00 [INF] Hosting environment: Production
+2025-10-30 13:58:09.655 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 14:09:45.080 +07:00 [INF] Application is shutting down...
+2025-10-30 14:16:03.377 +07:00 [INF] Executed DbCommand (14ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 14:16:03.434 +07:00 [INF] Executed DbCommand (12ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 14:16:03.442 +07:00 [INF] Starting Payment Service
+2025-10-30 14:16:03.459 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 14:16:03.510 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 14:16:03.512 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 14:16:03.513 +07:00 [INF] Hosting environment: Production
+2025-10-30 14:16:03.514 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
+2025-10-30 14:33:36.222 +07:00 [INF] Application is shutting down...
+2025-10-30 15:19:38.515 +07:00 [INF] Executed DbCommand (17ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT 1
+2025-10-30 15:19:38.581 +07:00 [INF] Executed DbCommand (14ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+
+IF EXISTS
+    (SELECT *
+     FROM [sys].[objects] o
+     WHERE [o].[type] = 'U'
+     AND [o].[is_ms_shipped] = 0
+     AND NOT EXISTS (SELECT *
+         FROM [sys].[extended_properties] AS [ep]
+         WHERE [ep].[major_id] = [o].[object_id]
+             AND [ep].[minor_id] = 0
+             AND [ep].[class] = 1
+             AND [ep].[name] = N'microsoft_database_tools_support'
+    )
+)
+SELECT 1 ELSE SELECT 0
+2025-10-30 15:19:38.586 +07:00 [INF] Starting Payment Service
+2025-10-30 15:19:38.607 +07:00 [INF] User profile is available. Using 'C:\Users\brohu\AppData\Local\ASP.NET\DataProtection-Keys' as key repository and Windows DPAPI to encrypt keys at rest.
+2025-10-30 15:19:38.714 +07:00 [INF] Now listening on: http://localhost:5000
+2025-10-30 15:19:38.717 +07:00 [INF] Application started. Press Ctrl+C to shut down.
+2025-10-30 15:19:38.718 +07:00 [INF] Hosting environment: Production
+2025-10-30 15:19:38.720 +07:00 [INF] Content root path: C:\payment_service\payment-service\src
