@@ -8,6 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Đảm bảo Program.cs ở trong thư mục src được sử dụng -->
+    <Compile Remove="..\Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Entity Framework Core -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
