@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EV Co-Ownership Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 24px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info span {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .btn-logout {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-logout:hover {
+            background: #c82333;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .nav-tab {
+            background: white;
+            border: 2px solid transparent;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-tab:hover {
+            background: #f8f9fa;
+        }
+
+        .nav-tab.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .content {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-height: 400px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .tab-content h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 22px;
+        }
+
+        .card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn-block {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .login-container a {
+            text-decoration: none;
+        }
+        
+        .login-container a:hover {
+            text-decoration: underline;
+        }
+
+        .ownership-item {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+
+        .ownership-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .ownership-item h4 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .ownership-percentage {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        
+        .ownership-item-content {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .ownership-item-image {
+            width: 120px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+        
+        .ownership-item-info {
+            flex: 1;
+        }
+
+        .coowners-list {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+
+        .coowners-list h5 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .coowner-item {
+            background: white;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .verification-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .verification-badge.verified {
+            background: #28a745;
+            color: white;
+        }
+
+        .verification-badge.unverified {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .message-success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+
+        .message-error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+
+        .message-info {
+            background: #d1ecf1;
+            border-left: 4px solid #0c5460;
+            color: #0c5460;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .login-container {
+            max-width: 400px;
+            margin: 100px auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .login-container h2 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status-item {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-inactive {
+            background: #6c757d;
+            color: white;
+        }
+        
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 2% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .modal-close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .modal-close:hover {
+            color: #333;
+        }
+        
+        .modal h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        /* Vehicle Image Styles */
+        .vehicle-main-image {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+        }
+        
+        .vehicle-thumbnails {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        
+        .vehicle-thumbnail {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        
+        .vehicle-thumbnail:hover {
+            border-color: #667eea;
+        }
+        
+        .vehicle-thumbnail.active {
+            border-color: #667eea;
+        }
+        
+        .image-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 48px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body>
+    <!-- Login/Register Screen -->
+    <div id="auth-screen" class="login-container">
+        <div id="login-form">
+            <h2>🔐 Đăng nhập</h2>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="login-email" placeholder="Nhập email của bạn">
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="login-password" placeholder="Nhập mật khẩu">
+            </div>
+            <button class="btn btn-block" onclick="handleLogin()">Đăng nhập</button>
+            <p style="margin-top: 15px; text-align: center; color: #666;">
+                Chưa có tài khoản? <a href="#" onclick="showRegister()" style="color: #667eea; cursor: pointer;">Đăng ký ngay</a>
+            </p>
+        </div>
+        
+        <div id="register-form" style="display: none;">
+            <h2>📝 Đăng ký</h2>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="register-email" placeholder="Nhập email của bạn">
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="register-password" placeholder="Nhập mật khẩu">
+            </div>
+            <div class="form-group">
+                <label>Xác nhận mật khẩu</label>
+                <input type="password" id="register-confirm" placeholder="Nhập lại mật khẩu">
+            </div>
+            <div class="form-group">
+                <label>Họ và tên</label>
+                <input type="text" id="register-fullname" placeholder="Nhập họ tên">
+            </div>
+            <div class="form-group">
+                <label>Số CMND/CCCD</label>
+                <input type="text" id="register-cmnd" placeholder="Nhập số CMND/CCCD">
+            </div>
+            <button class="btn btn-block" onclick="handleRegister()">Đăng ký</button>
+            <p style="margin-top: 15px; text-align: center; color: #666;">
+                Đã có tài khoản? <a href="#" onclick="showLogin()" style="color: #667eea; cursor: pointer;">Đăng nhập</a>
+            </p>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="container hidden">
+        <div class="header">
+            <h1>🚗 EV Co-Ownership Portal</h1>
+            <div class="user-info">
+                <span id="user-name">Chào, Co-Owner</span>
+                <button class="btn-logout" onclick="logout()">Đăng xuất</button>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showTab('profile')">👤 Hồ sơ cá nhân</button>
+            <button class="nav-tab" onclick="showTab('ownerships')">🚙 Quyền sở hữu</button>
+            <button class="nav-tab" onclick="showTab('contracts')">📄 Hợp đồng</button>
+        </div>
+
+        <div class="content">
+            <!-- Profile Tab -->
+            <div id="profile-tab" class="tab-content active">
+                <h2>Thông tin cá nhân</h2>
+                <div id="profile-loading" class="loading">Đang tải...</div>
+                <div id="profile-content" style="display: none;">
+                    <div class="card">
+                        <h3>Thông tin cơ bản</h3>
+                        <form id="profile-form">
+                            <div class="form-group">
+                                <label>Họ và tên</label>
+                                <input type="text" id="profile-fullname">
+                            </div>
+                            <div class="form-group">
+                                <label>Số CMND/CCCD</label>
+                                <input type="text" id="profile-cmnd">
+                            </div>
+                            <div class="form-group">
+                                <label>Số GPLX</label>
+                                <input type="text" id="profile-license">
+                            </div>
+                            <div class="form-group">
+                                <label>Email</label>
+                                <input type="email" id="profile-email" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label>Số điện thoại</label>
+                                <input type="tel" id="profile-phone">
+                            </div>
+                            <div class="form-group">
+                                <label>Địa chỉ</label>
+                                <textarea id="profile-address" rows="3"></textarea>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button type="button" class="btn" onclick="updateProfile()">Lưu thông tin</button>
+                                <button type="button" class="btn btn-secondary" onclick="loadProfile()">Làm mới</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>Upload tài liệu xác thực</h3>
+                        <div class="form-group">
+                            <label>CMND/CCCD</label>
+                            <input type="file" id="file-upload" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+                        <div class="form-group">
+                            <label>Giấy phép lái xe</label>
+                            <input type="file" id="file-upload2" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+                        <div id="uploaded-files"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Trạng thái xác thực</h3>
+                        <div id="verification-status">
+                            <span style="color: #666; font-style: italic;">Chưa có thông tin</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card" style="border: 2px solid #dc3545;">
+                        <h3 style="color: #dc3545;">⚠️ Quản lý dữ liệu</h3>
+                        <p style="margin-bottom: 15px; color: #666; font-size: 14px;">Xóa toàn bộ dữ liệu local (localStorage) và tất cả quyền sở hữu trong database</p>
+                        <button class="btn" style="background: #dc3545; color: white;" onclick="handleClearAllData()">🗑️ Xóa toàn bộ dữ liệu</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ownerships Tab -->
+            <div id="ownerships-tab" class="tab-content">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">Quyền sở hữu xe</h2>
+                    <button class="btn" onclick="showJoinVehicleModal()" id="btn-join-vehicle" style="display: none;">
+                        ➕ Tham gia xe
+                    </button>
+                </div>
+                <div id="ownerships-loading" class="loading">Đang tải...</div>
+                <div id="ownerships-content" style="display: none;">
+                    <div id="ownerships-empty" class="message message-info" style="display: none;">
+                        Bạn chưa có quyền sở hữu xe nào. Nhấn "➕ Tham gia xe" để tham gia vào xe có sẵn.
+                    </div>
+                    <div id="ownerships-list"></div>
+                </div>
+            </div>
+            
+            <!-- Join Vehicle Modal -->
+            <div id="join-vehicle-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="modal-close" onclick="hideJoinVehicleModal()">&times;</span>
+                    <h2>🚗 Tham gia xe</h2>
+                    <form id="join-vehicle-form">
+                        <div class="form-group">
+                            <label>Mã mời *</label>
+                            <input type="text" id="join-code" placeholder="Nhập mã mời (VD: TESLA2024)" style="text-transform: uppercase;">
+                            <small style="color: #666;">Nhập mã mời mà bạn đã nhận được</small>
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button type="button" class="btn btn-secondary" onclick="hideJoinVehicleModal()">Hủy</button>
+                            <button type="button" class="btn" onclick="handleCheckJoinCode()">Kiểm tra mã</button>
+                        </div>
+                    </form>
+                    
+                    <!-- Vehicle Info Display (hidden initially) -->
+                    <div id="join-vehicle-info" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 2px solid #ddd;">
+                        <h3 id="join-vehicle-name" style="color: #667eea; margin-bottom: 15px;"></h3>
+                        <div class="message message-info" id="join-vehicle-details"></div>
+                        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                            <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="join-agree-contract" required>
+                                <span style="font-size: 14px; line-height: 1.5;">
+                                    Tôi đồng ý <strong>KÝ HỢP ĐỒNG ĐỒNG SỞ HỮU</strong> và chấp nhận các điều khoản quy định về quyền sở hữu xe này.
+                                </span>
+                            </label>
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                            <button type="button" class="btn btn-secondary" onclick="hideJoinVehicleInfo()">Hủy</button>
+                            <button type="button" class="btn" onclick="handleJoinVehicleConfirm()">Xác nhận tham gia</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Contracts Tab -->
+            <div id="contracts-tab" class="tab-content">
+                <h2>Hợp đồng điện tử</h2>
+                <div id="contracts-loading" class="loading">Đang tải...</div>
+                <div id="contracts-content" style="display: none;">
+                    <div id="contracts-empty" class="message message-info" style="display: none;">
+                        Bạn chưa có hợp đồng nào.
+                    </div>
+                    <div id="contracts-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Contract Details Modal -->
+    <div id="contract-details-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <span class="modal-close" onclick="hideContractDetailsModal()">&times;</span>
+            <h2>📄 Chi tiết hợp đồng</h2>
+            <div id="contract-details-content">
+                <!-- Content will be loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Sign Contract Modal -->
+    <div id="sign-contract-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="modal-close" onclick="hideSignContractModal()">&times;</span>
+            <h2>✍️ Ký hợp đồng</h2>
+            <form id="sign-contract-form">
+                <div class="form-group">
+                    <label>Phương thức xác thực</label>
+                    <select id="sign-method" class="form-control" onchange="updateSignMethodUI()">
+                        <option value="otp">OTP (Gửi qua email/SMS)</option>
+                        <option value="digitalsignature">Chữ ký số</option>
+                    </select>
+                </div>
+                <div id="sign-otp-section" class="form-group">
+                    <label>Nhập mã OTP</label>
+                    <input type="text" id="sign-otp-code" class="form-control" placeholder="Nhập mã OTP 6 chữ số" maxlength="6">
+                    <button type="button" class="btn" onclick="sendOTP()" style="margin-top: 10px; width: 100%;">Gửi mã OTP</button>
+                </div>
+                <div id="sign-digitalsignature-section" class="form-group" style="display: none;">
+                    <label>Chữ ký số</label>
+                    <input type="text" id="sign-digitalsignature" class="form-control" placeholder="Nhập mã chữ ký số">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="sign-confirm" required> 
+                        Tôi đồng ý với các điều khoản trong hợp đồng
+                    </label>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                    <button type="button" class="btn btn-secondary" onclick="hideSignContractModal()">Hủy</button>
+                    <button type="button" class="btn" onclick="handleSignContract()">Xác nhận ký</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:5002/api';
+        let currentUser = null;
+
+        // Check if already logged in
+        window.onload = function() {
+            const token = localStorage.getItem('jwt_token');
+            const userId = localStorage.getItem('userId');
+            
+            if (token && userId) {
+                currentUser = { userId, token };
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                loadInitialData();
+            }
+        };
+
+        // Generate JWT Token
+        function generateTestJWT(email) {
+            const secret = "YourSuperSecretKeyForJWTTokenGeneration2024";
+            const header = { alg: 'HS256', typ: 'JWT' };
+            const now = Math.floor(Date.now() / 1000);
+            const payload = {
+                sub: email.replace('@', '_').replace('.', '_'),
+                nameid: email.replace('@', '_').replace('.', '_'),
+                role: "CoOwner",
+                exp: now + (60 * 60 * 24),
+                iat: now,
+                iss: "EV-CoOwnership-System",
+                aud: "EV-CoOwnership-System"
+            };
+            const encodedHeader = btoa(JSON.stringify(header)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            const encodedPayload = btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            const textToSign = `${encodedHeader}.${encodedPayload}`;
+            const signature = CryptoJS.HmacSHA256(textToSign, secret);
+            const encodedSignature = CryptoJS.enc.Base64.stringify(signature).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+        }
+
+        // Form toggle functions
+        function showLogin() {
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('register-form').style.display = 'none';
+        }
+        
+        function showRegister() {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+        }
+
+        // Login Handler
+        async function handleLogin() {
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            
+            if (!email) {
+                alert('Vui lòng nhập email');
+                return;
+            }
+            
+            if (!password) {
+                alert('Vui lòng nhập mật khẩu');
+                return;
+            }
+
+            // Clear old data
+            localStorage.clear();
+            
+            const userId = email.replace('@', '_').replace('.', '_');
+            const token = generateTestJWT(email);
+            
+            localStorage.setItem('jwt_token', token);
+            localStorage.setItem('userId', userId);
+            localStorage.setItem('userEmail', email);
+            
+            currentUser = { userId, token };
+            
+            // Check if profile exists
+            try {
+                await apiCall(`/coowners/user/${userId}`);
+                // Profile exists, proceed to login
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                document.getElementById('user-name').textContent = `Chào, ${email}`;
+                loadInitialData();
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    alert('Tài khoản chưa tồn tại! Vui lòng đăng ký trước.');
+                } else {
+                    alert('Lỗi đăng nhập: ' + error.message);
+                }
+                localStorage.clear();
+            }
+        }
+
+        // Register Handler
+        async function handleRegister() {
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+            const confirm = document.getElementById('register-confirm').value;
+            const fullName = document.getElementById('register-fullname').value;
+            const cmnd = document.getElementById('register-cmnd').value;
+            
+            if (!email || !password || !confirm || !fullName || !cmnd) {
+                alert('Vui lòng điền đầy đủ thông tin');
+                return;
+            }
+            
+            if (password !== confirm) {
+                alert('Mật khẩu xác nhận không khớp');
+                return;
+            }
+            
+            if (!/^\d+$/.test(cmnd)) {
+                alert('Số CMND/CCCD chỉ được chứa chữ số');
+                return;
+            }
+            
+            // Generate temp JWT for creating profile
+            const userId = email.replace('@', '_').replace('.', '_');
+            const token = generateTestJWT(email);
+            
+            localStorage.setItem('jwt_token', token);
+            localStorage.setItem('userId', userId);
+            localStorage.setItem('userEmail', email);
+            
+            currentUser = { userId, token };
+            
+            // Create profile via API
+            try {
+                const profileData = {
+                    userId: userId,
+                    fullName: fullName,
+                    identityCardNumber: cmnd,
+                    email: email,
+                    phoneNumber: null,
+                    address: null,
+                    drivingLicenseNumber: null
+                };
+                
+                console.log('Registering with data:', profileData);
+                const result = await apiCall('/coowners', 'POST', profileData);
+                console.log('Register success:', result);
+                
+                // Login successful
+                document.getElementById('auth-screen').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                document.getElementById('user-name').textContent = `Chào, ${email}`;
+                
+                loadInitialData();
+            } catch (error) {
+                console.error('Registration error:', error);
+                localStorage.clear();
+                
+                // Better error messages
+                if (error.message.includes('already exists')) {
+                    alert('Email hoặc CMND/CCCD đã được sử dụng. Vui lòng đăng nhập hoặc dùng thông tin khác.');
+                } else {
+                    alert('Đăng ký thất bại: ' + error.message);
+                }
+            }
+        }
+
+        // Logout Handler
+        function logout() {
+            localStorage.clear();
+            currentUser = null;
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('app').classList.add('hidden');
+            // Reset forms
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-password').value = '';
+            document.getElementById('register-email').value = '';
+            document.getElementById('register-password').value = '';
+            document.getElementById('register-confirm').value = '';
+            document.getElementById('register-fullname').value = '';
+            document.getElementById('register-cmnd').value = '';
+            showLogin();
+        }
+
+        // API Call Function
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const url = `${API_BASE}${endpoint}`;
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${currentUser.token}`
+                }
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                
+                if (!response.ok) {
+                    const errorData = await response.text();
+                    console.error('API Error Response:', errorData);
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    
+                    try {
+                        const errorJson = JSON.parse(errorData);
+                        console.error('Parsed Error:', errorJson);
+                        if (errorJson.errors) {
+                            errorMessage = Object.entries(errorJson.errors)
+                                .map(([key, messages]) => `${key}: ${Array.isArray(messages) ? messages.join(', ') : messages}`)
+                                .join('\n');
+                        } else if (errorJson.title || errorJson.detail) {
+                            errorMessage = errorJson.title || errorJson.detail;
+                        }
+                    } catch (e) {
+                        if (errorData) {
+                            errorMessage = errorData;
+                        }
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+
+                // Handle 204 No Content
+                if (response.status === 204) {
+                    return null;
+                }
+
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('API Error:', error);
+                throw error;
+            }
+        }
+
+        // Load Initial Data
+        function loadInitialData() {
+            loadProfile();
+            loadOwnerships();
+            loadContracts();
+        }
+
+        // Tab Navigation
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Find and activate corresponding nav button
+            const buttons = document.querySelectorAll('.nav-tab');
+            buttons.forEach(btn => {
+                if (btn.textContent.includes('Hồ sơ') && tabName === 'profile') btn.classList.add('active');
+                if (btn.textContent.includes('Quyền sở hữu') && tabName === 'ownerships') btn.classList.add('active');
+                if (btn.textContent.includes('Hợp đồng') && tabName === 'contracts') btn.classList.add('active');
+            });
+        }
+
+        // Profile Management
+        async function loadProfile() {
+            const loading = document.getElementById('profile-loading');
+            const content = document.getElementById('profile-content');
+            
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            try {
+                const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                
+                document.getElementById('profile-fullname').value = profile.fullName || '';
+                document.getElementById('profile-cmnd').value = profile.identityCardNumber || '';
+                document.getElementById('profile-license').value = profile.drivingLicenseNumber || '';
+                document.getElementById('profile-email').value = profile.email || '';
+                document.getElementById('profile-phone').value = profile.phoneNumber || '';
+                document.getElementById('profile-address').value = profile.address || '';
+                
+                // Display verification status
+                const statusDiv = document.getElementById('verification-status');
+                if (profile.isVerified) {
+                    statusDiv.innerHTML = '<span class="verification-badge verified">✓ Đã xác thực</span>';
+                } else {
+                    statusDiv.innerHTML = '<span class="verification-badge unverified">⚠ Chưa xác thực</span>';
+                }
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    // Profile not found - show empty form
+                    const email = localStorage.getItem('userEmail') || currentUser.userId.replace(/_/g, '.');
+                    document.getElementById('profile-email').value = email;
+                    document.getElementById('profile-loading').innerHTML = `
+                        <div class="message message-info">
+                            <strong>Chào mừng!</strong> Vui lòng điền thông tin để tạo hồ sơ.
+                        </div>
+                    `;
+                    setTimeout(() => {
+                        loading.style.display = 'none';
+                        content.style.display = 'block';
+                    }, 1000);
+                } else {
+                    loading.innerHTML = `<div class="message message-error">Lỗi tải hồ sơ: ${error.message}</div>`;
+                }
+            }
+        }
+
+        async function updateProfile() {
+            try {
+                const data = {
+                    fullName: document.getElementById('profile-fullname').value,
+                    identityCardNumber: document.getElementById('profile-cmnd').value,
+                    drivingLicenseNumber: document.getElementById('profile-license').value,
+                    email: document.getElementById('profile-email').value,
+                    phoneNumber: document.getElementById('profile-phone').value,
+                    address: document.getElementById('profile-address').value
+                };
+
+                // Check if profile exists
+                try {
+                    const existingProfile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                    
+                    // Update existing profile
+                    const updated = await apiCall(`/coowners/${existingProfile.id}`, 'PUT', data);
+                    showMessage('Cập nhật hồ sơ thành công!', 'success');
+                } catch (error) {
+                    if (error.message.includes('404')) {
+                        // Create new profile
+                        const newData = {
+                            userId: currentUser.userId,
+                            ...data
+                        };
+                        const created = await apiCall('/coowners', 'POST', newData);
+                        showMessage('Tạo hồ sơ thành công!', 'success');
+                    } else {
+                        throw error;
+                    }
+                }
+                
+                loadProfile();
+            } catch (error) {
+                showMessage(`Lỗi: ${error.message}`, 'error');
+            }
+        }
+
+        // Ownership Management
+        async function loadOwnerships() {
+            const loading = document.getElementById('ownerships-loading');
+            const content = document.getElementById('ownerships-content');
+            const empty = document.getElementById('ownerships-empty');
+            const list = document.getElementById('ownerships-list');
+            
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            try {
+                // First get user profile to get coOwnerId
+                const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                
+                // Then get ownerships by coOwnerId
+                const ownerships = await apiCall(`/ownerships/co-owner/${profile.id}`);
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+                // Show join button
+                document.getElementById('btn-join-vehicle').style.display = 'block';
+                
+                if (!ownerships || ownerships.length === 0) {
+                    empty.style.display = 'block';
+                    list.innerHTML = '';
+                } else {
+                    empty.style.display = 'none';
+                    displayOwnershipsWithCoOwners(ownerships);
+                }
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                    empty.style.display = 'block';
+                    list.innerHTML = '';
+                    // Show join button even if no ownerships
+                    document.getElementById('btn-join-vehicle').style.display = 'block';
+                } else {
+                    loading.innerHTML = `<div class="message message-error">Lỗi tải quyền sở hữu: ${error.message}</div>`;
+                    content.style.display = 'block';
+                }
+            }
+        }
+
+        async function displayOwnershipsWithCoOwners(ownerships) {
+            const list = document.getElementById('ownerships-list');
+            list.innerHTML = '';
+
+            for (const ownership of ownerships) {
+                // Fetch all co-owners for this vehicle group
+                let allCoOwners = [];
+                try {
+                    allCoOwners = await apiCall(`/ownerships/vehicle-group/${ownership.vehicleGroupId}`);
+                } catch (error) {
+                    console.error('Error fetching co-owners:', error);
+                }
+
+                const statusClass = ownership.isActive ? 'status-active' : 'status-inactive';
+                const statusText = ownership.isActive ? 'Đang hoạt động' : 'Ngừng hoạt động';
+                
+                // Extract vehicle name from notes
+                const vehicleNotes = ownership.notes || '';
+                const parts = vehicleNotes.split(' - ');
+                const vehicleName = parts[0] || 'Chưa có tên xe';
+                
+                // Get vehicle image from localStorage
+                const storageKey = `vehicle_images_${ownership.vehicleGroupId}`;
+                const vehicleImages = JSON.parse(localStorage.getItem(storageKey) || '{}');
+                const mainImageSrc = vehicleImages.mainImage || '';
+                
+                let html = `
+                    <div class="ownership-item">
+                        <div class="ownership-item-content">
+                            ${mainImageSrc ? 
+                                `<img src="${mainImageSrc}" class="ownership-item-image" alt="${vehicleName}">` : 
+                                '<div class="ownership-item-image image-placeholder" style="font-size:32px;"><span>🚗</span></div>'
+                            }
+                            <div class="ownership-item-info">
+                                <h4>🚗 ${vehicleName}</h4>
+                                <span class="ownership-percentage">Quyền sở hữu: ${ownership.ownershipPercentage}%</span>
+                                <div style="margin-top: 10px;">
+                                    <span class="status-item ${statusClass}">${statusText}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn" style="background: #dc3545; color: white; flex: 1; font-size: 14px; padding: 8px;" onclick="handleDeleteOwnership('${ownership.id}', '${vehicleName}', '${ownership.vehicleGroupId}')">🗑️ Xóa sở hữu</button>
+                        </div>
+                `;
+
+                // Display other co-owners
+                if (allCoOwners && allCoOwners.length > 1) {
+                    html += `
+                        <div class="coowners-list">
+                            <h5>Đồng sở hữu khác:</h5>
+                    `;
+
+                    allCoOwners.forEach(coOwner => {
+                        if (coOwner.coOwnerId !== ownership.coOwnerId) {
+                            const verifiedClass = coOwner.isVerified ? 'verified' : 'unverified';
+                            const verifiedText = coOwner.isVerified ? 'Đã xác thực' : 'Chưa xác thực';
+                            html += `
+                                <div class="coowner-item">
+                                    <div>
+                                        <strong>${coOwner.coOwnerName || 'N/A'}</strong>
+                                        <span style="margin-left: 10px; color: #667eea;">${coOwner.ownershipPercentage}%</span>
+                                    </div>
+                                    <span class="verification-badge ${verifiedClass}">${verifiedText}</span>
+                                </div>
+                            `;
+                        }
+                    });
+
+                    html += `</div>`;
+                }
+
+                html += `</div>`;
+                list.innerHTML += html;
+            }
+            
+            // Re-attach event listeners for action buttons
+            attachOwnershipActionButtons();
+        }
+
+        // Contract Management
+        async function loadContracts() {
+            const loading = document.getElementById('contracts-loading');
+            const content = document.getElementById('contracts-content');
+            const empty = document.getElementById('contracts-empty');
+            const list = document.getElementById('contracts-list');
+            
+            loading.style.display = 'block';
+            content.style.display = 'none';
+
+            try {
+                // Get user's ownerships to find all vehicles
+                const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                const ownerships = await apiCall(`/ownerships/co-owner/${profile.id}`);
+                
+                // Get all contracts for all vehicles user owns
+                let allContracts = [];
+                for (const ownership of ownerships) {
+                    try {
+                        const contracts = await apiCall(`/econtracts/vehicle-group/${ownership.vehicleGroupId}?status=Signed`);
+                        allContracts = allContracts.concat(contracts);
+                    } catch (error) {
+                        console.error('Error loading contracts for vehicle:', error);
+                    }
+                }
+                
+                // Filter to show only the latest contract for each vehicle group
+                const latestContracts = [];
+                const vehicleGroupMap = new Map();
+                
+                // Group contracts by vehicleGroupId
+                allContracts.forEach(contract => {
+                    if (!vehicleGroupMap.has(contract.vehicleGroupId)) {
+                        vehicleGroupMap.set(contract.vehicleGroupId, contract);
+                    } else {
+                        // Compare dates - keep the latest one
+                        const existing = vehicleGroupMap.get(contract.vehicleGroupId);
+                        const existingDate = new Date(existing.signedAt || existing.createdAt);
+                        const currentDate = new Date(contract.signedAt || contract.createdAt);
+                        if (currentDate > existingDate) {
+                            vehicleGroupMap.set(contract.vehicleGroupId, contract);
+                        }
+                    }
+                });
+                
+                // Convert map values to array
+                latestContracts.push(...vehicleGroupMap.values());
+                
+                loading.style.display = 'none';
+                content.style.display = 'block';
+                
+                if (!latestContracts || latestContracts.length === 0) {
+                    empty.style.display = 'block';
+                    list.innerHTML = '';
+                } else {
+                    empty.style.display = 'none';
+                    displayContracts(latestContracts);
+                }
+            } catch (error) {
+                loading.innerHTML = `<div class="message message-error">Lỗi tải hợp đồng: ${error.message}</div>`;
+                content.style.display = 'block';
+            }
+        }
+        
+        function displayContracts(contracts) {
+            const list = document.getElementById('contracts-list');
+            list.innerHTML = '';
+            
+            contracts.forEach(contract => {
+                const statusClass = getContractStatusClass(contract.contractStatus);
+                const statusText = getContractStatusText(contract.contractStatus);
+                
+                let html = `
+                    <div class="ownership-item">
+                        <h4>📄 ${contract.contractTitle}</h4>
+                        <div style="margin-top: 10px;">
+                            <span class="status-item ${statusClass}">${statusText}</span>
+                            <span style="margin-left: 15px; color: #667eea;">
+                                Quyền sở hữu: ${contract.ownershipPercentage}%
+                            </span>
+                        </div>
+                        <div style="margin-top: 10px; color: #666;">
+                            <small>
+                                Ngày tạo: ${new Date(contract.createdAt).toLocaleDateString('vi-VN')}
+                                ${contract.signedAt ? ` | Đã ký: ${new Date(contract.signedAt).toLocaleDateString('vi-VN')}` : ''}
+                            </small>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 15px;">
+                            <button class="btn" style="flex: 1; font-size: 14px; padding: 8px;" onclick="showContractDetails('${contract.id}')">Xem chi tiết</button>
+                            ${contract.contractStatus === 'Pending' ? 
+                                `<button class="btn btn-secondary" style="flex: 1; font-size: 14px; padding: 8px;" onclick="showSignContractModal('${contract.id}')">✍️ Ký hợp đồng</button>` : 
+                                ''
+                            }
+                            <button class="btn" style="font-size: 14px; padding: 8px;" onclick="downloadContract('${contract.id}')">📥 Tải PDF</button>
+                        </div>
+                    </div>
+                `;
+                
+                list.innerHTML += html;
+            });
+        }
+        
+        function getContractStatusClass(status) {
+            switch(status) {
+                case 'Signed': return 'status-active';
+                case 'Pending': return 'status-pending';
+                case 'Rejected': return 'status-inactive';
+                case 'Expired': return 'status-inactive';
+                default: return 'status-item';
+            }
+        }
+        
+        function getContractStatusText(status) {
+            switch(status) {
+                case 'Signed': return '✓ Đã ký';
+                case 'Pending': return '⏳ Chờ ký';
+                case 'Rejected': return '✗ Từ chối';
+                case 'Expired': return '⏱️ Hết hạn';
+                default: return status;
+            }
+        }
+        
+        async function showContractDetails(contractId) {
+            const modal = document.getElementById('contract-details-modal');
+            const content = document.getElementById('contract-details-content');
+            
+            content.innerHTML = '<div class="loading">Đang tải thông tin hợp đồng...</div>';
+            modal.style.display = 'block';
+            
+            try {
+                // Get contract details
+                const allContracts = await getAllContracts();
+                const contract = allContracts.find(c => c.id === contractId);
+                
+                if (!contract) {
+                    content.innerHTML = '<div class="message message-error">Không tìm thấy hợp đồng</div>';
+                    return;
+                }
+                
+                const statusClass = getContractStatusClass(contract.contractStatus);
+                const statusText = getContractStatusText(contract.contractStatus);
+                
+                content.innerHTML = `
+                    <div class="ownership-item">
+                        <h3>${contract.contractTitle}</h3>
+                        <div style="margin: 15px 0;">
+                            <span class="status-item ${statusClass}">${statusText}</span>
+                            <span style="margin-left: 15px; color: #667eea;">
+                                Quyền sở hữu: ${contract.ownershipPercentage}%
+                            </span>
+                        </div>
+                        <div style="margin: 10px 0; color: #666;">
+                            <small>
+                                <strong>Ngày tạo:</strong> ${new Date(contract.createdAt).toLocaleString('vi-VN')}<br>
+                                ${contract.signedAt ? `<strong>Đã ký:</strong> ${new Date(contract.signedAt).toLocaleString('vi-VN')}<br>` : ''}
+                                ${contract.expiresAt ? `<strong>Hết hạn:</strong> ${new Date(contract.expiresAt).toLocaleString('vi-VN')}` : ''}
+                            </small>
+                        </div>
+                        <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+                        <div style="white-space: pre-wrap; font-family: monospace; line-height: 1.6;">
+                            ${contract.contractContent}
+                        </div>
+                        ${contract.notes ? `
+                            <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+                            <div style="color: #666; font-size: 0.9em;">
+                                <strong>Ghi chú:</strong> ${contract.notes}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading contract details:', error);
+                content.innerHTML = `<div class="message message-error">Lỗi tải hợp đồng: ${error.message}</div>`;
+            }
+        }
+        
+        function hideContractDetailsModal() {
+            document.getElementById('contract-details-modal').style.display = 'none';
+        }
+        
+        // Sign Contract Modal Functions
+        let currentSigningContractId = null;
+        
+        async function showSignContractModal(contractId) {
+            currentSigningContractId = contractId;
+            document.getElementById('sign-contract-modal').style.display = 'block';
+            document.getElementById('sign-contract-form').reset();
+            document.getElementById('sign-method').value = 'otp';
+            updateSignMethodUI();
+        }
+        
+        function hideSignContractModal() {
+            document.getElementById('sign-contract-modal').style.display = 'none';
+            currentSigningContractId = null;
+        }
+        
+        function updateSignMethodUI() {
+            const method = document.getElementById('sign-method').value;
+            if (method === 'otp') {
+                document.getElementById('sign-otp-section').style.display = 'block';
+                document.getElementById('sign-digitalsignature-section').style.display = 'none';
+            } else {
+                document.getElementById('sign-otp-section').style.display = 'none';
+                document.getElementById('sign-digitalsignature-section').style.display = 'block';
+            }
+        }
+        
+        async function sendOTP() {
+            // TODO: Integrate with OTP service
+            alert('Mã OTP đã được gửi đến email/SMS của bạn.\n(Tính năng thử nghiệm: nhập bất kỳ 6 chữ số nào để tiếp tục)');
+        }
+        
+        async function handleSignContract() {
+            if (!currentSigningContractId) return;
+            
+            const confirmCheck = document.getElementById('sign-confirm');
+            if (!confirmCheck.checked) {
+                alert('Vui lòng đồng ý với các điều khoản trong hợp đồng');
+                return;
+            }
+            
+            try {
+                const method = document.getElementById('sign-method').value;
+                let digitalSignature = '';
+                
+                if (method === 'otp') {
+                    const otpCode = document.getElementById('sign-otp-code').value;
+                    if (!otpCode || otpCode.length !== 6) {
+                        alert('Vui lòng nhập mã OTP 6 chữ số');
+                        return;
+                    }
+                    // TODO: Verify OTP with OTP service
+                    // For now, just use a simple signature
+                    digitalSignature = `OTP_VERIFIED_${Date.now()}`;
+                } else {
+                    const signature = document.getElementById('sign-digitalsignature').value;
+                    if (!signature) {
+                        alert('Vui lòng nhập chữ ký số');
+                        return;
+                    }
+                    digitalSignature = signature;
+                }
+                
+                // Sign the contract
+                await apiCall(`/econtracts/${currentSigningContractId}/sign`, 'POST', {
+                    digitalSignature: digitalSignature
+                });
+                
+                showMessage('Ký hợp đồng thành công!', 'success');
+                hideSignContractModal();
+                loadContracts();
+                // Also reload ownerships to show newly joined vehicle
+                loadOwnerships();
+            } catch (error) {
+                console.error('Sign contract error:', error);
+                alert('Ký hợp đồng thất bại: ' + error.message);
+            }
+        }
+        
+        async function getAllContracts() {
+            const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+            const ownerships = await apiCall(`/ownerships/co-owner/${profile.id}`);
+            
+            let allContracts = [];
+            for (const ownership of ownerships) {
+                try {
+                    const contracts = await apiCall(`/econtracts/vehicle-group/${ownership.vehicleGroupId}`);
+                    allContracts = allContracts.concat(contracts);
+                } catch (error) {
+                    console.error('Error loading contracts for vehicle:', error);
+                }
+            }
+            return allContracts;
+        }
+        
+        function downloadContract(contractId) {
+            alert('Download PDF - Tính năng sẽ tích hợp với PDF Service. (TODO: Generate PDF)');
+        }
+
+        // Message Display
+        function showMessage(message, type = 'info') {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message message-${type}`;
+            msgDiv.textContent = message;
+            document.querySelector('.content').insertBefore(msgDiv, document.querySelector('.content').firstChild);
+            
+            setTimeout(() => {
+                msgDiv.remove();
+            }, 3000);
+        }
+        
+        // Join Vehicle Modal Functions
+        let currentJoinVehicleData = null;
+        
+        function showJoinVehicleModal() {
+            document.getElementById('join-vehicle-modal').style.display = 'block';
+            document.getElementById('join-vehicle-info').style.display = 'none';
+            document.getElementById('join-vehicle-form').reset();
+            document.getElementById('join-agree-contract').checked = false;
+        }
+        
+        function hideJoinVehicleModal() {
+            document.getElementById('join-vehicle-modal').style.display = 'none';
+            hideJoinVehicleInfo();
+        }
+        
+        function hideJoinVehicleInfo() {
+            document.getElementById('join-vehicle-info').style.display = 'none';
+            document.getElementById('join-agree-contract').checked = false;
+            currentJoinVehicleData = null;
+        }
+        
+        // Vehicle database from trial codes
+        const vehicleDatabase = [
+            {
+                code: 'TESLA2024',
+                vehicleName: 'Tesla Model 3 Performance',
+                ownershipPercentage: 30,
+                vehicleGroupId: '11111111-1111-1111-1111-111111111111',
+                type: 'Sedan',
+                description: 'Tesla Model 3 Performance với dual motor và tăng tốc 0-100km/h trong 3.3 giây'
+            },
+            {
+                code: 'VFS8CO24',
+                vehicleName: 'VinFast VF8 City Edition',
+                ownershipPercentage: 25,
+                vehicleGroupId: '22222222-2222-2222-2222-222222222222',
+                type: 'SUV',
+                description: 'VinFast VF8 City Edition - SUV điện cao cấp của Việt Nam'
+            },
+            {
+                code: 'PORSCHE2024',
+                vehicleName: 'Porsche Taycan Turbo S',
+                ownershipPercentage: 15,
+                vehicleGroupId: '33333333-3333-3333-3333-333333333333',
+                type: 'Sedan',
+                description: 'Porsche Taycan Turbo S - xe điện thể thao cực mạnh của Porsche'
+            },
+            {
+                code: 'BMWICO23',
+                vehicleName: 'BMW i4 eDrive40',
+                ownershipPercentage: 40,
+                vehicleGroupId: '44444444-4444-4444-4444-444444444444',
+                type: 'Sedan',
+                description: 'BMW i4 eDrive40 - sedan điện thanh lịch với công nghệ BMW hiện đại'
+            },
+            {
+                code: 'BYDHAN24',
+                vehicleName: 'BYD Han EV Premium',
+                ownershipPercentage: 20,
+                vehicleGroupId: '55555555-5555-5555-5555-555555555555',
+                type: 'Sedan',
+                description: 'BYD Han EV Premium - sedan cao cấp với pin Blade Battery'
+            }
+        ];
+        
+        async function handleCheckJoinCode() {
+            const code = document.getElementById('join-code').value.toUpperCase().trim();
+            
+            if (!code) {
+                alert('Vui lòng nhập mã mời');
+                return;
+            }
+            
+            // Find vehicle by code
+            const vehicle = vehicleDatabase.find(v => v.code === code);
+            
+            if (!vehicle) {
+                alert('Mã mời không hợp lệ. Vui lòng kiểm tra lại.');
+                return;
+            }
+            
+            // Store vehicle data
+            currentJoinVehicleData = vehicle;
+            
+            // Display vehicle information
+            document.getElementById('join-vehicle-name').textContent = vehicle.vehicleName;
+            document.getElementById('join-vehicle-details').innerHTML = `
+                <strong>Loại xe:</strong> ${vehicle.type}<br>
+                <strong>Tỉ lệ sở hữu:</strong> ${vehicle.ownershipPercentage}%<br>
+                <strong>Mô tả:</strong> ${vehicle.description}
+            `;
+            document.getElementById('join-vehicle-info').style.display = 'block';
+        }
+        
+        async function handleJoinVehicleConfirm() {
+            if (!currentJoinVehicleData) {
+                alert('Không có thông tin xe được chọn');
+                return;
+            }
+            
+            // Check if user agreed to sign contract
+            const agreeCheckbox = document.getElementById('join-agree-contract');
+            if (!agreeCheckbox.checked) {
+                alert('Vui lòng đồng ý ký hợp đồng đồng sở hữu để tiếp tục.');
+                return;
+            }
+            
+            try {
+                // Get current user profile
+                const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                
+                // Check if user already owns this vehicle
+                try {
+                    const existingOwnerships = await apiCall(`/ownerships/vehicle-group/${currentJoinVehicleData.vehicleGroupId}`);
+                    const alreadyOwned = existingOwnerships.some(o => o.coOwnerId === profile.id);
+                    
+                    if (alreadyOwned) {
+                        alert('Bạn đã tham gia xe này rồi!');
+                        hideJoinVehicleModal();
+                        return;
+                    }
+                    
+                    // Check total ownership percentage
+                    const currentTotal = existingOwnerships.reduce((sum, o) => sum + o.ownershipPercentage, 0);
+                    if (currentTotal + currentJoinVehicleData.ownershipPercentage > 100) {
+                        alert(`Không thể tham gia. Tỉ lệ sở hữu hiện tại: ${currentTotal}%, Thêm: ${currentJoinVehicleData.ownershipPercentage}%`);
+                        return;
+                    }
+                } catch (error) {
+                    // No existing ownerships, proceed
+                }
+                
+                // Step 1: Create ownership for the new CoOwner
+                const ownershipPayload = {
+                    coOwnerId: profile.id,
+                    vehicleGroupId: currentJoinVehicleData.vehicleGroupId,
+                    ownershipPercentage: currentJoinVehicleData.ownershipPercentage,
+                    startDate: new Date().toISOString(),
+                    notes: `${currentJoinVehicleData.vehicleName} - ${currentJoinVehicleData.type}${currentJoinVehicleData.description ? `: ${currentJoinVehicleData.description}` : ''}`
+                };
+                console.log('Creating ownership with payload:', ownershipPayload);
+                await apiCall('/ownerships', 'POST', ownershipPayload);
+                
+                // Step 2: Create e-contract (Pending status)
+                const existingOwnerships = await apiCall(`/ownerships/vehicle-group/${currentJoinVehicleData.vehicleGroupId}`);
+                const firstOwner = existingOwnerships.find(o => o.coOwnerId !== profile.id);
+                
+                // Always create contract when joining via code
+                let contractContent = '';
+                if (firstOwner) {
+                    // Has existing owner - create contract with two parties
+                    contractContent = `HỢP ĐỒNG ĐỒNG SỞ HỮU
+
+PHẦN I: THÔNG TIN CÁC BÊN
+
+Bên sở hữu chính: ${firstOwner.coOwnerName || 'Chủ sở hữu'}
+Bên mới tham gia: ${profile.fullName || 'Người tham gia mới'}
+
+PHẦN II: ĐỐI TƯỢNG HỢP ĐỒNG
+
+Xe: ${currentJoinVehicleData.vehicleName}
+Vehicle ID: ${currentJoinVehicleData.vehicleGroupId}
+
+PHẦN III: ĐIỀU KHOẢN SỞ HỮU
+
+Bên mới tham gia sở hữu: ${currentJoinVehicleData.ownershipPercentage}% tổng giá trị xe.
+Ngày bắt đầu: ${new Date().toLocaleDateString('vi-VN')}
+`;
+                } else {
+                    // First owner - create contract with self
+                    contractContent = `HỢP ĐỒNG ĐỒNG SỞ HỮU
+
+PHẦN I: THÔNG TIN CÁC BÊN
+
+Bên sở hữu: ${profile.fullName || 'Chủ sở hữu'}
+
+PHẦN II: ĐỐI TƯỢNG HỢP ĐỒNG
+
+Xe: ${currentJoinVehicleData.vehicleName}
+Vehicle ID: ${currentJoinVehicleData.vehicleGroupId}
+
+PHẦN III: ĐIỀU KHOẢN SỞ HỮU
+
+Chủ sở hữu sở hữu: ${currentJoinVehicleData.ownershipPercentage}% tổng giá trị xe.
+Ngày bắt đầu: ${new Date().toLocaleDateString('vi-VN')}
+`;
+                }
+                
+                console.log('Creating contract with profile.id:', profile.id);
+                const eContract = await apiCall('/econtracts', 'POST', {
+                    coOwnerId: profile.id,
+                    vehicleGroupId: currentJoinVehicleData.vehicleGroupId,
+                    contractTitle: `Hợp đồng đồng sở hữu - ${currentJoinVehicleData.vehicleName}`,
+                    contractContent: contractContent,
+                    ownershipPercentage: currentJoinVehicleData.ownershipPercentage,
+                    notes: `Hợp đồng tạo khi tham gia xe`,
+                    expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
+                });
+                console.log('Created contract:', eContract);
+                
+                // Step 3: Close join modal and show sign contract modal
+                hideJoinVehicleModal();
+                showSignContractModal(eContract.id);
+            } catch (error) {
+                console.error('Join vehicle error:', error);
+                alert('Tham gia xe thất bại: ' + error.message);
+            }
+        }
+        
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const joinModal = document.getElementById('join-vehicle-modal');
+            const contractDetailsModal = document.getElementById('contract-details-modal');
+            const signModal = document.getElementById('sign-contract-modal');
+            
+            if (event.target == joinModal) {
+                hideJoinVehicleModal();
+            }
+            if (event.target == contractDetailsModal) {
+                hideContractDetailsModal();
+            }
+            if (event.target == signModal) {
+                hideSignContractModal();
+            }
+        }
+
+        // Tab Change Listeners
+        document.querySelectorAll('.nav-tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                const tabName = this.textContent.includes('Hồ sơ') ? 'profile' :
+                                this.textContent.includes('Quyền sở hữu') ? 'ownerships' : 'contracts';
+                
+                if (tabName === 'profile' && !document.getElementById('profile-content').style.display) {
+                    loadProfile();
+                } else if (tabName === 'ownerships' && !document.getElementById('ownerships-content').style.display) {
+                    loadOwnerships();
+                } else if (tabName === 'contracts' && !document.getElementById('contracts-content').style.display) {
+                    loadContracts();
+                }
+            });
+        });
+
+        // File Upload (stub for now)
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            const uploadedDiv = document.getElementById('uploaded-files');
+            uploadedDiv.innerHTML = '<p>Chức năng upload sẽ được tích hợp với Storage Service</p>';
+        });
+        
+        function attachOwnershipActionButtons() {
+            // This function will be used to attach event listeners to dynamically created buttons
+            // Currently buttons use onclick in HTML directly
+        }
+        
+        // Delete ownership
+        async function handleDeleteOwnership(ownershipId, vehicleName, vehicleGroupId) {
+            if (!confirm(`Bạn có chắc muốn xóa quyền sở hữu xe "${vehicleName}"?\n\n⚠️ Việc này cũng sẽ xóa tất cả hợp đồng liên quan đến quyền sở hữu này.`)) {
+                return;
+            }
+            
+            try {
+                // Get user profile to find their contracts
+                const profile = await apiCall(`/coowners/user/${currentUser.userId}`);
+                
+                // Get all contracts for this vehicle group
+                const contracts = await apiCall(`/econtracts/vehicle-group/${vehicleGroupId}`);
+                
+                // Delete contracts owned by this user
+                for (const contract of contracts) {
+                    if (contract.coOwnerId === profile.id) {
+                        try {
+                            await apiCall(`/econtracts/${contract.id}`, 'DELETE');
+                        } catch (error) {
+                            console.error('Error deleting contract:', error);
+                            // Continue even if contract deletion fails
+                        }
+                    }
+                }
+                
+                // Delete ownership
+                await apiCall(`/ownerships/${ownershipId}`, 'DELETE');
+                showMessage('Xóa quyền sở hữu và hợp đồng thành công!', 'success');
+                loadOwnerships();
+                // Also reload contracts to remove the deleted contract from view
+                loadContracts();
+            } catch (error) {
+                console.error('Delete ownership error:', error);
+                alert('Xóa quyền sở hữu thất bại: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
+

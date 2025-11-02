@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # SQL Server Database
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ev-mssql
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourStrong@Password123
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+      - ./database/mssql/init:/docker-entrypoint-initdb.d
+    networks:
+      - ev-network
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong@Password123" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Account Ownership Service
+  account-ownership-service:
+    build:
+      context: ./account-ownership-service
+      dockerfile: Dockerfile
+    container_name: ev-account-ownership-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=EvAccountOwnershipDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;
+      - JWT__Secret=YourSuperSecretKeyForJWTTokenGeneration2024
+      - JWT__Issuer=EV-CoOwnership-System
+      - JWT__Audience=EV-CoOwnership-System
+      - AuthServiceUrl=http://auth-service:80
+    ports:
+      - "5002:80"
+    networks:
+      - ev-network
+
+volumes:
+  mssql-data:
+
+networks:
+  ev-network:
+    driver: bridge
+
