@@ -3,10 +3,6 @@ using BookingService.Models;
 
 namespace BookingService.Data
 {
-    /// <summary>
-    /// Ngữ cảnh cơ sở dữ liệu cho Booking Service.
-    /// Quản lý các bảng: Booking, Vehicle, CoOwner.
-    /// </summary>
     public class BookingDbContext : DbContext
     {
         public BookingDbContext(DbContextOptions<BookingDbContext> options)
@@ -18,9 +14,6 @@ namespace BookingService.Data
         public DbSet<Vehicle> Vehicles { get; set; }
         public DbSet<CoOwner> CoOwners { get; set; }
 
-        /// <summary>
-        /// Cấu hình chi tiết các quan hệ giữa các thực thể và dữ liệu mẫu.
-        /// </summary>
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
