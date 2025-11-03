@@ -16,6 +16,7 @@ namespace BookingService.Repositories
         public async Task<IEnumerable<Booking>> GetAllAsync() =>
             await _context.Bookings
                 .Include(b => b.CoOwner)
+                .Include(b => b.Vehicle)
                 .ToListAsync();
 
         public async Task<Booking?> GetByIdAsync(int id) =>

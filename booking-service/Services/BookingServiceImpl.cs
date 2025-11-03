@@ -76,7 +76,7 @@ namespace BookingService.Services
         }
 
         // Tạo booking mới
-        public async Task<BookingResponse> CreateBookingAsync(CreateBookingRequest request)
+        public async Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request)
         {
             var now = DateTime.Now;
             var hoursBeforeStart = (request.StartTime - now).TotalHours;
@@ -85,6 +85,7 @@ namespace BookingService.Services
             var vehicle = await _vehicleRepository.GetByIdAsync(request.VehicleId);
             var coOwner = await _coOwnerRepository.GetByIdAsync(request.CoOwnerId);
             var allBookings = await _bookingRepository.GetAllAsync();
+
             if (vehicle == null || coOwner == null)
                 throw new Exception("Xe hoặc người đồng sở hữu không tồn tại.");
 
@@ -120,7 +121,7 @@ namespace BookingService.Services
                                     b.StartTime >= startOfMonth &&
                                     b.StartTime < request.StartTime &&
                                     b.Status != "Cancelled")
-                        .Sum(b => EF.Functions.DateDiffHour(b.StartTime, b.EndTime));
+                        .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
                     // Giờ sử dụng tối đa/ngày theo tỉ lệ sở hữu
                     double allowedHoursPerDay = 20 * ((double)coOwner.OwnershipRatio / 100.0);
@@ -140,7 +141,7 @@ namespace BookingService.Services
                                         b.StartTime >= startOfMonth &&
                                         b.StartTime < request.StartTime &&
                                         b.Status != "Cancelled")
-                            .Sum(b => EF.Functions.DateDiffHour(b.StartTime, b.EndTime));
+                            .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
                         double otherAllowedPerDay = 20 * ((double)other.OwnershipRatio / 100.0);
                         double otherUsageRatio = otherUsedHours / otherAllowedPerDay;
@@ -176,21 +177,24 @@ namespace BookingService.Services
                 CoOwnerId = request.CoOwnerId,
                 StartTime = request.StartTime,
                 EndTime = request.EndTime,
-                Status = "Pending"
+                Status = "Pending",
+                Note = request.Note
             };
 
-            _bookingRepository.AddAsync(newBooking);
+            await _bookingRepository.AddAsync(newBooking);
             await _bookingRepository.SaveChangesAsync();
 
             return new BookingResponse
             {
                 Id = newBooking.Id,
                 VehicleId = newBooking.VehicleId,
+                VehicleName = vehicle.Name,
                 CoOwnerId = newBooking.CoOwnerId,
                 CoOwnerName = coOwner.Name,
                 StartTime = newBooking.StartTime,
                 EndTime = newBooking.EndTime,
                 Status = newBooking.Status,
+                Note = newBooking.Note
 
             };
         }
