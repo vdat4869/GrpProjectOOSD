@@ -28,6 +28,12 @@ namespace GroupManagementService.Repositories
             await _context.SaveChangesAsync();
         }
 
+        public async Task<IEnumerable<FundTransaction>> GetTransactionsByFundIdAsync(int fundId) =>
+            await _context.FundTransactions
+                .Where(t => t.FundId == fundId)
+                .OrderByDescending(t => t.CreatedAt)
+                .ToListAsync();
+
         public async Task SaveChangesAsync() => await _context.SaveChangesAsync();
     }
 }
