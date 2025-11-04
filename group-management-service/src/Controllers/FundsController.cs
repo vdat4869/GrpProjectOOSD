@@ -59,15 +59,30 @@ namespace GroupManagementService.Controllers
             }
         }
 
-        // Rút tiền
+                // Rút tiền
         [HttpPost("{fundId}/withdraw")]
-        public async Task<IActionResult> Withdraw(int fundId, [FromBody] WithdrawRequest request)
+        public async Task<IActionResult> Withdraw(int fundId, [FromBody] WithdrawRequest request)                                                               
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
             try
             {
-                var fund = await _service.WithdrawAsync(fundId, request.Amount, request.Description);
+                var fund = await _service.WithdrawAsync(fundId, request.Amount, request.Description);                                                           
                 return Ok(fund);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        // Xem lịch sử giao dịch
+        [HttpGet("{fundId}/transactions")]
+        public async Task<IActionResult> GetTransactions(int fundId)
+        {
+            try
+            {
+                var transactions = await _service.GetTransactionsAsync(fundId);
+                return Ok(transactions);
             }
             catch (Exception ex)
             {
