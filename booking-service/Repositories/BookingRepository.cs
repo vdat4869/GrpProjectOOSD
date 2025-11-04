@@ -20,7 +20,10 @@ namespace BookingService.Repositories
                 .ToListAsync();
 
         public async Task<Booking?> GetByIdAsync(int id) =>
-            await _context.Bookings.FindAsync(id);
+            await _context.Bookings
+                .Include(b => b.Vehicle)
+                .Include(b => b.CoOwner)
+                .FirstOrDefaultAsync(b => b.Id == id);
 
         public async Task AddAsync(Booking booking)
         {
@@ -33,7 +36,12 @@ namespace BookingService.Repositories
         public async Task UpdateAsync(Booking booking)
         {
             _context.Bookings.Update(booking);
-            await _context.SaveChangesAsync();
+            await Task.CompletedTask;
+        }
+        public async Task RemoveAsync(Booking booking)
+        {
+            _context.Bookings.Remove(booking);  // xóa trực tiếp EF
+            await Task.CompletedTask;           // giữ async signature
         }
 
     }

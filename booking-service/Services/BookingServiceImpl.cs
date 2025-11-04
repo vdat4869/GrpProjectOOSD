@@ -233,28 +233,28 @@ namespace BookingService.Services
         }
 
         // Cập nhật trạng thái booking
-        public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
-        {
-            var booking = await _bookingRepository.GetByIdAsync(bookingId);
-            if (booking == null) return null;
+        // public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
+        // {
+        //     var booking = await _bookingRepository.GetByIdAsync(bookingId);
+        //     if (booking == null) return null;
 
-            booking.Status = status;
-            await _bookingRepository.UpdateAsync(booking);
-            await _bookingRepository.SaveChangesAsync();
+        //     booking.Status = status;
+        //     await _bookingRepository.UpdateAsync(booking);
+        //     await _bookingRepository.SaveChangesAsync();
 
-            return new BookingResponse
-            {
-                Id = booking.Id,
-                VehicleId = booking.VehicleId,
-                VehicleName = booking.Vehicle?.Name,
-                CoOwnerId = booking.CoOwnerId,
-                CoOwnerName = booking.CoOwner?.Name,
-                StartTime = booking.StartTime,
-                EndTime = booking.EndTime,
-                Status = booking.Status,
-                Note = booking.Note
-            };
-        }
+        //     return new BookingResponse
+        //     {
+        //         Id = booking.Id,
+        //         VehicleId = booking.VehicleId,
+        //         VehicleName = booking.Vehicle?.Name,
+        //         CoOwnerId = booking.CoOwnerId,
+        //         CoOwnerName = booking.CoOwner?.Name,
+        //         StartTime = booking.StartTime,
+        //         EndTime = booking.EndTime,
+        //         Status = booking.Status,
+        //         Note = booking.Note
+        //     };
+        // }
 
         // Hủy booking
         public async Task<bool> CancelBookingAsync(int bookingId)
@@ -266,6 +266,15 @@ namespace BookingService.Services
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
             return true;
+        }
+        public async Task DeleteBookingAsync(int bookingId)
+        {
+            var booking = await _bookingRepository.GetByIdAsync(bookingId);
+            if (booking == null)
+                throw new Exception("Booking không tồn tại.");
+
+            await _bookingRepository.RemoveAsync(booking);
+            await _bookingRepository.SaveChangesAsync();
         }
 
 

@@ -11,6 +11,6 @@ namespace BookingService.Repositories
         Task AddAsync(Booking booking);
         Task SaveChangesAsync();
         Task UpdateAsync(Booking booking);
-
+        Task RemoveAsync(Booking booking);
     }
 }
