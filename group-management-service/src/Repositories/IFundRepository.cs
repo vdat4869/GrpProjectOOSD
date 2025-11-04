@@ -9,6 +9,7 @@ namespace GroupManagementService.Repositories
         Task<IEnumerable<Fund>> GetByGroupIdAsync(int groupId);
         Task AddTransactionAsync(FundTransaction txn);
         Task SaveChangesAsync();
+        Task<IEnumerable<FundTransaction>> GetTransactionsByFundIdAsync(int fundId);
     }
 }
 
