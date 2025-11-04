@@ -37,15 +37,22 @@ namespace GroupManagementService.Services
             return fund;
         }
 
-        public async Task<Fund> WithdrawAsync(int fundId, decimal amount, string? description)
+                public async Task<Fund> WithdrawAsync(int fundId, decimal amount, string? description)                                                                  
         {
-            var fund = await _fundRepo.GetByIdAsync(fundId) ?? throw new Exception("Fund not found.");
-            if (amount <= 0) throw new Exception("Amount must be positive.");
-            if (fund.Balance < amount) throw new Exception("Insufficient balance.");
+            var fund = await _fundRepo.GetByIdAsync(fundId) ?? throw new Exception("Fund not found.");                                                          
+            if (amount <= 0) throw new Exception("Amount must be positive.");   
+            if (fund.Balance < amount) throw new Exception("Insufficient balance.");                                                                            
             fund.Balance -= amount;
-            await _fundRepo.AddTransactionAsync(new FundTransaction { FundId = fundId, Amount = -amount, Type = "withdraw", Description = description });
+            await _fundRepo.AddTransactionAsync(new FundTransaction { FundId = fundId, Amount = -amount, Type = "withdraw", Description = description });       
             await _fundRepo.SaveChangesAsync();
             return fund;
+        }
+
+        public async Task<IEnumerable<FundTransaction>> GetTransactionsAsync(int fundId)
+        {
+            var fund = await _fundRepo.GetByIdAsync(fundId);
+            if (fund == null) throw new Exception("Fund not found.");
+            return await _fundRepo.GetTransactionsByFundIdAsync(fundId);
         }
     }
 }
