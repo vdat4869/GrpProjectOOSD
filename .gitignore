@@ -1,2 +1,106 @@
+# ------------------------------
+# OS generated files
+# ------------------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ------------------------------
+# Visual Studio / .NET
+# ------------------------------
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Tt]est[Rr]esults/
+[Bb]uild/
+[Bb]uild[Ll]og.*
+**/publish/
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+.nuget/
+project.lock.json
+
+# Rider / JetBrains
+.idea/
+*.iml
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# Coverage
+coverage/
+coverage-*/
+*.coverage
+*.coveragexml
+lcov.info
+
+# ------------------------------
+# Node / Frontend
+# ------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build outputs
+/dist/
+/build/
+/.cache/
+.next/
+.out/
+.eslintcache
+
+# Lock files (keep in VCS) - do NOT ignore
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ------------------------------
+# Environment & secrets
+# ------------------------------
+.env
+.env.*
+!.env.example
+
+# ------------------------------
+# Docker
+# ------------------------------
+**/docker-data/
+**/.docker/
+
+# ------------------------------
+# SQL Server local DB files
+# ------------------------------
+*.mdf
+*.ldf
+*.ndf
+
+# ------------------------------
+# VS Code (optional keep settings if needed)
+# ------------------------------
+.vscode/
+
+# ------------------------------
+# Misc
+# ------------------------------
+*.log
+*.tmp
+*.temp
+~$*
+*.swp
+*.swo
 **/bin/
 **/obj/

@@ -181,8 +181,46 @@ public class GetAllCoOwnersHandler : IRequestHandler<GetAllCoOwnersQuery, List<C
             query = query.Where(c => c.IsVerified == request.IsVerified.Value);
         }
 
-        var coOwners = await query.ToListAsync(cancellationToken);
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var s = request.Search.Trim();
+            query = query.Where(c =>
+                c.UserId.Contains(s) ||
+                c.FullName.Contains(s) ||
+                c.Email.Contains(s) ||
+                c.IdentityCardNumber.Contains(s));
+        }
+
+        // Sắp xếp mới nhất trước
+        query = query.OrderByDescending(c => c.CreatedAt);
+
+        // Phân trang
+        var skip = (request.Page - 1) * request.PageSize;
+        var coOwners = await query.Skip(skip).Take(request.PageSize).ToListAsync(cancellationToken);
         return _mapper.Map<List<CoOwnerDto>>(coOwners);
+    }
+}
+
+public class DeleteCoOwnerHandler : IRequestHandler<DeleteCoOwnerCommand, bool>
+{
+    private readonly ApplicationDbContext _context;
+
+    public DeleteCoOwnerHandler(ApplicationDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<bool> Handle(DeleteCoOwnerCommand request, CancellationToken cancellationToken)
+    {
+        var coOwner = await _context.CoOwners.FindAsync(new object[] { request.Id }, cancellationToken);
+        if (coOwner == null)
+        {
+            return false;
+        }
+
+        _context.CoOwners.Remove(coOwner);
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
     }
 }
 

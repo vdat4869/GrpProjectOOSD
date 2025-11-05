@@ -1,0 +1,5 @@
+IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'GroupDB')
+BEGIN
+	CREATE DATABASE [GroupDB];
+END;
+GO

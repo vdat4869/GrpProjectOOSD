@@ -26,9 +26,9 @@ public class CoOwnersController : ControllerBase
     /// </summary>
     [HttpGet]
     [Authorize(Roles = "Admin,Staff")]
-    public async Task<ActionResult<List<CoOwnerDto>>> GetAllCoOwners([FromQuery] bool? isVerified)
+    public async Task<ActionResult<List<CoOwnerDto>>> GetAllCoOwners([FromQuery] bool? isVerified, [FromQuery] int page = 1, [FromQuery] int pageSize = 10, [FromQuery] string? search = null)
     {
-        var query = new GetAllCoOwnersQuery(isVerified);
+        var query = new GetAllCoOwnersQuery(isVerified, page, pageSize, search);
         var result = await _mediator.Send(query);
         return Ok(result);
     }
@@ -102,6 +102,18 @@ public class CoOwnersController : ControllerBase
         {
             return NotFound(new { message = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Delete co-owner (Admin/Staff)
+    /// </summary>
+    [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<ActionResult> DeleteCoOwner(Guid id)
+    {
+        var success = await _mediator.Send(new DeleteCoOwnerCommand(id));
+        if (!success) return NotFound();
+        return NoContent();
     }
 
     /// <summary>

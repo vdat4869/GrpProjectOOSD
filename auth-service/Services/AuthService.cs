@@ -1,0 +1,331 @@
+using AuthService.DTOs;
+using AuthService.Models;
+using AuthService.Repositories;
+using AutoMapper;
+using BCrypt.Net;
+using System.Security.Claims;
+
+namespace AuthService.Services;
+
+/// <summary>
+/// Interface cho Auth Service
+/// </summary>
+public interface IAuthService
+{
+    Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request);
+    Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request);
+    Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request);
+    Task<ApiResponse<UserDto>> GetUserProfileAsync(int userId);
+    Task<ApiResponse<bool>> LogoutAsync(int userId);
+}
+
+/// <summary>
+/// Service xử lý authentication và authorization
+/// </summary>
+public class AuthService : IAuthService
+{
+    private readonly IUserRepository _userRepository;
+    private readonly IJwtService _jwtService;
+    private readonly IMapper _mapper;
+
+    public AuthService(IUserRepository userRepository, IJwtService jwtService, IMapper mapper)
+    {
+        _userRepository = userRepository;
+        _jwtService = jwtService;
+        _mapper = mapper;
+    }
+
+    /// <summary>
+    /// Đăng nhập user
+    /// </summary>
+    public async Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request)
+    {
+        try
+        {
+            // Tìm user theo email
+            var user = await _userRepository.GetByEmailAsync(request.Email);
+            if (user == null)
+            {
+                return new ApiResponse<LoginResponse>
+                {
+                    Success = false,
+                    Message = "Email hoặc mật khẩu không đúng",
+                    Errors = new List<string> { "UserNotFound" }
+                };
+            }
+
+            // Kiểm tra tài khoản có active không
+            if (!user.IsActive)
+            {
+                return new ApiResponse<LoginResponse>
+                {
+                    Success = false,
+                    Message = "Tài khoản đã bị khóa",
+                    Errors = new List<string> { "AccountDisabled" }
+                };
+            }
+
+            // Kiểm tra mật khẩu
+            if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            {
+                return new ApiResponse<LoginResponse>
+                {
+                    Success = false,
+                    Message = "Email hoặc mật khẩu không đúng",
+                    Errors = new List<string> { "InvalidPassword" }
+                };
+            }
+
+            // Tạo tokens
+            var accessToken = _jwtService.GenerateAccessToken(user);
+            var refreshToken = _jwtService.GenerateRefreshToken();
+
+            // Cập nhật refresh token vào database
+            user.RefreshToken = refreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7); // Refresh token hết hạn sau 7 ngày
+            await _userRepository.UpdateAsync(user);
+
+            // Tạo response
+            var userDto = _mapper.Map<UserDto>(user);
+            userDto.Roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+
+            var response = new LoginResponse
+            {
+                AccessToken = accessToken,
+                RefreshToken = refreshToken,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(60).ToUnixTimeSeconds(),
+                User = userDto
+            };
+
+            return new ApiResponse<LoginResponse>
+            {
+                Success = true,
+                Message = "Đăng nhập thành công",
+                Data = response
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<LoginResponse>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi đăng nhập",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Đăng ký user mới
+    /// </summary>
+    public async Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request)
+    {
+        try
+        {
+            // Kiểm tra email đã tồn tại chưa
+            if (await _userRepository.EmailExistsAsync(request.Email))
+            {
+                return new ApiResponse<UserDto>
+                {
+                    Success = false,
+                    Message = "Email đã được sử dụng",
+                    Errors = new List<string> { "EmailExists" }
+                };
+            }
+
+            // Hash password
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+
+            // Tạo user mới
+            var user = new User
+            {
+                Email = request.Email,
+                PasswordHash = passwordHash,
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                PhoneNumber = request.PhoneNumber
+            };
+
+            // Lưu user vào database
+            var createdUser = await _userRepository.CreateAsync(user);
+
+            // Gán role CoOwner mặc định cho user mới
+            var coOwnerRole = new UserRole
+            {
+                UserId = createdUser.Id,
+                RoleId = 1, // CoOwner role
+                AssignedAt = DateTime.UtcNow
+            };
+
+            // TODO: Cần thêm logic để gán role vào database
+            // Hiện tại chỉ tạo user, role sẽ được gán sau
+
+            var userDto = _mapper.Map<UserDto>(createdUser);
+            userDto.Roles = new List<string> { "CoOwner" };
+
+            return new ApiResponse<UserDto>
+            {
+                Success = true,
+                Message = "Đăng ký thành công",
+                Data = userDto
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<UserDto>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi đăng ký",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Làm mới access token
+    /// </summary>
+    public async Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request)
+    {
+        try
+        {
+            // Lấy claims từ expired token
+            var principal = _jwtService.GetPrincipalFromExpiredToken(request.RefreshToken);
+            var userIdClaim = principal?.FindFirst(ClaimTypes.NameIdentifier);
+            
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+            {
+                return new ApiResponse<RefreshTokenResponse>
+                {
+                    Success = false,
+                    Message = "Token không hợp lệ",
+                    Errors = new List<string> { "InvalidToken" }
+                };
+            }
+
+            // Tìm user
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null || user.RefreshToken != request.RefreshToken || 
+                user.RefreshTokenExpiryTime <= DateTime.UtcNow)
+            {
+                return new ApiResponse<RefreshTokenResponse>
+                {
+                    Success = false,
+                    Message = "Refresh token không hợp lệ hoặc đã hết hạn",
+                    Errors = new List<string> { "InvalidRefreshToken" }
+                };
+            }
+
+            // Tạo tokens mới
+            var newAccessToken = _jwtService.GenerateAccessToken(user);
+            var newRefreshToken = _jwtService.GenerateRefreshToken();
+
+            // Cập nhật refresh token mới
+            user.RefreshToken = newRefreshToken;
+            user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
+            await _userRepository.UpdateAsync(user);
+
+            var response = new RefreshTokenResponse
+            {
+                AccessToken = newAccessToken,
+                RefreshToken = newRefreshToken,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(60).ToUnixTimeSeconds()
+            };
+
+            return new ApiResponse<RefreshTokenResponse>
+            {
+                Success = true,
+                Message = "Làm mới token thành công",
+                Data = response
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<RefreshTokenResponse>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi làm mới token",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Lấy thông tin profile của user
+    /// </summary>
+    public async Task<ApiResponse<UserDto>> GetUserProfileAsync(int userId)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return new ApiResponse<UserDto>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy user",
+                    Errors = new List<string> { "UserNotFound" }
+                };
+            }
+
+            var userDto = _mapper.Map<UserDto>(user);
+            userDto.Roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
+
+            return new ApiResponse<UserDto>
+            {
+                Success = true,
+                Message = "Lấy thông tin user thành công",
+                Data = userDto
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<UserDto>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi lấy thông tin user",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Đăng xuất user (xóa refresh token)
+    /// </summary>
+    public async Task<ApiResponse<bool>> LogoutAsync(int userId)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy user",
+                    Errors = new List<string> { "UserNotFound" }
+                };
+            }
+
+            // Xóa refresh token
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = null;
+            await _userRepository.UpdateAsync(user);
+
+            return new ApiResponse<bool>
+            {
+                Success = true,
+                Message = "Đăng xuất thành công",
+                Data = true
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi đăng xuất",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+}

@@ -10,6 +10,7 @@ using AccountOwnershipService.Middleware;
 using FluentValidation.AspNetCore;
 using FluentValidation;
 using MediatR;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,7 +47,7 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey)),
         ClockSkew = TimeSpan.Zero,
-        RoleClaimType = "role" // Map "role" claim from JWT to ASP.NET Core role claims
+        RoleClaimType = ClaimTypes.Role // Map role claims to standard ClaimTypes.Role
     };
 });
 
@@ -129,7 +130,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Account Ownership Service API v1");
-        c.RoutePrefix = string.Empty; // Set Swagger UI at the app's root
+        c.RoutePrefix = "swagger"; // Serve Swagger UI at /swagger
     });
 }
 

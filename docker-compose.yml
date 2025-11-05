@@ -7,21 +7,61 @@ services:
     container_name: ev-mssql
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=YourStrong@Password123
-      - MSSQL_PID=Developer
+      - SA_PASSWORD=${SA_PASSWORD:-YourStrong@Password123}
+      - MSSQL_PID=${MSSQL_PID:-Developer}
     ports:
-      - "1433:1433"
+      - "${SQL_PORT:-1433}:1433"
     volumes:
       - mssql-data:/var/opt/mssql
       - ./database/mssql/init:/docker-entrypoint-initdb.d
     networks:
-      - ev-network
+      - ev_network
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong@Password123" -C -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "${SA_PASSWORD:-YourStrong@Password123}" -C -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: ev-auth-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=AuthDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+    ports:
+      - "${AUTH_PORT:-5000}:80"
+    networks:
+      - ev_network
+
+  # Gateway
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: ev-gateway
+    depends_on:
+      auth-service:
+        condition: service_started
+      account-ownership-service:
+        condition: service_started
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+    ports:
+      - "${GATEWAY_PORT:-8000}:80"
+    networks:
+      - ev_network
 
   # Account Ownership Service
   account-ownership-service:
@@ -35,20 +75,118 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=EvAccountOwnershipDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;
-      - JWT__Secret=YourSuperSecretKeyForJWTTokenGeneration2024
-      - JWT__Issuer=EV-CoOwnership-System
-      - JWT__Audience=EV-CoOwnership-System
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=AccountDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
       - AuthServiceUrl=http://auth-service:80
     ports:
-      - "5002:80"
+      - "${ACCOUNT_PORT:-5001}:80"
     networks:
-      - ev-network
+      - ev_network
+
+  # Booking Service
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: ev-booking-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=BookingDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+    ports:
+      - "${BOOKING_PORT:-5002}:80"
+    networks:
+      - ev_network
+
+  # History Analytics Service
+  history-analytics-service:
+    build:
+      context: ./history-analytics-service
+      dockerfile: Dockerfile
+    container_name: ev-history-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=HistoryDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+    ports:
+      - "${HISTORY_PORT:-5004}:80"
+    networks:
+      - ev_network
+
+  # Group Management Service
+  group-management-service:
+    build:
+      context: ./group-management-service
+      dockerfile: Dockerfile
+    container_name: ev-group-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=GroupDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+    ports:
+      - "${GROUP_PORT:-5005}:80"
+    networks:
+      - ev_network
+
+  # Admin Service
+  admin-service:
+    build:
+      context: ./admin-service
+      dockerfile: Dockerfile
+    container_name: ev-admin-service
+    depends_on:
+      mssql:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=mssql,1433;Database=AdminDB;User Id=sa;Password=${SA_PASSWORD:-YourStrong@Password123};TrustServerCertificate=True;
+      - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
+      - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
+      - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+    ports:
+      - "${ADMIN_PORT:-5006}:80"
+    networks:
+      - ev_network
+
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ev-frontend
+    depends_on:
+      gateway:
+        condition: service_started
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - ev_network
 
 volumes:
   mssql-data:
 
 networks:
-  ev-network:
+  ev_network:
     driver: bridge
 
