@@ -66,14 +66,15 @@ Hệ thống triển khai theo **mô hình Microservices**, có khả năng mở
 ## Các microservice đề xuất:
 ```
 ev-coownership-system/
-├── gateway-service/ # API Gateway (Reverse Proxy)
+├── gateway/ # API Gateway (Reverse Proxy)
 ├── auth-service/ # Đăng ký, đăng nhập, xác thực người dùng
-├── ownership-service/ # Quản lý đồng sở hữu, hợp đồng, quyền sở hữu
+├── account-ownership-service/ # Quản lý đồng sở hữu, hợp đồng, quyền sở hữu
 ├── booking-service/ # Quản lý đặt lịch, check-in/out xe
 ├── payment-service/ # Quản lý chia chi phí, thanh toán, ví điện tử
-├── group-service/ # Nhóm đồng sở hữu, bỏ phiếu, quỹ chung
-├── report-service/ # Xuất báo cáo và lịch sử tài chính
+├── group-management-service/ # Nhóm đồng sở hữu, bỏ phiếu, quỹ chung
+├── history-analystics--service/ # Xuất báo cáo và lịch sử tài chính
 ├── frontend/ # ReactJS Web App
+├── database/ # DB
 └── docker-compose.yml
 ```
  
