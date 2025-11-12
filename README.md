@@ -229,8 +229,12 @@ This project is licensed under the MIT License.
 
 ## 👥 Contributors
 
+- Vo Tran Ngoc Anh
 - Nguyen Viet Dat
-- Team Members
+- Nguyen Anh Duc
+- Hoang Huu Nghia
+- Nguyen Dang Thinh
+- Ngo Hoang Thuc
 
 ## 📞 Contact
 
