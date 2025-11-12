@@ -1,0 +1,177 @@
+-- Payment DB schema (idempotent, aligns with EF Core models)
+USE [payment_db];
+GO
+
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
+IF OBJECT_ID(N'[dbo].[Transactions]', N'U') IS NOT NULL DROP TABLE [dbo].[Transactions];
+IF OBJECT_ID(N'[dbo].[PaymentMethods]', N'U') IS NOT NULL DROP TABLE [dbo].[PaymentMethods];
+IF OBJECT_ID(N'[dbo].[CostShareDetails]', N'U') IS NOT NULL DROP TABLE [dbo].[CostShareDetails];
+IF OBJECT_ID(N'[dbo].[Payments]', N'U') IS NOT NULL DROP TABLE [dbo].[Payments];
+IF OBJECT_ID(N'[dbo].[CostShares]', N'U') IS NOT NULL DROP TABLE [dbo].[CostShares];
+IF SCHEMA_ID(N'Wallet') IS NOT NULL AND OBJECT_ID(N'[Wallet].[Wallets]', N'U') IS NOT NULL DROP TABLE [Wallet].[Wallets];
+GO
+
+IF SCHEMA_ID(N'Wallet') IS NULL EXEC('CREATE SCHEMA [Wallet]');
+GO
+
+CREATE TABLE [Wallet].[Wallets] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_Wallets] PRIMARY KEY,
+    [UserId] UNIQUEIDENTIFIER NOT NULL,
+    [GroupId] UNIQUEIDENTIFIER NOT NULL,
+    [Balance] DECIMAL(18,2) NOT NULL DEFAULT(0),
+    [FrozenAmount] DECIMAL(18,2) NOT NULL DEFAULT(0),
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
+    [IsActive] BIT NOT NULL DEFAULT(1),
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE INDEX [IX_Wallets_User_Group] ON [Wallet].[Wallets]([UserId], [GroupId]);
+GO
+
+CREATE TABLE [dbo].[CostShares] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_CostShares] PRIMARY KEY,
+    [GroupId] UNIQUEIDENTIFIER NOT NULL,
+    [VehicleId] UNIQUEIDENTIFIER NOT NULL,
+    [CostType] INT NOT NULL,
+    [Title] NVARCHAR(200) NOT NULL,
+    [Description] NVARCHAR(1000) NULL,
+    [TotalAmount] DECIMAL(18,2) NOT NULL,
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
+    [DueDate] DATETIME2 NOT NULL,
+    [PaidDate] DATETIME2 NULL,
+    [Status] INT NOT NULL,
+    [ReceiptUrl] NVARCHAR(500) NULL,
+    [Metadata] NVARCHAR(1000) NULL,
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE INDEX [IX_CostShares_Group_Vehicle] ON [dbo].[CostShares]([GroupId], [VehicleId]);
+GO
+
+CREATE TABLE [dbo].[CostShareDetails] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_CostShareDetails] PRIMARY KEY,
+    [CostShareId] UNIQUEIDENTIFIER NOT NULL,
+    [UserId] UNIQUEIDENTIFIER NOT NULL,
+    [OwnershipPercentage] DECIMAL(5,2) NOT NULL,
+    [Amount] DECIMAL(18,2) NOT NULL,
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
+    [Status] INT NOT NULL,
+    [PaidDate] DATETIME2 NULL,
+    [Notes] NVARCHAR(500) NULL,
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE UNIQUE INDEX [IX_CostShareDetails_CostShare_User] ON [dbo].[CostShareDetails]([CostShareId], [UserId]);
+GO
+
+CREATE TABLE [dbo].[PaymentMethods] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_PaymentMethods] PRIMARY KEY,
+    [UserId] UNIQUEIDENTIFIER NOT NULL,
+    [MethodType] NVARCHAR(50) NOT NULL,
+    [AccountNumber] NVARCHAR(200) NOT NULL,
+    [AccountName] NVARCHAR(200) NULL,
+    [BankName] NVARCHAR(100) NULL,
+    [BankCode] NVARCHAR(100) NULL,
+    [IsDefault] BIT NOT NULL DEFAULT(0),
+    [IsActive] BIT NOT NULL DEFAULT(1),
+    [Metadata] NVARCHAR(1000) NULL,
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE UNIQUE INDEX [IX_PaymentMethods_User_Method_Account] ON [dbo].[PaymentMethods]([UserId], [MethodType], [AccountNumber]);
+GO
+
+CREATE TABLE [dbo].[Payments] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_Payments] PRIMARY KEY,
+    [CostShareDetailId] UNIQUEIDENTIFIER NOT NULL,
+    [WalletId] UNIQUEIDENTIFIER NOT NULL,
+    [Method] INT NOT NULL,
+    [Amount] DECIMAL(18,2) NOT NULL,
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
+    [Status] INT NOT NULL,
+    [TransactionId] NVARCHAR(200) NULL,
+    [ExternalTransactionId] NVARCHAR(200) NULL,
+    [PaymentUrl] NVARCHAR(1000) NULL,
+    [CallbackUrl] NVARCHAR(1000) NULL,
+    [ReturnUrl] NVARCHAR(1000) NULL,
+    [ProcessedAt] DATETIME2 NULL,
+    [ErrorMessage] NVARCHAR(1000) NULL,
+    [Metadata] NVARCHAR(2000) NULL,
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE INDEX [IX_Payments_CostShareDetailId] ON [dbo].[Payments]([CostShareDetailId]);
+CREATE INDEX [IX_Payments_WalletId] ON [dbo].[Payments]([WalletId]);
+GO
+
+CREATE TABLE [dbo].[Transactions] (
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_Transactions] PRIMARY KEY,
+    [WalletId] UNIQUEIDENTIFIER NOT NULL,
+    [Type] INT NOT NULL,
+    [Amount] DECIMAL(18,2) NOT NULL,
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
+    [Description] NVARCHAR(500) NULL,
+    [Reference] NVARCHAR(100) NULL,
+    [RelatedTransactionId] UNIQUEIDENTIFIER NULL,
+    [Status] INT NOT NULL,
+    [ProcessedAt] DATETIME2 NULL,
+    [Metadata] NVARCHAR(1000) NULL,
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
+    [UpdatedAt] DATETIME2 NULL,
+    [CreatedBy] NVARCHAR(200) NULL,
+    [UpdatedBy] NVARCHAR(200) NULL,
+    [IsDeleted] BIT NOT NULL DEFAULT(0)
+);
+GO
+
+CREATE INDEX [IX_Transactions_WalletId] ON [dbo].[Transactions]([WalletId]);
+CREATE INDEX [IX_Transactions_RelatedTransactionId] ON [dbo].[Transactions]([RelatedTransactionId]);
+GO
+
+ALTER TABLE [dbo].[CostShareDetails]
+    ADD CONSTRAINT [FK_CostShareDetails_CostShares] FOREIGN KEY ([CostShareId]) REFERENCES [dbo].[CostShares]([Id]) ON DELETE CASCADE;
+GO
+
+ALTER TABLE [dbo].[Payments]
+    ADD CONSTRAINT [FK_Payments_CostShareDetails] FOREIGN KEY ([CostShareDetailId]) REFERENCES [dbo].[CostShareDetails]([Id]) ON DELETE CASCADE;
+GO
+
+ALTER TABLE [dbo].[Payments]
+    ADD CONSTRAINT [FK_Payments_Wallets] FOREIGN KEY ([WalletId]) REFERENCES [Wallet].[Wallets]([Id]) ON DELETE NO ACTION;
+GO
+
+ALTER TABLE [dbo].[Transactions]
+    ADD CONSTRAINT [FK_Transactions_Wallets] FOREIGN KEY ([WalletId]) REFERENCES [Wallet].[Wallets]([Id]) ON DELETE CASCADE;
+GO
+
+ALTER TABLE [dbo].[Transactions]
+    ADD CONSTRAINT [FK_Transactions_Related] FOREIGN KEY ([RelatedTransactionId]) REFERENCES [dbo].[Transactions]([Id]) ON DELETE NO ACTION;
+GO

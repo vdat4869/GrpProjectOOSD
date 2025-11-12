@@ -44,6 +44,40 @@ namespace BookingService.Models
         public string? Note { get; set; }
 
         /// <summary>
+        /// Quãng đường đã đi (km) - được cập nhật khi check-out
+        /// </summary>
+        [Column(TypeName = "decimal(10,2)")]
+        public decimal? DistanceKm { get; set; }
+
+        /// <summary>
+        /// Chi phí phát sinh (VND) - được cập nhật khi check-out
+        /// </summary>
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? Cost { get; set; }
+
+        /// <summary>
+        /// Thời gian check-in thực tế
+        /// </summary>
+        public DateTime? CheckInTime { get; set; }
+
+        /// <summary>
+        /// Thời gian check-out thực tế
+        /// </summary>
+        public DateTime? CheckOutTime { get; set; }
+
+        /// <summary>
+        /// QR code để check-in/check-out
+        /// </summary>
+        [StringLength(500)]
+        public string? QrCode { get; set; }
+
+        /// <summary>
+        /// Chữ ký số khi nhận xe (check-in)
+        /// </summary>
+        [StringLength(1000)]
+        public string? DigitalSignature { get; set; }
+
+        /// <summary>
         /// Quan hệ đến phương tiện.
         /// </summary>
         [ForeignKey(nameof(VehicleId))]

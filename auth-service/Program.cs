@@ -9,6 +9,7 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using AutoMapper;
 using AuthService.Models;
+using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,8 +17,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 
 // Cấu hình Entity Framework
+var defaultConn = builder.Configuration["ConnectionStrings:DefaultConnection"] 
+                  ?? builder.Configuration.GetConnectionString("DefaultConnection")
+                  ?? string.Empty;
+if (string.IsNullOrWhiteSpace(defaultConn))
+{
+    throw new InvalidOperationException("ConnectionStrings:DefaultConnection is not configured.");
+}
 builder.Services.AddDbContext<AuthDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlServer(defaultConn));
 
 // Đăng ký AutoMapper
 builder.Services.AddAutoMapper(typeof(Program));
@@ -126,36 +134,43 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-// Tự động tạo database khi khởi động (với retry logic) và seed admin
+// Tự động migrate database khi khởi động (với retry logic) và seed admin
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<AuthDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var maxRetries = 5;
     var retryCount = 0;
-    
+
     while (retryCount < maxRetries)
     {
         try
         {
-            context.Database.EnsureCreated();
+            await context.Database.MigrateAsync();
+            logger.LogInformation("Auth database migrations applied successfully.");
             break;
         }
         catch (Exception ex)
         {
-            retryCount++;
-            Console.WriteLine($"Database connection attempt {retryCount} failed: {ex.Message}");
-            if (retryCount >= maxRetries)
+            if (ex is SqlException sqlEx && sqlEx.Number == 2714)
             {
-                Console.WriteLine("Max retries reached. Starting service without database initialization.");
+                logger.LogWarning(ex, "Auth database schema already exists; skipping further migrations.");
                 break;
             }
-            await Task.Delay(5000); // Wait 5 seconds before retry
+
+            retryCount++;
+            logger.LogError(ex, "Auth database migration attempt {Attempt} failed.", retryCount);
+            if (retryCount >= maxRetries)
+            {
+                logger.LogError(ex, "Max retries reached. Continuing without further migration attempts.");
+                break;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(5));
         }
     }
 
     try
     {
-        // Seed admin role and user
         var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
         if (adminRole == null)
         {
@@ -165,8 +180,11 @@ using (var scope = app.Services.CreateScope())
         }
 
         var adminEmail = "admin@example.com";
-        var existingAdmin = await context.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+        var existingAdmin = await context.Users
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Email == adminEmail);
+
         if (existingAdmin == null)
         {
             var passwordHash = BCrypt.Net.BCrypt.HashPassword("Admin@12345");
@@ -180,6 +198,7 @@ using (var scope = app.Services.CreateScope())
                 UpdatedAt = DateTime.UtcNow,
                 IsActive = true
             };
+
             context.Users.Add(user);
             await context.SaveChangesAsync();
 
@@ -191,24 +210,20 @@ using (var scope = app.Services.CreateScope())
             });
             await context.SaveChangesAsync();
         }
-        else
+        else if (!existingAdmin.UserRoles.Any(ur => ur.RoleId == adminRole.Id))
         {
-            // Ensure admin user has Admin role
-            if (!existingAdmin.UserRoles.Any(ur => ur.RoleId == adminRole.Id))
+            context.UserRoles.Add(new UserRole
             {
-                context.UserRoles.Add(new UserRole
-                {
-                    UserId = existingAdmin.Id,
-                    RoleId = adminRole.Id,
-                    AssignedAt = DateTime.UtcNow
-                });
-                await context.SaveChangesAsync();
-            }
+                UserId = existingAdmin.Id,
+                RoleId = adminRole.Id,
+                AssignedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Seeding admin failed: {ex.Message}");
+        logger.LogError(ex, "Seeding admin failed.");
     }
 }
 

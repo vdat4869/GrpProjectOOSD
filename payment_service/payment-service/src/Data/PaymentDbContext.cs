@@ -9,25 +9,34 @@ namespace PaymentService.Data
         {
         }
 
-        // Wallets removed
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<CostShare> CostShares { get; set; }
         public DbSet<CostShareDetail> CostShareDetails { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<PaymentMethod> PaymentMethods { get; set; }
+        public DbSet<Wallet> Wallets { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
 
-            // Wallet configuration removed
+            modelBuilder.Entity<Wallet>(entity =>
+            {
+                entity.ToTable("Wallets", schema: "Wallet");
+                entity.Property(e => e.Balance).HasPrecision(18, 2);
+                entity.Property(e => e.FrozenAmount).HasPrecision(18, 2);
+                entity.HasIndex(e => new { e.UserId, e.GroupId });
+            });
 
             // Transaction configuration
             modelBuilder.Entity<Transaction>(entity =>
             {
                 entity.Property(e => e.Amount).HasPrecision(18, 2);
-                // Wallet relation removed
-                
+                entity.HasOne<Wallet>()
+                      .WithMany(w => w.Transactions)
+                      .HasForeignKey(e => e.WalletId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
                 entity.HasOne(e => e.RelatedTransaction)
                       .WithMany(t => t.RelatedTransactions)
                       .HasForeignKey(e => e.RelatedTransactionId)
@@ -64,7 +73,11 @@ namespace PaymentService.Data
                       .WithMany(csd => csd.Payments)
                       .HasForeignKey(e => e.CostShareDetailId)
                       .OnDelete(DeleteBehavior.Cascade);
-                // Wallet relation removed
+
+                entity.HasOne(e => e.Wallet)
+                      .WithMany(w => w.Payments)
+                      .HasForeignKey(e => e.WalletId)
+                      .OnDelete(DeleteBehavior.Restrict);
             });
 
             // PaymentMethod configuration

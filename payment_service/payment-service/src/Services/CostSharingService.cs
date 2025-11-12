@@ -1,5 +1,6 @@
 using AutoMapper;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using PaymentService.Data;
 using PaymentService.DTOs;
 using PaymentService.Models;
@@ -16,17 +17,26 @@ namespace PaymentService.Services
         Task<bool> DeleteCostShareAsync(Guid id);
         Task<List<CostShareDetailDto>> GetCostShareDetailsAsync(Guid costShareId);
         Task<bool> MarkAsPaidAsync(Guid costShareDetailId);
+        Task<List<CostSharingSuggestionDto>> GetCostSharingSuggestionAsync(GetCostSharingSuggestionRequest request);
     }
 
     public class CostSharingService : ICostSharingService
     {
         private readonly PaymentDbContext _context;
         private readonly IMapper _mapper;
+        private readonly IAiService? _aiService;
+        private readonly ILogger<CostSharingService>? _logger;
 
-        public CostSharingService(PaymentDbContext context, IMapper mapper)
+        public CostSharingService(
+            PaymentDbContext context, 
+            IMapper mapper,
+            IAiService? aiService = null,
+            ILogger<CostSharingService>? logger = null)
         {
             _context = context;
             _mapper = mapper;
+            _aiService = aiService;
+            _logger = logger;
         }
 
         public async Task<CostShareDto?> GetCostShareAsync(Guid id)
@@ -144,6 +154,91 @@ namespace PaymentService.Services
             }
             
             return true;
+        }
+
+        public async Task<List<CostSharingSuggestionDto>> GetCostSharingSuggestionAsync(GetCostSharingSuggestionRequest request)
+        {
+            try
+            {
+                // Try to get AI suggestion
+                if (_aiService != null)
+                {
+                    // Get co-owners from cost share details (if available) or from ownership service
+                    // For now, we'll use a simplified approach - in production, you'd call ownership service
+                    var coOwners = new List<CoOwnerCostInfo>();
+                    
+                    // If we have existing cost share details, use them
+                    var existingCostShares = await _context.CostShares
+                        .Include(cs => cs.CostShareDetails)
+                        .Where(cs => cs.GroupId == request.GroupId && !cs.IsDeleted)
+                        .ToListAsync();
+
+                    if (existingCostShares.Any())
+                    {
+                        // Extract co-owner info from existing cost share details
+                        var coOwnerMap = new Dictionary<Guid, (decimal ownership, double usageHours)>();
+                        
+                        foreach (var costShare in existingCostShares)
+                        {
+                            foreach (var detail in costShare.CostShareDetails.Where(d => !d.IsDeleted))
+                            {
+                                if (!coOwnerMap.ContainsKey(detail.UserId))
+                                {
+                                    coOwnerMap[detail.UserId] = (detail.OwnershipPercentage, 0);
+                                }
+                            }
+                        }
+
+                        coOwners = coOwnerMap.Select(kvp => new CoOwnerCostInfo
+                        {
+                            Id = kvp.Key.ToString(),
+                            OwnershipPercentage = (double)kvp.Value.ownership,
+                            UsageHours = kvp.Value.usageHours
+                        }).ToList();
+                    }
+
+                    if (coOwners.Any())
+                    {
+                        var aiRequest = new CostSharingSuggestionRequest
+                        {
+                            VehicleGroupId = request.GroupId.ToString(),
+                            TotalCost = (double)request.TotalCost,
+                            CostType = request.CostType,
+                            CoOwners = coOwners
+                        };
+
+                        var aiSuggestion = await _aiService.GetCostSharingSuggestionAsync(aiRequest);
+                        
+                        if (aiSuggestion != null && aiSuggestion.Suggestions.Any())
+                        {
+                            _logger?.LogInformation("Received AI cost sharing suggestion using method {Method}", aiSuggestion.Method);
+                            
+                            return aiSuggestion.Suggestions.Select(s => new CostSharingSuggestionDto
+                            {
+                                CoOwnerId = s.CoOwnerId,
+                                SuggestedAmount = (decimal)s.SuggestedAmount,
+                                Reason = s.Reason,
+                                Method = aiSuggestion.Method
+                            }).ToList();
+                        }
+                    }
+                }
+
+                // Fallback to ownership-based calculation if AI is not available
+                _logger?.LogWarning("AI Service not available or no suggestions, using default ownership-based calculation");
+                
+                // Default: ownership-based distribution
+                var defaultSuggestions = new List<CostSharingSuggestionDto>();
+                // This would need to fetch co-owners from ownership service
+                // For now, return empty list - caller should handle this
+                
+                return defaultSuggestions;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error getting cost sharing suggestion");
+                return new List<CostSharingSuggestionDto>();
+            }
         }
     }
 }

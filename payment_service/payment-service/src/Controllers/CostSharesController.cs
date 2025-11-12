@@ -97,5 +97,22 @@ namespace PaymentService.Controllers
 
             return Ok();
         }
+
+        [HttpPost("suggestions")]
+        public async Task<ActionResult<List<CostSharingSuggestionDto>>> GetCostSharingSuggestion([FromBody] GetCostSharingSuggestionRequest request)
+        {
+            if (request == null)
+                return BadRequest("Request is required");
+
+            try
+            {
+                var suggestions = await _costSharingService.GetCostSharingSuggestionAsync(request);
+                return Ok(suggestions);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error getting cost sharing suggestion", error = ex.Message });
+            }
+        }
     }
 }

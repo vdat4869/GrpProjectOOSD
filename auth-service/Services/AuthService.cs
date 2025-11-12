@@ -17,6 +17,7 @@ public interface IAuthService
     Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request);
     Task<ApiResponse<UserDto>> GetUserProfileAsync(int userId);
     Task<ApiResponse<bool>> LogoutAsync(int userId);
+    Task<ApiResponse<bool>> ChangePasswordAsync(int userId, ChangePasswordRequest request);
 }
 
 /// <summary>
@@ -324,6 +325,71 @@ public class AuthService : IAuthService
             {
                 Success = false,
                 Message = "Có lỗi xảy ra khi đăng xuất",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Đổi mật khẩu user
+    /// </summary>
+    public async Task<ApiResponse<bool>> ChangePasswordAsync(int userId, ChangePasswordRequest request)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy user",
+                    Errors = new List<string> { "UserNotFound" }
+                };
+            }
+
+            // Verify current password
+            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+            {
+                return new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = "Mật khẩu hiện tại không đúng",
+                    Errors = new List<string> { "InvalidCurrentPassword" }
+                };
+            }
+
+            // Check if new password is different from current password
+            if (BCrypt.Net.BCrypt.Verify(request.NewPassword, user.PasswordHash))
+            {
+                return new ApiResponse<bool>
+                {
+                    Success = false,
+                    Message = "Mật khẩu mới phải khác mật khẩu hiện tại",
+                    Errors = new List<string> { "NewPasswordSameAsCurrent" }
+                };
+            }
+
+            // Hash new password
+            var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.PasswordHash = newPasswordHash;
+            user.UpdatedAt = DateTime.UtcNow;
+
+            await _userRepository.UpdateAsync(user);
+
+            return new ApiResponse<bool>
+            {
+                Success = true,
+                Message = "Đổi mật khẩu thành công",
+                Data = true
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi đổi mật khẩu",
                 Errors = new List<string> { ex.Message }
             };
         }

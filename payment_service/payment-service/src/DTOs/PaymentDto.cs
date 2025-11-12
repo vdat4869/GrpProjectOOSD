@@ -6,7 +6,7 @@ namespace PaymentService.DTOs
     {
         public Guid Id { get; set; }
         public Guid CostShareDetailId { get; set; }
-        // Wallet removed
+        public Guid WalletId { get; set; }
         public PaymentMethodType Method { get; set; }
         public decimal Amount { get; set; }
         public string Currency { get; set; } = "VND";
@@ -22,7 +22,7 @@ namespace PaymentService.DTOs
     public class CreatePaymentDto
     {
         public Guid CostShareDetailId { get; set; }
-        // Wallet removed
+        public Guid WalletId { get; set; }
         public PaymentMethodType Method { get; set; }
         public decimal Amount { get; set; }
         public string Currency { get; set; } = "VND";

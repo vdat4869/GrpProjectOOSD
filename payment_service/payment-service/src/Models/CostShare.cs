@@ -45,6 +45,5 @@ namespace PaymentService.Models
         
         // Navigation properties
         public virtual ICollection<CostShareDetail> CostShareDetails { get; set; } = new List<CostShareDetail>();
-        public virtual ICollection<Payment> Payments { get; set; } = new List<Payment>();
     }
 }

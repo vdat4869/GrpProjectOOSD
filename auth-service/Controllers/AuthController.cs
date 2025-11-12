@@ -151,6 +151,86 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Đăng nhập đơn giản (hỗ trợ form-url-encoded hoặc query) để tiện smoke test từ CMD
+    /// </summary>
+    [HttpPost("login-simple")]
+    [AllowAnonymous]
+    public async Task<ActionResult<ApiResponse<LoginResponse>>> LoginSimple()
+    {
+        string? email = null;
+        string? password = null;
+
+        if (Request.HasFormContentType && Request.Form.Count > 0)
+        {
+            email = Request.Form["Email"].FirstOrDefault();
+            password = Request.Form["Password"].FirstOrDefault();
+        }
+        else
+        {
+            email = Request.Query["Email"].FirstOrDefault();
+            password = Request.Query["Password"].FirstOrDefault();
+        }
+
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            return BadRequest(new ApiResponse<LoginResponse>
+            {
+                Success = false,
+                Message = "Email và Password là bắt buộc",
+                Errors = new List<string> { "EmailRequired", "PasswordRequired" }
+            });
+        }
+
+        var result = await _authService.LoginAsync(new LoginRequest
+        {
+            Email = email.Trim(),
+            Password = password
+        });
+
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Dev-only: Trả về access token Admin dạng text/plain để tiện lấy token bằng curl
+    /// </summary>
+    [HttpGet("dev-token")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetDevAdminToken()
+    {
+        if (!_env.IsDevelopment()) return Forbid();
+
+        // Ensure admin exists
+        var adminEmail = "admin@example.com";
+        var admin = await _db.Users.FirstOrDefaultAsync(u => u.Email == adminEmail);
+        if (admin == null)
+        {
+            var seed = await SeedAdmin();
+            if (seed is ObjectResult or && or.StatusCode is >= 400)
+            {
+                return StatusCode(or.StatusCode ?? 500, "Failed to seed admin");
+            }
+        }
+
+        var login = await _authService.LoginAsync(new LoginRequest
+        {
+            Email = adminEmail,
+            Password = "Admin@12345"
+        });
+
+        if (!login.Success || login.Data == null || string.IsNullOrWhiteSpace(login.Data.AccessToken))
+        {
+            return StatusCode(500, "Cannot generate admin token");
+        }
+
+        return Content(login.Data.AccessToken, "text/plain");
+    }
+
+    /// <summary>
     /// Đăng ký tài khoản mới
     /// </summary>
     /// <param name="request">Thông tin đăng ký</param>
@@ -341,6 +421,36 @@ public class AuthController : ControllerBase
         }
 
         var result = await _authService.GetUserProfileAsync(userId);
+        
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Đổi mật khẩu
+    /// </summary>
+    /// <param name="request">Thông tin đổi mật khẩu</param>
+    /// <returns>Kết quả đổi mật khẩu</returns>
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<bool>>> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            return Unauthorized(new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Token không hợp lệ",
+                Errors = new List<string> { "InvalidToken" }
+            });
+        }
+
+        var result = await _authService.ChangePasswordAsync(userId, request);
         
         if (!result.Success)
         {

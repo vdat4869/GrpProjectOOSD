@@ -13,6 +13,9 @@ namespace BookingService.Services
         // Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status);
         Task<bool> CancelBookingAsync(int bookingId);
         Task DeleteBookingAsync(int bookingId);
+        Task<QrCodeResponse> GenerateQrCodeAsync(int bookingId);
+        Task<CheckInResponse> CheckInAsync(int bookingId, CheckInRequest request);
+        Task<CheckOutResponse> CheckOutAsync(int bookingId, CheckOutRequest request);
     }
 }
 

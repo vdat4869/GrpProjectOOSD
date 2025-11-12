@@ -1,5 +1,0 @@
-IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'AuthDB')
-BEGIN
-	CREATE DATABASE [AuthDB];
-END;
-GO
