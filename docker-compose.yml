@@ -276,18 +276,32 @@ services:
       dockerfile: Dockerfile
     container_name: ev-ai-service
     depends_on:
-      - mongodb
-      - redis
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      - MONGODB_URI=mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      MONGODB_URI: ${MONGODB_URI}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
     ports:
       - "${AI_PORT:-8010}:8000"
     networks:
       - ev_network
     volumes:
       - ai-models:/app/models
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3); sys.exit(0) if r.status==200 else sys.exit(1)",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   # Frontend (React + Vite + TailAdmin - Role-based)
   frontend:
