@@ -1,25 +1,37 @@
 # ai-service/main.py
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
-from motor.motor_asyncio import AsyncIOMotorClient
-from redis.asyncio import Redis
-import os, json, logging
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime, timedelta
+import json, os, logging
 
-# Configure logging
+import pymongo  # đảm bảo dependency
+from motor.motor_asyncio import AsyncIOMotorClient
+import redis.asyncio as redis  # dùng client ASYNC
+
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("ai-service")
+logger = logging.getLogger("main")
 
 app = FastAPI(
     title="EV Co-ownership AI Service",
     description="AI service for fair scheduling, cost optimization, and group decision suggestions",
-    version="1.0.0"
+    version="1.2.0",
+    openapi_tags=[
+        {"name": "health", "description": "Service health & readiness"},
+        {"name": "suggestions", "description": "AI suggestions endpoints"},
+    ],
 )
 
-# CORS middleware (có thể cấu hình qua ENV)
-allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "*").split(",")
+# ---- Config qua ENV
+ALPHA = float(os.getenv("FAIRNESS_ALPHA", "0.6"))
+BETA = float(os.getenv("FAIRNESS_BETA", "0.4"))
+RATE_LIMIT = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "0") == "1"
+
+# CORS
+allow_origins = [o for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",") if o]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -28,276 +40,299 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB & Redis connection
+# ---- Clients
 mongodb_client: Optional[AsyncIOMotorClient] = None
 mongodb_db = None
-redis_client: Optional[Redis] = None
+redis_client: Optional[redis.Redis] = None
 
-# Request/Response models (giữ hợp đồng cũ để không phá client)
+# ---- Models
 class BookingSuggestionRequest(BaseModel):
     vehicle_group_id: str
     requested_start: datetime
     requested_end: datetime
     co_owner_id: str
-    # chấp nhận cả 0..1 lẫn 0..100 (sẽ normalize)
-    ownership_percentage: float = Field(ge=0)
+    ownership_percentage: float = Field(ge=0, le=1)
     usage_history: Optional[List[Dict[str, Any]]] = None
+
+    @field_validator("requested_end")
+    @classmethod
+    def _end_after_start(cls, v, info):
+        start = info.data.get("requested_start")
+        if start and v <= start:
+            raise ValueError("requested_end must be greater than requested_start")
+        return v
 
 class BookingSuggestionResponse(BaseModel):
     suggested_start: datetime
     suggested_end: datetime
-    fairness_score: float = Field(ge=0, le=1)
+    fairness_score: float
     reason: str
     alternative_slots: Optional[List[Dict[str, datetime]]] = None
+    explain: Optional[Dict[str, Any]] = None
+
+CostType = Literal["maintenance", "insurance", "charging", "cleaning", "inspection"]
 
 class CostSharingSuggestionRequest(BaseModel):
     vehicle_group_id: str
-    total_cost: float = Field(ge=0)
-    # giữ kiểu str như cũ để không phá client: "maintenance" | "insurance" | "charging" | "cleaning" | "inspection"
-    cost_type: str
-    # [{id, ownership_percentage, usage_hours}]
+    total_cost: float = Field(gt=0)
+    cost_type: CostType
     co_owners: List[Dict[str, Any]]
 
+    @field_validator("co_owners")
+    @classmethod
+    def _not_empty(cls, v):
+        if not v:
+            raise ValueError("co_owners must not be empty")
+        return v
+
 class CostSharingSuggestionResponse(BaseModel):
-    # [{co_owner_id, suggested_amount, reason}]
     suggestions: List[Dict[str, Any]]
     total_suggested: float
-    # "ownership_based" | "usage_based" | "hybrid"
-    method: str
+    method: str  # "ownership_based", "usage_based", "hybrid"
+
+ProposalType = Literal["upgrade_battery", "repair", "sell_vehicle", "insurance_change"]
 
 class VotingSuggestionRequest(BaseModel):
     vehicle_group_id: str
-    # "upgrade_battery" | "repair" | "sell_vehicle" | "insurance_change"
-    proposal_type: str
+    proposal_type: ProposalType
     proposal_details: Dict[str, Any]
 
 class VotingSuggestionResponse(BaseModel):
-    # "approve" | "reject" | "modify"
     recommendation: str
     reasoning: str
     suggested_modifications: Optional[Dict[str, Any]] = None
     risk_assessment: Optional[Dict[str, Any]] = None
 
+# ---- Error handler
+@app.exception_handler(Exception)
+async def unhandled_exc(_: Request, exc: Exception):
+    logger.exception("Unhandled error: %s", exc)
+    return JSONResponse(status_code=500, content={"error": "internal_error", "message": str(exc)})
+
+# ---- (tuỳ chọn) Rate limit bằng Redis
+@app.middleware("http")
+async def ratelimit(request: Request, call_next):
+    if RATE_LIMIT_ENABLED and redis_client:
+        try:
+            key = f"rl:{request.client.host}"
+            count = await redis_client.incr(key)
+            if count == 1:
+                await redis_client.expire(key, 60)
+            if count > RATE_LIMIT:
+                return JSONResponse({"detail": "Too Many Requests"}, status_code=429)
+        except Exception as e:
+            logger.warning("Rate limit failed (ignored): %s", e)
+    return await call_next(request)
+
+# ---- Lifecycle
 @app.on_event("startup")
 async def startup_event():
-    """Initialize database connections"""
     global mongodb_client, mongodb_db, redis_client
 
-    # MongoDB connection
-    mongodb_uri = os.getenv("MONGODB_URI", "mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin")
+    # MongoDB
+    mongodb_uri = os.getenv(
+        "MONGODB_URI",
+        "mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin",
+    )
     try:
-        mongodb_client = AsyncIOMotorClient(mongodb_uri, serverSelectionTimeoutMS=3000)
-        await mongodb_client.admin.command('ping')
-        mongodb_db = mongodb_client.get_default_database() or mongodb_client["ai_db"]
+        mongodb_client = AsyncIOMotorClient(mongodb_uri)
+        mongodb_db = mongodb_client.ai_db
+        await mongodb_client.admin.command("ping")
         logger.info("Connected to MongoDB")
     except Exception:
         logger.exception("Failed to connect to MongoDB")
 
-    # Redis connection
-    redis_host = os.getenv("REDIS_HOST", "redis")
-    redis_port = int(os.getenv("REDIS_PORT", "6379"))
+    # Redis (async)
     try:
-        redis_client = Redis(host=redis_host, port=redis_port, decode_responses=True)
-        await redis_client.ping()
-        logger.info("Connected to Redis")
+        redis_host = os.getenv("REDIS_HOST", "redis")
+        redis_port = int(os.getenv("REDIS_PORT", "6379"))
+        redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
+        pong = await redis_client.ping()
+        logger.info(f"Connected to Redis (ping={pong})")
     except Exception:
         logger.exception("Failed to connect to Redis")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Close database connections"""
     if mongodb_client:
         mongodb_client.close()
     if redis_client:
         try:
-            await redis_client.aclose()  # redis-py asyncio close
+            await redis_client.close()
         except Exception:
             pass
 
-@app.get("/health")
+# ---- Health
+@app.get("/health", tags=["health"])
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "ai-service",
-        "timestamp": datetime.utcnow().isoformat()
-    }
+    return {"status": "healthy", "service": "ai-service", "timestamp": datetime.utcnow().isoformat()}
 
-@app.post("/api/ai/suggestions/booking", response_model=BookingSuggestionResponse)
+@app.get("/ready", tags=["health"])
+async def ready_check():
+    mongo_ok = False
+    redis_ok = False
+    if mongodb_client:
+        try:
+            await mongodb_client.admin.command("ping")
+            mongo_ok = True
+        except Exception:
+            mongo_ok = False
+    if redis_client:
+        try:
+            await redis_client.ping()
+            redis_ok = True
+        except Exception:
+            redis_ok = False
+    return {"mongo": mongo_ok, "redis": redis_ok, "ready": mongo_ok and redis_ok}
+
+# ---- Suggestions
+@app.post("/api/ai/suggestions/booking", response_model=BookingSuggestionResponse, tags=["suggestions"])
 async def suggest_booking_fairness(request: BookingSuggestionRequest):
-    """
-    Suggest fair booking slots based on ownership percentage and usage history
-    """
     try:
-        # Validate window
-        if request.requested_end <= request.requested_start:
-            raise HTTPException(status_code=400, detail="requested_end must be greater than requested_start")
-
-        # Normalize ownership percentage: chấp nhận cả 0..1 và 0..100
-        ownership_weight = request.ownership_percentage
-        if ownership_weight > 1.0:
-            ownership_weight = ownership_weight / 100.0
-        ownership_weight = max(0.0, min(1.0, ownership_weight))
-
-        # Get usage history from cache or provided payload
         cache_key = f"usage_history:{request.vehicle_group_id}"
         usage_history = request.usage_history
-
         if not usage_history and redis_client:
             cached = await redis_client.get(cache_key)
             if cached:
-                try:
-                    usage_history = json.loads(cached)
-                except Exception:
-                    usage_history = None
+                try: usage_history = json.loads(cached)
+                except Exception: usage_history = None
 
-        # Calculate fairness
-        usage_penalty = 0.0
+        ownership_weight = request.ownership_percentage
         recent_usage_hours = 0.0
-
         if usage_history:
-            # Sum usage hours của co-owner trong 30 ngày gần (giả định input đã là recent)
             recent_usage_hours = sum(
-                float(item.get("hours", 0)) for item in usage_history
+                float(item.get("hours", 0))
+                for item in usage_history
                 if item.get("co_owner_id") == request.co_owner_id
             )
 
-        # expected hours (30d * 24h * share)
-        expected_hours = max(ownership_weight * 720.0, 1e-6)
-        if recent_usage_hours > expected_hours:
-            usage_penalty = (recent_usage_hours - expected_hours) / expected_hours
-
-        fairness_score = max(0.0, min(1.0, ownership_weight - usage_penalty * 0.2))
+        expected_hours = ownership_weight * 24 * 30
+        over_ratio = (recent_usage_hours / expected_hours) if expected_hours > 0 else 0.0
+        usage_penalty = max(0.0, (over_ratio - 1.0) * 0.3)
+        fairness_score = max(0.0, min(1.0, ownership_weight - usage_penalty))
 
         suggested_start = request.requested_start
         suggested_end = request.requested_end
 
-        # Alternative slots nếu fairness thấp
         alternative_slots = None
         if fairness_score < 0.5:
-            # Đề xuất rút ngắn thời lượng & lùi 2h (off-peak demo)
-            duration = (request.requested_end - request.requested_start)
-            shrink = duration * 0.2
-            alt_start = request.requested_start + timedelta(hours=2)
-            alt_end = request.requested_end - shrink
-            if alt_end > alt_start:
-                alternative_slots = [
-                    {
-                        "start": alt_start,
-                        "end": alt_end
-                    }
-                ]
+            req_dur = (request.requested_end - request.requested_start)
+            min_dur = max(timedelta(minutes=30), req_dur * 0.5)
+            candidates = [
+                (request.requested_start + timedelta(hours=1),
+                 request.requested_start + timedelta(hours=1) + min_dur),
+                (request.requested_start.replace(hour=22, minute=0, second=0, microsecond=0),
+                 request.requested_start.replace(hour=22, minute=0, second=0, microsecond=0) + min_dur),
+                (request.requested_start + timedelta(days=1),
+                 request.requested_start + timedelta(days=1) + req_dur),
+            ]
+            alternative_slots = [{"start": s, "end": e} for s, e in candidates if e > s]
             reason = "Lower priority due to usage history. Suggested shorter/off-peak duration."
         else:
             reason = f"Fair booking slot based on {ownership_weight*100:.1f}% ownership"
 
-        # Cache usage_history nếu client vừa gửi mới
         if redis_client and request.usage_history:
-            try:
-                await redis_client.set(cache_key, json.dumps(request.usage_history, default=str), ex=300)
-            except Exception:
-                pass
+            try: await redis_client.setex(cache_key, 300, json.dumps(request.usage_history))
+            except Exception: pass
 
         return BookingSuggestionResponse(
             suggested_start=suggested_start,
             suggested_end=suggested_end,
             fairness_score=fairness_score,
             reason=reason,
-            alternative_slots=alternative_slots
+            alternative_slots=alternative_slots,
+            explain={
+                "ownership_percent": ownership_weight,
+                "recent_usage_hours_30d": recent_usage_hours,
+                "expected_hours_30d": expected_hours,
+            },
         )
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.exception("Error in booking suggestion")
-        raise HTTPException(status_code=500, detail="internal_error")
+        logger.error(f"Error in booking suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/ai/suggestions/cost-sharing", response_model=CostSharingSuggestionResponse)
+@app.post("/api/ai/suggestions/cost-sharing", response_model=CostSharingSuggestionResponse, tags=["suggestions"])
 async def suggest_cost_sharing(request: CostSharingSuggestionRequest):
-    """
-    Suggest fair cost sharing based on ownership percentage and usage
-    """
     try:
-        # Chuẩn hoá input co_owners (id, ownership_percentage 0..1, usage_hours)
-        owners = []
-        for co in request.co_owners:
-            oid = str(co.get("id"))
-            share = float(co.get("ownership_percentage", 0))
-            if share > 1.0:  # chấp nhận 0..100
-                share = share / 100.0
-            share = max(0.0, min(1.0, share))
-            usage_h = float(co.get("usage_hours", 0))
-            owners.append({"id": oid, "share": share, "usage": usage_h})
-
-        total_ownership = sum(o["share"] for o in owners)
-        total_usage_hours = sum(o["usage"] for o in owners)
+        total_ownership = sum(float(co["ownership_percentage"]) for co in request.co_owners) or 1.0
+        total_usage_hours = sum(float(co.get("usage_hours", 0)) for co in request.co_owners)
 
         suggestions: List[Dict[str, Any]] = []
         total_suggested = 0.0
 
-        cost_type = (request.cost_type or "").lower().strip()
-        method = ""
-
-        def add(co_id: str, amount: float, reason: str):
-            nonlocal total_suggested, suggestions
-            amt = round(float(amount), 2)
-            total_suggested += amt
-            suggestions.append({"co_owner_id": co_id, "suggested_amount": amt, "reason": reason})
-
-        if cost_type in {"maintenance", "insurance", "inspection"}:
-            # Ownership-based cho fixed cost
+        if request.cost_type in ["maintenance", "insurance", "inspection"]:
             method = "ownership_based"
-            denom = total_ownership if total_ownership > 0 else 1e-6
-            for o in owners:
-                add(o["id"], request.total_cost * (o["share"] / denom),
-                    f"Based on {o['share']*100:.1f}% ownership")
+            for co in request.co_owners:
+                amount = request.total_cost * (float(co["ownership_percentage"]) / total_ownership)
+                suggestions.append({
+                    "co_owner_id": co["id"],
+                    "suggested_amount": round(amount, 2),
+                    "reason": f"Based on {float(co['ownership_percentage'])*100:.1f}% ownership",
+                })
+                total_suggested += amount
 
-        elif cost_type in {"charging", "cleaning"}:
-            # Usage-based cho variable cost
+        elif request.cost_type in ["charging", "cleaning"]:
             method = "usage_based"
             if total_usage_hours > 0:
-                for o in owners:
-                    ratio = o["usage"] / total_usage_hours
-                    add(o["id"], request.total_cost * ratio,
-                        f"Based on {o['usage']}h usage ({ratio*100:.1f}%)")
+                for co in request.co_owners:
+                    usage_ratio = float(co.get("usage_hours", 0)) / total_usage_hours
+                    amount = request.total_cost * usage_ratio
+                    suggestions.append({
+                        "co_owner_id": co["id"],
+                        "suggested_amount": round(amount, 2),
+                        "reason": f"Based on {float(co.get('usage_hours', 0)):.1f}h usage ({usage_ratio*100:.1f}%)",
+                    })
+                    total_suggested += amount
             else:
-                # Fallback: ownership
                 method = "ownership_based"
-                denom = total_ownership if total_ownership > 0 else 1e-6
-                for o in owners:
-                    add(o["id"], request.total_cost * (o["share"] / denom),
-                        f"Based on {o['share']*100:.1f}% ownership (no usage data)")
+                for co in request.co_owners:
+                    amount = request.total_cost * (float(co["ownership_percentage"]) / total_ownership)
+                    suggestions.append({
+                        "co_owner_id": co["id"],
+                        "suggested_amount": round(amount, 2),
+                        "reason": f"Based on {float(co['ownership_percentage'])*100:.1f}% ownership (no usage data)",
+                    })
+                    total_suggested += amount
 
         else:
-            # Hybrid
             method = "hybrid"
-            own_denom = total_ownership if total_ownership > 0 else 1e-6
-            use_denom = total_usage_hours if total_usage_hours > 0 else 1.0
-            for o in owners:
-                ownership_weight = (o["share"] / own_denom) if own_denom > 0 else 0.0
-                usage_weight = (o["usage"] / use_denom) if use_denom > 0 else 0.0
-                combined_weight = (ownership_weight * 0.6) + (usage_weight * 0.4)
-                add(o["id"], request.total_cost * combined_weight,
-                    f"Hybrid: {o['share']*100:.1f}% ownership + {o['usage']}h usage")
+            if total_usage_hours <= 0:
+                for co in request.co_owners:
+                    ownership_weight = float(co["ownership_percentage"]) / total_ownership
+                    amount = request.total_cost * ownership_weight
+                    suggestions.append({
+                        "co_owner_id": co["id"],
+                        "suggested_amount": round(amount, 2),
+                        "reason": "Hybrid degenerated to ownership (no usage data)",
+                    })
+                    total_suggested += amount
+            else:
+                for co in request.co_owners:
+                    ownership_weight = float(co["ownership_percentage"]) / total_ownership
+                    usage_weight = float(co.get("usage_hours", 0)) / total_usage_hours
+                    combined_weight = ownership_weight * ALPHA + usage_weight * BETA
+                    amount = request.total_cost * combined_weight
+                    suggestions.append({
+                        "co_owner_id": co["id"],
+                        "suggested_amount": round(amount, 2),
+                        "reason": f"Hybrid: {ownership_weight*100:.1f}% *{ALPHA} + {usage_weight*100:.1f}% *{BETA}",
+                    })
+                    total_suggested += amount
 
         return CostSharingSuggestionResponse(
             suggestions=suggestions,
             total_suggested=round(total_suggested, 2),
-            method=method
+            method=method,
         )
+    except Exception as e:
+        logger.error(f"Error in cost sharing suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    except Exception:
-        logger.exception("Error in cost sharing suggestion")
-        raise HTTPException(status_code=500, detail="internal_error")
-
-@app.post("/api/ai/suggestions/voting", response_model=VotingSuggestionResponse)
+@app.post("/api/ai/suggestions/voting", response_model=VotingSuggestionResponse, tags=["suggestions"])
 async def suggest_voting_decision(request: VotingSuggestionRequest):
-    """
-    Suggest voting decision based on proposal type and details
-    """
     try:
-        proposal_type = (request.proposal_type or "").lower().strip()
-        details = request.proposal_details or {}
+        proposal_type = request.proposal_type
+        details = request.proposal_details
 
         recommendation = "approve"
         reasoning = ""
@@ -306,7 +341,7 @@ async def suggest_voting_decision(request: VotingSuggestionRequest):
 
         if proposal_type == "upgrade_battery":
             cost = float(details.get("cost", 0))
-            if cost > 100_000_000:  # > 100M VND
+            if cost > 100_000_000:
                 recommendation = "modify"
                 reasoning = "High cost upgrade. Consider phased approach or group discussion."
                 suggested_modifications = {"phased_approach": True, "discuss_financing": True}
@@ -321,7 +356,7 @@ async def suggest_voting_decision(request: VotingSuggestionRequest):
             if urgency == "high":
                 recommendation = "approve"
                 reasoning = "Urgent repair needed for vehicle safety and functionality."
-            elif cost > 50_000_000:  # > 50M VND
+            elif cost > 50_000_000:
                 recommendation = "modify"
                 reasoning = "High repair cost. Get multiple quotes before approval."
                 suggested_modifications = {"get_quotes": True, "minimum_quotes": 3}
@@ -342,7 +377,6 @@ async def suggest_voting_decision(request: VotingSuggestionRequest):
                 suggested_modifications = {"compare_coverage": True, "review_terms": True}
             else:
                 reasoning = f"Reasonable insurance change. Cost impact: {cost_change}%"
-
         else:
             recommendation = "approve"
             reasoning = "Proposal appears reasonable. Review details with co-owners."
@@ -351,29 +385,24 @@ async def suggest_voting_decision(request: VotingSuggestionRequest):
             recommendation=recommendation,
             reasoning=reasoning,
             suggested_modifications=suggested_modifications,
-            risk_assessment=risk_assessment
+            risk_assessment=risk_assessment,
         )
-
-    except Exception:
-        logger.exception("Error in voting suggestion")
-        raise HTTPException(status_code=500, detail="internal_error")
+    except Exception as e:
+        logger.error(f"Error in voting suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/ai/suggestions/fairness-check")
 async def check_usage_fairness(vehicle_group_id: str, days: int = 30):
-    """
-    Check if usage is fair among co-owners
-    """
     try:
-        # Placeholder: sau này kéo dữ liệu thực từ Mongo
         return {
             "vehicle_group_id": vehicle_group_id,
             "period_days": days,
             "fairness_score": 0.85,
             "recommendations": [
                 "Usage is generally fair",
-                "Consider rotating priority for peak hours"
+                "Consider rotating priority for peak hours",
             ],
-            "co_owner_usage": []
+            "co_owner_usage": [],
         }
     except Exception:
         logger.exception("Error in fairness check")
