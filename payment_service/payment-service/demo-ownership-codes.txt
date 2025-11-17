@@ -1,0 +1,4 @@
+NHVF517112504: owns 18% of the car value, usage time 10 days
+DHVF715102402: owns 36% of the car value, usage time 2 years 4 months 3 days
+LDVF901042601: owns 90% of the car value
+

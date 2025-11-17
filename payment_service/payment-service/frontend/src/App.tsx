@@ -4,39 +4,39 @@ import promoCodesData from './promoCodes.json'
 
 function App() {
   const [activeTab, setActiveTab] = useState<'payment' | 'costshare' | 'history'>('costshare')
-  // Prototype mode uses mock data; no need for IDs
-  const vehicles = ['Tesla Model Y','BYD Dolphin','VinFast VF 5','Li Auto L6','Tesla Model 3','VinFast VF 8','Volkswagen ID.7','Nissan Ariya']
-  const costs = ['Phí sạc','Bảo dưỡng','Bảo hiểm','Đăng kiểm','Rửa xe','Gửi xe']
+  // Demo ownership codes for prototype mode
+  const ownershipCodeCatalog: Record<string, { vehicle: string, ownershipPercent: number, usageTime: string }> = {
+    'NHVF517112504': { vehicle: 'VinFast VF 5', ownershipPercent: 18, usageTime: '10 ngày' },
+    'DHVF715102402': { vehicle: 'VinFast VF 8', ownershipPercent: 36, usageTime: '2 năm 4 tháng 3 ngày' },
+    'LDVF901042601': { vehicle: 'VinFast VF 9', ownershipPercent: 90, usageTime: 'Thường Xuyên' },
+  }
+  const costs = ['Phí sạc','Bảo dưỡng','Phí đường bộ','Rửa xe','Gửi xe']
   // Base cost by expense type (VND)
   const costBaseMap: Record<string, number> = {
-    'Phí sạc': 200000,
+    'Phí sạc': 500000,
     'Bảo dưỡng': 1200000,
-    'Bảo hiểm': 5000000,
-    'Đăng kiểm': 340000,
+    'Phí đường bộ': 400000,
     'Rửa xe': 100000,
-    'Gửi xe': 800000,
+    'Gửi xe': 200000,
   }
   // Vehicle-specific multiplier so each vehicle has different total costs
   const vehicleMultiplier: Record<string, number> = {
-    'Tesla Model Y': 1.2,
-    'BYD Dolphin': 0.85,
-    'VinFast VF 5': 0.9,
-    'Li Auto L6': 1.15,
-    'Tesla Model 3': 1.1,
-    'VinFast VF 8': 1.0,
-    'Volkswagen ID.7': 1.05,
-    'Nissan Ariya': 0.95,
+    'VinFast VF 6': 1.2,
+    'VinFast VF 7': 1.3,
+    'VinFast VF 5': 1.1,
+    'VinFast VF 3': 0.9,
+    'VinFast VF 9': 1.5,
+    'VinFast VF 8': 1.4,
+    'Tesla Model S': 1.6,
+    'Tesla Model X': 1.7,
   }
-  const [selectedVehicle, setSelectedVehicle] = useState<string>('Tesla Model Y')
+  const [ownerCodeInput, setOwnerCodeInput] = useState<string>('')
+  const [ownerCode, setOwnerCode] = useState<string>('')
+  const [ownerCodeError, setOwnerCodeError] = useState<string | null>(null)
   const [selectedCost, setSelectedCost] = useState<string>('Phí sạc')
   const [selectedMethod] = useState<'VNPay'>('VNPay')
   const [promoCode, setPromoCode] = useState<string>('')
   const [appliedPromo, setAppliedPromo] = useState<any>(null)
-  const [splitMode, setSplitMode] = useState<'ownership'|'usage'>('ownership')
-  const [ownershipPercent, setOwnershipPercent] = useState<number>(25)
-  // Usage tiers: A (low), B (infrequent), C (frequent)
-  const [usageTier, setUsageTier] = useState<'A'|'B'|'C'>('A')
-  const usageWeights: Record<'A'|'B'|'C', number> = { A: 0.3, B: 0.6, C: 1.0 }
   const [costShares, setCostShares] = useState<any[]>([])
   const [payments, setPayments] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -50,6 +50,12 @@ function App() {
     const saved = localStorage.getItem('vnpay_payment_history')
     return saved ? JSON.parse(saved) : []
   })
+
+  const normalizedOwnerCode = ownerCode.trim().toUpperCase()
+  const matchedOwner = ownershipCodeCatalog[normalizedOwnerCode]
+  const activeVehicle = matchedOwner?.vehicle ?? 'Tesla Model Y'
+  const ownershipPercent = matchedOwner?.ownershipPercent ?? 0
+  const ownershipUsageTime = matchedOwner?.usageTime ?? 'Chưa có dữ liệu'
   
   // Refs for scrolling
   const paymentCardRef = useRef<HTMLDivElement>(null)
@@ -142,11 +148,9 @@ function App() {
   }, [])
 
   const baseAmount = costBaseMap[selectedCost] ?? 100000
-  const multiplier = vehicleMultiplier[selectedVehicle] ?? 1
+  const multiplier = vehicleMultiplier[activeVehicle] ?? 1
   const totalAmount = Math.round(baseAmount * multiplier)
-  const amountBeforePromo = splitMode==='ownership'
-    ? Math.max(0, Math.round(totalAmount * (isNaN(ownershipPercent)?0:ownershipPercent) / 100))
-    : Math.max(0, Math.round(totalAmount * usageWeights[usageTier]))
+  const amountBeforePromo = Math.max(0, Math.round(totalAmount * (isNaN(ownershipPercent)?0:ownershipPercent) / 100))
   
   // Apply promo code discount
   const discountPercent = appliedPromo?.discount || 0
@@ -154,6 +158,29 @@ function App() {
   const amountToPay = amountBeforePromo - discountAmount
   
   const formatVND = (v:number) => v.toLocaleString('vi-VN') + ' ₫'
+
+  function handleApplyOwnerCode() {
+    const code = ownerCodeInput.trim().toUpperCase()
+    if (!code) {
+      setOwnerCode('')
+      setOwnerCodeError('Vui lòng nhập mã sở hữu hợp lệ')
+      return
+    }
+    if (ownershipCodeCatalog[code]) {
+      setOwnerCode(code)
+      setOwnerCodeInput('')
+      setOwnerCodeError(null)
+    } else {
+      setOwnerCode('')
+      setOwnerCodeError('Mã sở hữu không hợp lệ')
+    }
+  }
+
+  function handleRemoveOwnerCode() {
+    setOwnerCode('')
+    setOwnerCodeInput('')
+    setOwnerCodeError(null)
+  }
 
   // Promo code handlers
   function handleApplyPromo() {
@@ -225,7 +252,8 @@ function App() {
         const paymentAmount = amountToPay > 0 ? amountToPay : 10000;
         // Use the current transaction code that was already generated
         const orderId = currentTransactionCode || `ORDER${Date.now()}`;
-        const orderInfo = `Thanh toán ${selectedCost} cho ${selectedVehicle}`;
+        const ownerDescription = normalizedOwnerCode ? `mã sở hữu ${normalizedOwnerCode}` : activeVehicle;
+        const orderInfo = `Thanh toán ${selectedCost} cho ${ownerDescription}`;
         
         const payload = {
           amount: paymentAmount,
@@ -247,7 +275,7 @@ function App() {
           // Add to payment history with creation timestamp
           const historyItem = {
             id: orderId,
-            vehicle: selectedVehicle,
+            vehicle: activeVehicle,
             cost: selectedCost,
             amount: paymentAmount,
             method: 'VNPay',
@@ -346,12 +374,59 @@ function App() {
           <div className="bg-white/95 rounded-xl p-6 shadow-lg card-transition animate-slide-up">
             <h2 className="text-xl font-bold text-slate-800 mb-4">💳 Thông tin thanh toán</h2>
             <div className="space-y-4">
-              <div>
-                <div className="font-semibold mb-2">1) Chọn xe muốn thanh toán</div>
-                <select aria-label="Chọn xe" title="Chọn xe" value={selectedVehicle} onChange={e=>setSelectedVehicle(e.target.value)} className="border rounded px-3 py-2 w-full">
-                  {vehicles.map(v=> <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
+                <div>
+                  <div className="font-semibold mb-2">1) Nhập mã sở hữu đồng xe </div>
+                  {!ownerCode ? (
+                    <>
+                      <div className="flex gap-2">
+                        <input
+                          aria-label="Nhập mã sở hữu"
+                          title="Nhập mã sở hữu"
+                          value={ownerCodeInput}
+                          onChange={e=>setOwnerCodeInput(e.target.value.toUpperCase())}
+                          placeholder="Nhập mã sở hữu"
+                          className="border rounded px-3 py-2 flex-1 uppercase"
+                          onKeyPress={e => e.key === 'Enter' && handleApplyOwnerCode()}
+                        />
+                        <button
+                          onClick={handleApplyOwnerCode}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold transition-colors"
+                        >
+                          Áp dụng
+                        </button>
+                      </div>
+                      {ownerCodeError && (
+                        <div className="text-xs text-red-600 mt-2">{ownerCodeError}</div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-indigo-50 border-2 border-indigo-300 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">🔐</span>
+                          <div>
+                            <div className="text-sm font-bold text-indigo-700">
+                              Mã sở hữu đã áp dụng: {normalizedOwnerCode}
+                            </div>
+                            {matchedOwner && (
+                              <div className="text-xs text-indigo-600">
+                                Xe {matchedOwner.vehicle} • Tỉ lệ {ownershipPercent}% • Thời gian {ownershipUsageTime}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={handleRemoveOwnerCode}
+                          className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs font-semibold transition-colors"
+                          title="Xóa mã sở hữu"
+                        >
+                          ✕ Xóa
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
               <div>
                 <div className="font-semibold mb-2">2) Chọn khoản chi phí</div>
                 <select aria-label="Chọn chi phí" title="Chọn chi phí" value={selectedCost} onChange={e=>setSelectedCost(e.target.value)} className="border rounded px-3 py-2 w-full">
@@ -422,56 +497,44 @@ function App() {
               </div>
               <div>
                 <div className="font-semibold mb-2">4) Số tiền phải thanh toán</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <label className="border rounded px-3 py-2 flex items-center gap-2">
-                    <input type="radio" name="split" checked={splitMode==='ownership'} onChange={()=>setSplitMode('ownership')} />
-                    <span>Theo tỉ lệ sở hữu (%)</span>
-                  </label>
-                  <label className="border rounded px-3 py-2 flex items-center gap-2">
-                    <input type="radio" name="split" checked={splitMode==='usage'} onChange={()=>setSplitMode('usage')} />
-                    <span>Theo mức sử dụng</span>
-                  </label>
-                  <div className="border rounded px-3 py-2 text-slate-700">
-                    Tổng chi phí: <span className="font-semibold">{formatVND(totalAmount)}</span>
+                <div className="space-y-3 border border-slate-200 rounded-xl p-4 bg-slate-50">
+                  <div className="flex items-center justify-between text-sm text-slate-600">
+                    <span>Mã sở hữu</span>
+                    <span className="font-mono font-semibold text-slate-900">
+                      {normalizedOwnerCode || '—'}
+                    </span>
+                  </div>
+                  {matchedOwner ? (
+                    <div className="text-sm text-slate-700 space-y-1">
+                      <div className="font-semibold text-slate-900">Mô tả mã sở hữu</div>
+                      <div>Xe: <span className="font-semibold">{matchedOwner.vehicle}</span></div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                        <div className="border rounded-lg px-3 py-2 bg-white shadow-sm">
+                          <div className="text-xs text-slate-500 uppercase">Tỉ lệ sở hữu</div>
+                          <div className="text-xl font-bold text-emerald-600">{ownershipPercent}%</div>
+                          <div className="text-[11px] text-slate-400">Không thể chỉnh sửa</div>
+                        </div>
+                        <div className="border rounded-lg px-3 py-2 bg-white shadow-sm">
+                          <div className="text-xs text-slate-500 uppercase">Thời gian sử dụng</div>
+                          <div className="text-base font-semibold text-indigo-600">{ownershipUsageTime}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate-500 italic">
+                      Nhập mã sở hữu hợp lệ để xem thông tin và tính toán số tiền.
+                    </div>
+                  )}
+                  <div className="pt-3 border-t border-slate-200">
+                    <div className="text-xs text-slate-500 uppercase mb-1">Số tiền phải thanh toán</div>
+                    <div className="text-3xl font-bold text-indigo-700">
+                      {formatVND(amountToPay > 0 ? amountToPay : 0)}
+                    </div>
+                    <div className="text-sm text-slate-500">
+                      Tổng chi phí: <span className="font-semibold text-slate-700">{formatVND(totalAmount)}</span>
+                    </div>
                   </div>
                 </div>
-                {splitMode==='ownership' ? (
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm text-slate-600 mb-1">Tỉ lệ sở hữu (%)</label>
-                      <input aria-label="Tỉ lệ sở hữu" title="Tỉ lệ sở hữu" type="number" min={0} max={100} value={ownershipPercent} onChange={e=>setOwnershipPercent(Number(e.target.value))} className="border rounded px-3 py-2 w-full"/>
-                    </div>
-                    <div className="flex items-end">
-                      <div className="w-full border rounded px-3 py-2 bg-slate-50">
-                        Bạn trả: <span className="font-semibold">{formatVND(amountToPay)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm text-slate-600 mb-2">Mức sử dụng</label>
-                      <div className="grid grid-cols-3 gap-2">
-                        <button onClick={()=>setUsageTier('A')} className={`border rounded py-2 ${usageTier==='A'?'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-200':'bg-white'}`}>A</button>
-                        <button onClick={()=>setUsageTier('B')} className={`border rounded py-2 ${usageTier==='B'?'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-200':'bg-white'}`}>B</button>
-                        <button onClick={()=>setUsageTier('C')} className={`border rounded py-2 ${usageTier==='C'?'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-200':'bg-white'}`}>C</button>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-2">
-                        A: sử dụng thấp • B: sử dụng không thường xuyên • C: sử dụng thường xuyên
-                      </div>
-                    </div>
-                    <div className="flex items-end">
-                      <div className="w-full border rounded px-3 py-2 bg-slate-50">
-                        Bạn trả: <span className="font-semibold">{formatVND(amountBeforePromo)}</span>
-                        {appliedPromo && (
-                          <span className="ml-2 text-xs text-green-600">
-                            → {formatVND(amountToPay)} (giảm {appliedPromo.discount}%)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
               {appliedPromo && (
                 <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 text-center">
@@ -499,7 +562,10 @@ function App() {
             >
               <h2 className="text-xl font-bold text-slate-800 mb-4">💰 Xác nhận thanh toán</h2>
             <div className="space-y-3">
-              <div className="text-slate-700">Xe: <span className="font-semibold">{selectedVehicle}</span></div>
+              <div className="text-slate-700">Xe: <span className="font-semibold">{activeVehicle}</span></div>
+              {normalizedOwnerCode && (
+                <div className="text-slate-700">Mã sở hữu: <span className="font-mono font-semibold">{normalizedOwnerCode}</span></div>
+              )}
               <div className="text-slate-700">Khoản chi phí: <span className="font-semibold">{selectedCost}</span></div>
               <div className="text-slate-700">Tổng chi phí: <span className="font-semibold">{formatVND(totalAmount)}</span></div>
               
@@ -528,9 +594,7 @@ function App() {
               
               <div className="text-slate-700">
                 Phương thức chia sẻ: <span className="font-semibold">
-                  {splitMode === 'ownership' 
-                    ? `Theo tỉ lệ sở hữu ${ownershipPercent}%` 
-                    : `Theo mức sử dụng (${usageTier})`}
+                  {`Theo tỉ lệ sở hữu ${ownershipPercent}%`}
                 </span>
               </div>
               <div className="bg-indigo-50 border-2 border-indigo-300 rounded-lg p-4 mt-3">
