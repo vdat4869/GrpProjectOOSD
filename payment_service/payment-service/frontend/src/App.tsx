@@ -8,7 +8,12 @@ function App() {
   const ownershipCodeCatalog: Record<string, { vehicle: string, ownershipPercent: number, usageTime: string }> = {
     'NHVF517112504': { vehicle: 'VinFast VF 5', ownershipPercent: 18, usageTime: '10 ngày' },
     'DHVF715102402': { vehicle: 'VinFast VF 8', ownershipPercent: 36, usageTime: '2 năm 4 tháng 3 ngày' },
-    'LDVF901042601': { vehicle: 'VinFast VF 9', ownershipPercent: 90, usageTime: 'Thường Xuyên' },
+    'LDVF901042601': { vehicle: 'VinFast VF 9', ownershipPercent: 90, usageTime: 'Thường xuyên' },
+  }
+  const ownershipLevelMap: Record<string, { symbol: string, level: number }> = {
+    'NH': { symbol: '[*]', level: 0.5 },
+    'DH': { symbol: '[**]', level: 1.5 },
+    'LD': { symbol: '[***]', level: 2.5 },
   }
   const costs = ['Phí sạc','Bảo dưỡng','Phí đường bộ','Rửa xe','Gửi xe']
   // Base cost by expense type (VND)
@@ -33,7 +38,7 @@ function App() {
   const [ownerCodeInput, setOwnerCodeInput] = useState<string>('')
   const [ownerCode, setOwnerCode] = useState<string>('')
   const [ownerCodeError, setOwnerCodeError] = useState<string | null>(null)
-  const [selectedCost, setSelectedCost] = useState<string>('Phí sạc')
+  const [selectedCost, setSelectedCost] = useState<string>('')
   const [selectedMethod] = useState<'VNPay'>('VNPay')
   const [promoCode, setPromoCode] = useState<string>('')
   const [appliedPromo, setAppliedPromo] = useState<any>(null)
@@ -55,6 +60,9 @@ function App() {
   const matchedOwner = ownershipCodeCatalog[normalizedOwnerCode]
   const activeVehicle = matchedOwner?.vehicle ?? 'Tesla Model Y'
   const ownershipPercent = matchedOwner?.ownershipPercent ?? 0
+  const ownershipCodePrefix = normalizedOwnerCode.slice(0, 2)
+  const ownershipLevelInfo = ownershipLevelMap[ownershipCodePrefix] ?? null
+  const usageLevel = ownershipLevelInfo?.level ?? 1
   const ownershipUsageTime = matchedOwner?.usageTime ?? 'Chưa có dữ liệu'
   
   // Refs for scrolling
@@ -147,10 +155,11 @@ function App() {
     };
   }, [])
 
-  const baseAmount = costBaseMap[selectedCost] ?? 100000
+  const baseAmount = selectedCost ? (costBaseMap[selectedCost] ?? 100000) : 0
   const multiplier = vehicleMultiplier[activeVehicle] ?? 1
   const totalAmount = Math.round(baseAmount * multiplier)
-  const amountBeforePromo = Math.max(0, Math.round(totalAmount * (isNaN(ownershipPercent)?0:ownershipPercent) / 100))
+  const ownershipShareRatio = isNaN(ownershipPercent) ? 0 : ownershipPercent / 100
+  const amountBeforePromo = Math.max(0, Math.round(totalAmount * ownershipShareRatio * usageLevel))
   
   // Apply promo code discount
   const discountPercent = appliedPromo?.discount || 0
@@ -322,6 +331,11 @@ function App() {
   }
 
   function handleProceedToPayment() {
+    if (!normalizedOwnerCode) {
+      setError('Vui lòng nhập thông tin bắt buộc')
+      setOwnerCodeError('Vui lòng nhập mã sở hữu hợp lệ')
+      return
+    }
     // Generate transaction code when proceeding to payment
     const transactionCode = `ORDER${Date.now()}`
     setCurrentTransactionCode(transactionCode)
@@ -430,6 +444,7 @@ function App() {
               <div>
                 <div className="font-semibold mb-2">2) Chọn khoản chi phí</div>
                 <select aria-label="Chọn chi phí" title="Chọn chi phí" value={selectedCost} onChange={e=>setSelectedCost(e.target.value)} className="border rounded px-3 py-2 w-full">
+                  <option value="" disabled>-- Chọn khoản chi phí --</option>
                   {costs.map(c=> <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -512,11 +527,12 @@ function App() {
                         <div className="border rounded-lg px-3 py-2 bg-white shadow-sm">
                           <div className="text-xs text-slate-500 uppercase">Tỉ lệ sở hữu</div>
                           <div className="text-xl font-bold text-emerald-600">{ownershipPercent}%</div>
-                          <div className="text-[11px] text-slate-400">Không thể chỉnh sửa</div>
                         </div>
-                        <div className="border rounded-lg px-3 py-2 bg-white shadow-sm">
+                        <div className="border rounded-lg px-3 py-2 bg-white shadow-sm space-y-1">
                           <div className="text-xs text-slate-500 uppercase">Thời gian sử dụng</div>
-                          <div className="text-base font-semibold text-indigo-600">{ownershipUsageTime}</div>
+                          <div className="text-base font-semibold text-indigo-600 flex items-center flex-wrap gap-2">
+                            <span>{ownershipUsageTime}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -533,6 +549,7 @@ function App() {
                     <div className="text-sm text-slate-500">
                       Tổng chi phí: <span className="font-semibold text-slate-700">{formatVND(totalAmount)}</span>
                     </div>
+                    
                   </div>
                 </div>
               </div>
