@@ -231,7 +231,7 @@ This project is licensed under the MIT License.
 
 - Vo Tran Ngoc Anh
 - Nguyen Viet Dat
-- Nguyen Anh Duc
+- Dang Ngoc Anh Duc
 - Hoang Huu Nghia
 - Nguyen Dang Thinh
 - Ngo Hoang Thuc
