@@ -25,6 +25,7 @@ namespace BookingService.DTOs
         public int VehicleId { get; set; }
         public string VehicleName { get; set; } = string.Empty;
         public bool IsActive { get; set; }
+        public bool IsCurrentlyInUse { get; set; } // true = đang sử dụng, false = trống
         public List<BookingPeriod> Bookings { get; set; } = new();
     }
 

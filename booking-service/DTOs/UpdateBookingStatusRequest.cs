@@ -5,6 +5,6 @@ namespace BookingService.DTOs
     public class UpdateBookingStatusRequest
     {
         [Required]
-        public string Status { get; set; } = "Pending"; // ví dụ: Approved, Rejected, Cancelled
+        public string Status { get; set; } = "Pending"; // Pending, Confirmed, Đã đặt, InProgress, Completed, Cancelled, NoShow
     }
 }

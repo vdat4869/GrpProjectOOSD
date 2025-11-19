@@ -24,12 +24,20 @@ public class BookingsController : ControllerBase
 
     //Hiển thị lịch
     [HttpGet("schedules")]
-    public async Task<ActionResult<IEnumerable<VehicleScheduleResponse>>> GetSchedules() =>
-        Ok(await _service.GetVehicleSchedulesAsync());
+    public async Task<ActionResult<IEnumerable<VehicleScheduleResponse>>> GetSchedules()
+    {
+        // Tự động kiểm tra và cập nhật NoShow trước khi trả về lịch
+        await _service.CheckAndUpdateNoShowBookingsAsync();
+        return Ok(await _service.GetVehicleSchedulesAsync());
+    }
 
     [HttpGet("allBooking")]
-    public async Task<ActionResult<IEnumerable<BookingResponse>>> GetAll() =>
-        Ok(await _service.GetAllBookingsAsync());
+    public async Task<ActionResult<IEnumerable<BookingResponse>>> GetAll()
+    {
+        // Tự động kiểm tra và cập nhật NoShow trước khi trả về danh sách
+        await _service.CheckAndUpdateNoShowBookingsAsync();
+        return Ok(await _service.GetAllBookingsAsync());
+    }
 
     [HttpPost("createBooking")]
     public async Task<ActionResult<BookingResponse>> Create(CreateBookingRequest request)
@@ -51,13 +59,20 @@ public class BookingsController : ControllerBase
         return Ok(result);
     }
 
-    // [HttpPatch("{id}/status")]
-    // public async Task<ActionResult<BookingResponse>> UpdateStatus(int id, [FromBody] UpdateBookingStatusRequest request)
-    // {
-    //     var result = await _service.UpdateBookingStatusAsync(id, request.Status);
-    //     if (result == null) return NotFound();
-    //     return Ok(result);
-    // }
+    [HttpPatch("{id}/status")]
+    public async Task<ActionResult<BookingResponse>> UpdateStatus(int id, [FromBody] UpdateBookingStatusRequest request)
+    {
+        try
+        {
+            var result = await _service.UpdateBookingStatusAsync(id, request.Status);
+            if (result == null) return NotFound();
+            return Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
     [HttpDelete("editStatus{id}")]
     public async Task<IActionResult> Cancel(int id)
@@ -241,6 +256,16 @@ public class BookingsController : ControllerBase
         var booking = await EnsureBookingConfirmedAsync(bookingId);
         var qrResponse = await _service.GenerateQrCodeAsync(bookingId);
         return Ok(new { id = booking.Id, status = booking.Status, qrCode = qrResponse.QrCode });
+    }
+
+    /// <summary>
+    /// Kiểm tra và cập nhật các booking NoShow (có thể gọi thủ công hoặc tự động)
+    /// </summary>
+    [HttpPost("check-no-show")]
+    public async Task<ActionResult<object>> CheckNoShow()
+    {
+        await _service.CheckAndUpdateNoShowBookingsAsync();
+        return Ok(new { message = "NoShow check completed" });
     }
 
     private async Task<(int vehicleId, int coOwnerId)> EnsureDevSeedAsync()

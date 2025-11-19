@@ -61,39 +61,39 @@ namespace BookingService.Data
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // === DỮ LIỆU MẪU ===
-            // modelBuilder.Entity<Vehicle>().HasData(
-            //     new Vehicle { Id = 1, Name = "Xe Mercedes", IsActive = true },
-            //     new Vehicle { Id = 2, Name = "Xe VinFast", IsActive = true }
-            // );
 
-            // modelBuilder.Entity<CoOwner>().HasData(
-            //     new CoOwner { Id = 1, Name = "Ngô Hoàng Thức", OwnershipRatio = 60, UsageCount = 3 },
-            //     new CoOwner { Id = 2, Name = "Nguyễn Văn A", OwnershipRatio = 40, UsageCount = 2 }
-            // );
+            modelBuilder.Entity<Vehicle>().HasData(
+                new Vehicle { Id = 1, Name = "Xe Mercedes", IsActive = true },
+                new Vehicle { Id = 2, Name = "Xe VinFast", IsActive = true }
+            );
 
-            // modelBuilder.Entity<Booking>().HasData(
-            //     new Booking
-            //     {
-            //         Id = 1,
-            //         VehicleId = 1,
-            //         CoOwnerId = 1,
-            //         StartTime = new DateTime(2025, 11, 1, 8, 0, 0),
-            //         EndTime = new DateTime(2025, 11, 1, 11, 0, 0),
-            //         Status = "Approved",
-            //         Note = "Chuyến công tác"
-            //     },
-            //     new Booking
-            //     {
-            //         Id = 2,
-            //         VehicleId = 2,
-            //         CoOwnerId = 2,
-            //         StartTime = new DateTime(2025, 11, 2, 9, 0, 0),
-            //         EndTime = new DateTime(2025, 11, 2, 13, 0, 0),
-            //         Status = "Pending",
-            //         Note = "Chờ xác nhận"
-            //     }
-            // );
+            modelBuilder.Entity<CoOwner>().HasData(
+                new CoOwner { Id = 1, Name = "Ngô Hoàng Thức", OwnershipRatio = 60, UsageCount = 3 },
+                new CoOwner { Id = 2, Name = "Nguyễn Văn A", OwnershipRatio = 40, UsageCount = 2 }
+            );
+
+            modelBuilder.Entity<Booking>().HasData(
+                new Booking
+                {
+                    Id = 1,
+                    VehicleId = 1,
+                    CoOwnerId = 1,
+                    StartTime = new DateTime(2025, 11, 1, 8, 0, 0),
+                    EndTime = new DateTime(2025, 11, 1, 11, 0, 0),
+                    Status = "Approved",
+                    Note = "Chuyến công tác"
+                },
+                new Booking
+                {
+                    Id = 2,
+                    VehicleId = 2,
+                    CoOwnerId = 2,
+                    StartTime = new DateTime(2025, 11, 2, 9, 0, 0),
+                    EndTime = new DateTime(2025, 11, 2, 13, 0, 0),
+                    Status = "Pending",
+                    Note = "Chờ xác nhận"
+                }
+            );
 
         }
     }

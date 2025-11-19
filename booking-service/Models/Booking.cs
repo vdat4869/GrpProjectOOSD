@@ -1,9 +1,11 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using BookingService.DTOs;
 
 namespace BookingService.Models
 {
+    [EndTimeGreaterThanStartTime]
     public class Booking
     {
         [Key]

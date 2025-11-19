@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace booking_service.Migrations
 {
     [DbContext(typeof(BookingDbContext))]
-    [Migration("20251101172705_InitialCreate")]
+    [Migration("20251119052444_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -33,8 +33,24 @@ namespace booking_service.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("CheckInTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CheckOutTime")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("CoOwnerId")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("Cost")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("DigitalSignature")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("DistanceKm")
+                        .HasColumnType("decimal(10,2)");
 
                     b.Property<DateTime>("EndTime")
                         .HasColumnType("datetime2");
@@ -42,6 +58,10 @@ namespace booking_service.Migrations
                     b.Property<string>("Note")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
+
+                    b.Property<string>("QrCode")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
 
                     b.Property<DateTime>("StartTime")
                         .HasColumnType("datetime2");

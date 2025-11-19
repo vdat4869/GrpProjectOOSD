@@ -53,7 +53,13 @@ namespace booking_service.Migrations
                     StartTime = table.Column<DateTime>(type: "datetime2", nullable: false),
                     EndTime = table.Column<DateTime>(type: "datetime2", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
-                    Note = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true)
+                    Note = table.Column<string>(type: "nvarchar(255)", maxLength: 255, nullable: true),
+                    DistanceKm = table.Column<decimal>(type: "decimal(10,2)", nullable: true),
+                    Cost = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
+                    CheckInTime = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CheckOutTime = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    QrCode = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    DigitalSignature = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true)
                 },
                 constraints: table =>
                 {
@@ -92,11 +98,11 @@ namespace booking_service.Migrations
 
             migrationBuilder.InsertData(
                 table: "Bookings",
-                columns: new[] { "Id", "CoOwnerId", "EndTime", "Note", "StartTime", "Status", "VehicleId" },
+                columns: new[] { "Id", "CheckInTime", "CheckOutTime", "CoOwnerId", "Cost", "DigitalSignature", "DistanceKm", "EndTime", "Note", "QrCode", "StartTime", "Status", "VehicleId" },
                 values: new object[,]
                 {
-                    { 1, 1, new DateTime(2025, 11, 1, 11, 0, 0, 0, DateTimeKind.Unspecified), "Chuyến công tác", new DateTime(2025, 11, 1, 8, 0, 0, 0, DateTimeKind.Unspecified), "Approved", 1 },
-                    { 2, 2, new DateTime(2025, 11, 2, 13, 0, 0, 0, DateTimeKind.Unspecified), "Chờ xác nhận", new DateTime(2025, 11, 2, 9, 0, 0, 0, DateTimeKind.Unspecified), "Pending", 2 }
+                    { 1, null, null, 1, null, null, null, new DateTime(2025, 11, 1, 11, 0, 0, 0, DateTimeKind.Unspecified), "Chuyến công tác", null, new DateTime(2025, 11, 1, 8, 0, 0, 0, DateTimeKind.Unspecified), "Approved", 1 },
+                    { 2, null, null, 2, null, null, null, new DateTime(2025, 11, 2, 13, 0, 0, 0, DateTimeKind.Unspecified), "Chờ xác nhận", null, new DateTime(2025, 11, 2, 9, 0, 0, 0, DateTimeKind.Unspecified), "Pending", 2 }
                 });
 
             migrationBuilder.CreateIndex(
