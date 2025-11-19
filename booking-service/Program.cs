@@ -11,7 +11,13 @@ using Microsoft.Extensions.Configuration;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Đảm bảo DateTime được serialize theo ISO 8601 format với timezone
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        // DateTime sẽ được serialize dưới dạng ISO 8601 (ví dụ: "2024-11-15T10:30:00Z")
+    });
 
 // Database
 builder.Services.AddDbContext<BookingDbContext>(options =>

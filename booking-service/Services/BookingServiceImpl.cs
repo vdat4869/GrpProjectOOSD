@@ -42,6 +42,7 @@ namespace BookingService.Services
         {
             var vehicles = await _vehicleRepository.GetAllAsync();
             var bookings = await _bookingRepository.GetAllAsync();
+            var now = DateTime.UtcNow;
 
             var schedules = vehicles.Select(v =>
             {
@@ -57,13 +58,28 @@ namespace BookingService.Services
                         Note = b.Note
                     }).ToList();
 
+                // Xác định xe đang trống hay đang dùng
+                // Xe đang dùng nếu có booking đang trong thời gian sử dụng (StartTime <= now <= EndTime)
+                // và status là Confirmed, InProgress, hoặc Đã đặt
+                var isCurrentlyInUse = vehicleBookings.Any(b =>
+                    b.StartTime <= now &&
+                    b.EndTime >= now &&
+                    (b.Status == "Confirmed" || b.Status == "Đã đặt" || b.Status == "InProgress"));
 
                 return new VehicleScheduleResponse
                 {
                     VehicleId = v.Id,
                     VehicleName = v.Name,
                     IsActive = v.IsActive,
-                    Bookings = vehicleBookings,
+                    IsCurrentlyInUse = isCurrentlyInUse,
+                    Bookings = vehicleBookings.Select(b => new BookingPeriod
+                    {
+                        StartTime = TimeZoneHelper.ToVietnamTime(b.StartTime),
+                        EndTime = TimeZoneHelper.ToVietnamTime(b.EndTime),
+                        CoOwnerName = b.CoOwnerName,
+                        Status = b.Status,
+                        Note = b.Note
+                    }).ToList(),
                 };
             });
 
@@ -81,8 +97,8 @@ namespace BookingService.Services
                 VehicleName = b.Vehicle?.Name,
                 CoOwnerId = b.CoOwnerId,
                 CoOwnerName = b.CoOwner?.Name,
-                StartTime = b.StartTime,
-                EndTime = b.EndTime,
+                StartTime = TimeZoneHelper.ToVietnamTime(b.StartTime),
+                EndTime = TimeZoneHelper.ToVietnamTime(b.EndTime),
                 Status = b.Status,
                 Note = b.Note
             });
@@ -91,8 +107,17 @@ namespace BookingService.Services
         // Tạo booking mới
         public async Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request)
         {
-            var now = DateTime.Now;
-            var hoursBeforeStart = (request.StartTime - now).TotalHours;
+            // Normalize thời gian về UTC
+            // Nếu thời gian từ client là Unspecified (thường từ JSON), giả định là giờ Việt Nam và convert sang UTC
+            var startTime = request.StartTime.Kind == DateTimeKind.Unspecified 
+                ? TimeZoneHelper.FromVietnamTime(request.StartTime)
+                : request.StartTime.ToUniversalTime();
+            var endTime = request.EndTime.Kind == DateTimeKind.Unspecified 
+                ? TimeZoneHelper.FromVietnamTime(request.EndTime)
+                : request.EndTime.ToUniversalTime();
+            
+            var now = DateTime.UtcNow;
+            var hoursBeforeStart = (startTime - now).TotalHours;
 
             // Lấy xe và chủ sở hữu
             var vehicle = await _vehicleRepository.GetByIdAsync(request.VehicleId);
@@ -106,8 +131,8 @@ namespace BookingService.Services
             var overlappingBookings = allBookings
                 .Where(b => b.VehicleId == request.VehicleId &&
                             b.Status != "Cancelled" &&
-                            b.EndTime > request.StartTime &&
-                            b.StartTime < request.EndTime)
+                            b.EndTime > startTime &&
+                            b.StartTime < endTime)
                 .ToList();
 
             // ------------------------
@@ -125,14 +150,14 @@ namespace BookingService.Services
                 // ------------------------
                 if (overlappingBookings.Any())
                 {
-                var startOfMonth = new DateTime(request.StartTime.Year, request.StartTime.Month, 1);
+                var startOfMonth = new DateTime(startTime.Year, startTime.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
                 // Tính tổng số giờ người đặt đã sử dụng trong tháng
                 var userUsedHours = allBookings
                     .Where(b => b.CoOwnerId == request.CoOwnerId &&
                                 b.VehicleId == request.VehicleId &&
                                 b.StartTime >= startOfMonth &&
-                                b.StartTime < request.StartTime &&
+                                b.StartTime < startTime &&
                                 b.Status != "Cancelled")
                     .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
@@ -162,8 +187,8 @@ namespace BookingService.Services
                         var aiRequest = new BookingSuggestionRequest
                         {
                             VehicleGroupId = request.VehicleId.ToString(),
-                            RequestedStart = request.StartTime,
-                            RequestedEnd = request.EndTime,
+                            RequestedStart = startTime,
+                            RequestedEnd = endTime,
                             CoOwnerId = request.CoOwnerId.ToString(),
                             OwnershipPercentage = (double)coOwner.OwnershipRatio / 100.0,
                             UsageHistory = usageHistory
@@ -196,7 +221,7 @@ namespace BookingService.Services
                         .Where(b => b.CoOwnerId == other.Id &&
                                     b.VehicleId == request.VehicleId &&
                                     b.StartTime >= startOfMonth &&
-                                    b.StartTime < request.StartTime &&
+                                    b.StartTime < startTime &&
                                     b.Status != "Cancelled")
                         .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
@@ -239,8 +264,8 @@ namespace BookingService.Services
             {
                 VehicleId = request.VehicleId,
                 CoOwnerId = request.CoOwnerId,
-                StartTime = request.StartTime,
-                EndTime = request.EndTime,
+                StartTime = startTime,
+                EndTime = endTime,
                 Status = "Pending",
                 Note = request.Note
             };
@@ -248,18 +273,22 @@ namespace BookingService.Services
             await _bookingRepository.AddAsync(newBooking);
             await _bookingRepository.SaveChangesAsync();
 
+            // Reload booking từ database để đảm bảo thời gian được trả về đúng
+            var savedBooking = await _bookingRepository.GetByIdAsync(newBooking.Id);
+            if (savedBooking == null)
+                throw new Exception("Failed to retrieve saved booking");
+
             return new BookingResponse
             {
-                Id = newBooking.Id,
-                VehicleId = newBooking.VehicleId,
+                Id = savedBooking.Id,
+                VehicleId = savedBooking.VehicleId,
                 VehicleName = vehicle.Name,
-                CoOwnerId = newBooking.CoOwnerId,
+                CoOwnerId = savedBooking.CoOwnerId,
                 CoOwnerName = coOwner.Name,
-                StartTime = newBooking.StartTime,
-                EndTime = newBooking.EndTime,
-                Status = newBooking.Status,
-                Note = newBooking.Note
-
+                StartTime = TimeZoneHelper.ToVietnamTime(savedBooking.StartTime),
+                EndTime = TimeZoneHelper.ToVietnamTime(savedBooking.EndTime),
+                Status = savedBooking.Status,
+                Note = savedBooking.Note
             };
         }
 
@@ -275,8 +304,16 @@ namespace BookingService.Services
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
             if (booking == null) return null;
 
-            booking.StartTime = request.StartTime;
-            booking.EndTime = request.EndTime;
+            // Normalize thời gian từ request về UTC
+            var startTime = request.StartTime.Kind == DateTimeKind.Unspecified 
+                ? TimeZoneHelper.FromVietnamTime(request.StartTime)
+                : request.StartTime.ToUniversalTime();
+            var endTime = request.EndTime.Kind == DateTimeKind.Unspecified 
+                ? TimeZoneHelper.FromVietnamTime(request.EndTime)
+                : request.EndTime.ToUniversalTime();
+
+            booking.StartTime = startTime;
+            booking.EndTime = endTime;
             booking.Note = request.Note;
 
             await _bookingRepository.UpdateAsync(booking);
@@ -289,36 +326,69 @@ namespace BookingService.Services
                 VehicleName = booking.Vehicle?.Name,
                 CoOwnerId = booking.CoOwnerId,
                 CoOwnerName = booking.CoOwner?.Name,
-                StartTime = booking.StartTime,
-                EndTime = booking.EndTime,
+                StartTime = TimeZoneHelper.ToVietnamTime(booking.StartTime),
+                EndTime = TimeZoneHelper.ToVietnamTime(booking.EndTime),
                 Status = booking.Status,
                 Note = booking.Note
             };
         }
 
         // Cập nhật trạng thái booking
-        // public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
-        // {
-        //     var booking = await _bookingRepository.GetByIdAsync(bookingId);
-        //     if (booking == null) return null;
+        public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
+        {
+            var booking = await _bookingRepository.GetByIdAsync(bookingId);
+            if (booking == null) return null;
 
-        //     booking.Status = status;
-        //     await _bookingRepository.UpdateAsync(booking);
-        //     await _bookingRepository.SaveChangesAsync();
+            // Validate status values
+            var validStatuses = new[] { "Pending", "Confirmed", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow" };
+            if (!validStatuses.Contains(status))
+                throw new ArgumentException($"Invalid status: {status}. Valid statuses are: {string.Join(", ", validStatuses)}");
 
-        //     return new BookingResponse
-        //     {
-        //         Id = booking.Id,
-        //         VehicleId = booking.VehicleId,
-        //         VehicleName = booking.Vehicle?.Name,
-        //         CoOwnerId = booking.CoOwnerId,
-        //         CoOwnerName = booking.CoOwner?.Name,
-        //         StartTime = booking.StartTime,
-        //         EndTime = booking.EndTime,
-        //         Status = booking.Status,
-        //         Note = booking.Note
-        //     };
-        // }
+            booking.Status = status;
+            await _bookingRepository.UpdateAsync(booking);
+            await _bookingRepository.SaveChangesAsync();
+
+            return new BookingResponse
+            {
+                Id = booking.Id,
+                VehicleId = booking.VehicleId,
+                VehicleName = booking.Vehicle?.Name,
+                CoOwnerId = booking.CoOwnerId,
+                CoOwnerName = booking.CoOwner?.Name,
+                StartTime = TimeZoneHelper.ToVietnamTime(booking.StartTime),
+                EndTime = TimeZoneHelper.ToVietnamTime(booking.EndTime),
+                Status = booking.Status,
+                Note = booking.Note
+            };
+        }
+
+        // Kiểm tra và tự động chuyển booking sang NoShow nếu quá thời gian check-in
+        public async Task CheckAndUpdateNoShowBookingsAsync()
+        {
+            var now = DateTime.UtcNow;
+            var allBookings = await _bookingRepository.GetAllAsync();
+
+            // Tìm các booking đã quá thời gian bắt đầu nhưng chưa check-in
+            // và status là Confirmed hoặc Đã đặt
+            var noShowBookings = allBookings
+                .Where(b => (b.Status == "Confirmed" || b.Status == "Đã đặt") &&
+                           !b.CheckInTime.HasValue &&
+                           b.StartTime < now &&
+                           (now - b.StartTime).TotalHours >= 1) // Quá 1 giờ sau thời gian bắt đầu
+                .ToList();
+
+            foreach (var booking in noShowBookings)
+            {
+                booking.Status = "NoShow";
+                await _bookingRepository.UpdateAsync(booking);
+                _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
+            }
+
+            if (noShowBookings.Any())
+            {
+                await _bookingRepository.SaveChangesAsync();
+            }
+        }
 
         // Hủy booking
         public async Task<bool> CancelBookingAsync(int bookingId)
@@ -362,7 +432,7 @@ namespace BookingService.Services
                 BookingId = bookingId,
                 QrCode = qrCodeData,
                 QrCodeImageUrl = $"data:image/png;base64,{qrCodeImageBase64}",
-                ExpiresAt = DateTime.UtcNow.AddHours(24)
+                ExpiresAt = TimeZoneHelper.ToVietnamTime(DateTime.UtcNow.AddHours(24))
             };
         }
 
@@ -409,7 +479,7 @@ namespace BookingService.Services
             return new CheckInResponse
             {
                 BookingId = bookingId,
-                CheckInTime = checkInTime,
+                CheckInTime = TimeZoneHelper.ToVietnamTime(checkInTime),
                 Message = "Check-in thành công"
             };
         }
@@ -459,7 +529,7 @@ namespace BookingService.Services
             return new CheckOutResponse
             {
                 BookingId = bookingId,
-                CheckOutTime = checkOutTime,
+                CheckOutTime = TimeZoneHelper.ToVietnamTime(checkOutTime),
                 DistanceKm = request.DistanceKm,
                 Cost = request.Cost,
                 Message = "Check-out thành công"

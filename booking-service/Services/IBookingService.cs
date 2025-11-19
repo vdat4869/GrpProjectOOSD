@@ -10,8 +10,9 @@ namespace BookingService.Services
         Task<IEnumerable<BookingResponse>> GetAllBookingsAsync();
         Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request);
         Task<BookingResponse?> UpdateBookingAsync(int bookingId, UpdateBookingRequest request);
-        // Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status);
+        Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status);
         Task<bool> CancelBookingAsync(int bookingId);
+        Task CheckAndUpdateNoShowBookingsAsync();
         Task DeleteBookingAsync(int bookingId);
         Task<QrCodeResponse> GenerateQrCodeAsync(int bookingId);
         Task<CheckInResponse> CheckInAsync(int bookingId, CheckInRequest request);

@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BookingService.DTOs
 {
+    [EndTimeGreaterThanStartTime]
     public class CreateBookingRequest
     {
         [Required]
