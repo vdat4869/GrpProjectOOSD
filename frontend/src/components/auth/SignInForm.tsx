@@ -6,23 +6,7 @@ import Input from "../form/input/InputField";
 import Checkbox from "../form/input/Checkbox";
 import Button from "../ui/button/Button";
 import { getDashboardPath } from "../../utils/roles";
-
-const availableRoles = ["Admin", "Staff", "Co-owner"] as const;
-
-const mockAuthenticate = async (email: string, password: string, role: string) => {
-  if (!email || !password) {
-    throw new Error("Email và mật khẩu không được để trống.");
-  }
-
-  // In a real app this would call the Auth service. We simulate latency.
-  await new Promise((resolve) => setTimeout(resolve, 600));
-
-  return {
-    token: `demo-token-${Date.now()}`,
-    role,
-    firstName: email.split("@")[0] ?? "User",
-  };
-};
+import { authService } from "../../services/authService";
 
 export default function SignInForm() {
   const navigate = useNavigate();
@@ -32,7 +16,6 @@ export default function SignInForm() {
     () => localStorage.getItem("rememberedEmail") ?? ""
   );
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<(typeof availableRoles)[number]>("Co-owner");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -47,12 +30,11 @@ export default function SignInForm() {
     setLoading(true);
 
     try {
-      const result = await mockAuthenticate(email.trim(), password, role);
+      const result = await authService.login(email.trim(), password);
 
-      localStorage.setItem("token", result.token);
-      localStorage.setItem("role", result.role);
-      localStorage.setItem("firstName", result.firstName);
-      localStorage.setItem("email", email.trim());
+      // authService.login() already stores token and user info
+      // Just get the role for navigation
+      const primaryRole = result.user.roles[0] || "Co-owner";
 
       if (isChecked) {
         localStorage.setItem("rememberedEmail", email.trim());
@@ -60,9 +42,9 @@ export default function SignInForm() {
         localStorage.removeItem("rememberedEmail");
       }
 
-      navigate(getDashboardPath(result.role), { replace: true });
+      navigate(getDashboardPath(primaryRole), { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Đăng nhập thất bại");
+      setError(err instanceof Error ? err.message : "Đăng nhập thất bại. Vui lòng kiểm tra lại email và mật khẩu.");
     } finally {
       setLoading(false);
     }
@@ -86,7 +68,7 @@ export default function SignInForm() {
               Sign In
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Enter your email, password, and role to access your dashboard.
+              Enter your email and password to access your dashboard.
             </p>
           </div>
           <div>
@@ -176,22 +158,6 @@ export default function SignInForm() {
                       )}
                     </span>
                   </div>
-                </div>
-                <div>
-                  <Label>
-                    Role <span className="text-error-500">*</span>
-                  </Label>
-                  <select
-                    className="h-12 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm text-gray-700 focus:border-brand-400 focus:outline-hidden focus:ring-2 focus:ring-brand-300/40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                    value={role}
-                    onChange={(event) => setRole(event.target.value as (typeof availableRoles)[number])}
-                  >
-                    {availableRoles.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">

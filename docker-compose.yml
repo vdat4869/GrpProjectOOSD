@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # SQL Server Database
   mssql:
@@ -66,20 +64,19 @@ services:
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-rabbitmq}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-rabbitmq123}
-      - RABBITMQ_LOAD_DEFINITIONS=/etc/rabbitmq/definitions.json
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
-      - ./rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
     networks:
       - ev_network
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
+      start_period: 40s
 
   # Apache NiFi for ETL and data flow
   nifi:
@@ -117,9 +114,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST};Database=auth_db;User Id=${SQL_USER};Password=${SQL_PASS};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST:-mssql};Database=auth_db;User Id=${SQL_USER:-sa};Password=${SQL_PASS:-YourStrong@Password123};TrustServerCertificate=True;
       - ConnectionStrings__Redis=redis:6379
       - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
       - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
@@ -143,7 +140,7 @@ services:
       - report-service
       - ai-service
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
       - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
       - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
@@ -167,9 +164,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST};Database=ownership_db;User Id=${SQL_USER};Password=${SQL_PASS};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST:-mssql};Database=ownership_db;User Id=${SQL_USER:-sa};Password=${SQL_PASS:-YourStrong@Password123};TrustServerCertificate=True;
       - ConnectionStrings__Redis=redis:6379
       - RabbitMQ__HostName=rabbitmq
       - RabbitMQ__UserName=${RABBITMQ_USER:-rabbitmq}
@@ -196,9 +193,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST};Database=booking_db;User Id=${SQL_USER};Password=${SQL_PASS};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST:-mssql};Database=booking_db;User Id=${SQL_USER:-sa};Password=${SQL_PASS:-YourStrong@Password123};TrustServerCertificate=True;
       - ConnectionStrings__Redis=redis:6379
       - ConnectionStrings__MongoDB=mongodb://mongoadmin:mongopass123@mongodb:27017/booking_logs?authSource=admin
       - RabbitMQ__HostName=rabbitmq
@@ -227,9 +224,9 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST};Database=payment_db;User Id=${SQL_USER};Password=${SQL_PASS};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST:-mssql};Database=payment_db;User Id=${SQL_USER:-sa};Password=${SQL_PASS:-YourStrong@Password123};TrustServerCertificate=True;
       - ConnectionStrings__Redis=redis:6379
       - RabbitMQ__HostName=rabbitmq
       - RabbitMQ__UserName=${RABBITMQ_USER:-rabbitmq}
@@ -256,9 +253,9 @@ services:
       nifi:
         condition: service_started
     environment:
-      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:80
-      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST};Database=report_db;User Id=${SQL_USER};Password=${SQL_PASS};TrustServerCertificate=True;
+      - ConnectionStrings__DefaultConnection=Server=${SQL_HOST:-mssql};Database=report_db;User Id=${SQL_USER:-sa};Password=${SQL_PASS:-YourStrong@Password123};TrustServerCertificate=True;
       - ConnectionStrings__MongoDB=mongodb://mongoadmin:mongopass123@mongodb:27017/report_logs?authSource=admin
       - NiFiUrl=http://nifi:8080
       - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
