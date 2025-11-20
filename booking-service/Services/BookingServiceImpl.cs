@@ -229,7 +229,7 @@ namespace BookingService.Services
                 CoOwnerId = request.CoOwnerId,
                 StartTime = startTime,
                 EndTime = endTime,
-                Status = "Pending",
+                Status = (hoursBeforeStart <= 4) ? "Confirmed" : "Pending",
                 Note = request.Note
             };
 
@@ -261,6 +261,8 @@ namespace BookingService.Services
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
             if (booking == null) return null;
+            if (booking.Status != "Pending")
+                throw new Exception("Chỉ có thể cập nhật booking đang Pending .");
 
             // Normalize thời gian về UTC nếu cần  
             var startTime = request.StartTime.Kind == DateTimeKind.Unspecified
@@ -376,7 +378,7 @@ namespace BookingService.Services
             booking.StartTime = startTime;
             booking.EndTime = endTime;
             booking.Note = request.Note;
-            booking.Status = "Pending";
+            booking.Status = (hoursBeforeStart <= 4) ? "Confirmed" : "Pending";
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
@@ -388,9 +390,9 @@ namespace BookingService.Services
                 VehicleName = vehicle.Name,
                 CoOwnerId = booking.CoOwnerId,
                 CoOwnerName = coOwner.Name,
-                StartTime = TimeZoneHelper.ToVietnamTime(booking.StartTime),
-                EndTime = TimeZoneHelper.ToVietnamTime(booking.EndTime),
-                Status = "Pending",
+                StartTime = booking.StartTime,
+                EndTime = booking.EndTime,
+                Status = (hoursBeforeStart <= 4) ? "Confirmed" : "Pending",
                 Note = booking.Note
             };
 
@@ -402,6 +404,7 @@ namespace BookingService.Services
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
             if (booking == null) return null;
+
 
             // Validate status values
             var validStatuses = new[] { "Pending", "Confirmed", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow" };
@@ -455,8 +458,8 @@ namespace BookingService.Services
             if (booking == null)
                 throw new Exception("Booking không tồn tại.");
 
-            if (booking.Status != "Pending")
-                throw new Exception("Chỉ có thể tạo QR code cho booking chưa được sử dụng.");
+            if (booking.Status != "Confirmed")
+                throw new Exception("Chỉ có thể tạo QR code cho booking đã xác nhận.");
 
             var qrCodeData = _qrCodeService.GenerateQrCode(bookingId);
             var qrCodeImageBase64 = _qrCodeService.GenerateQrCodeImageBase64(qrCodeData);
@@ -490,8 +493,8 @@ namespace BookingService.Services
             if (booking.CheckInTime.HasValue)
                 throw new Exception("Booking đã được check-in rồi.");
 
-            if (booking.Status != "Pending")
-                throw new Exception("Chỉ có thể check-in cho booking chưa được sử dụng.");
+            if (booking.Status != "Confirmed")
+                throw new Exception("Chỉ có thể check-in cho booking đã xác nhận.");
 
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
 
@@ -503,7 +506,7 @@ namespace BookingService.Services
                 throw new Exception("Quá thời gian check-in.");
 
             booking.CheckInTime = now;
-            booking.Status = "Confirmed";
+            booking.Status = "InProgress";
             if (!string.IsNullOrEmpty(request.DigitalSignature))
                 booking.DigitalSignature = request.DigitalSignature;
 
@@ -598,41 +601,14 @@ namespace BookingService.Services
             };
         }
 
-        // Kiểm tra và tự động chuyển booking sang NoShow nếu quá thời gian check-in
-        // public async Task CheckAndUpdateNoShowBookingsAsync()
-        // {
-        //     var now = DateTime.UtcNow;
-        //     var allBookings = await _bookingRepository.GetAllAsync();
 
-        //     // Tìm các booking đã quá thời gian bắt đầu nhưng chưa check-in
-        //     // và status là Confirmed hoặc Đã đặt
-        //     var noShowBookings = allBookings
-        //         .Where(b => (b.Status == "Confirmed" || b.Status == "Đã đặt") &&
-        //                    !b.CheckInTime.HasValue &&
-        //                    b.StartTime < now &&
-        //                    (now - b.StartTime).TotalHours >= 1) // Quá 1 giờ sau thời gian bắt đầu
-        //         .ToList();
-
-        //     foreach (var booking in noShowBookings)
-        //     {
-        //         booking.Status = "NoShow";
-        //         await _bookingRepository.UpdateAsync(booking);
-        //         _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
-        //     }
-
-        //     if (noShowBookings.Any())
-        //     {
-        //         await _bookingRepository.SaveChangesAsync();
-        //     }
-        // }
-        // Tự động đánh dấu NoShow nếu quá 5 phút chưa check-in
         public async Task CheckAndUpdateNoShowBookingsAsync()
         {
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
             var allBookings = await _bookingRepository.GetAllAsync();
 
             var noShowBookings = allBookings
-                .Where(b => b.Status == "Pending" &&
+                .Where(b => b.Status == "confirmed" &&
                         !b.CheckInTime.HasValue &&
                         b.StartTime < now &&
                         (now - b.StartTime).TotalMinutes >= 5)

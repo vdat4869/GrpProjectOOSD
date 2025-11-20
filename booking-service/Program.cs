@@ -25,7 +25,7 @@ builder.Services.AddSwaggerGen(c =>
     c.SchemaFilter<DateTimeDefaultSchemaFilter>();
 });
 
-
+builder.Services.AddHostedService<BookingService.Infrastructure.BookingStatusBackgroundService>();
 
 // Database
 builder.Services.AddDbContext<BookingDbContext>(options =>
