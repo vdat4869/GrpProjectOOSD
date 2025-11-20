@@ -140,3 +140,84 @@ public class DeleteEContractHandler : IRequestHandler<DeleteEContractCommand>
     }
 }
 
+public class GetEContractByIdHandler : IRequestHandler<GetEContractByIdQuery, EContractDto?>
+{
+    private readonly ApplicationDbContext _context;
+    private readonly IMapper _mapper;
+
+    public GetEContractByIdHandler(ApplicationDbContext context, IMapper mapper)
+    {
+        _context = context;
+        _mapper = mapper;
+    }
+
+    public async Task<EContractDto?> Handle(GetEContractByIdQuery request, CancellationToken cancellationToken)
+    {
+        var eContract = await _context.EContracts
+            .Include(ec => ec.CoOwner)
+            .FirstOrDefaultAsync(ec => ec.Id == request.Id, cancellationToken);
+
+        if (eContract == null)
+        {
+            return null;
+        }
+
+        return _mapper.Map<EContractDto>(eContract);
+    }
+}
+
+public class ApproveEContractHandler : IRequestHandler<ApproveEContractCommand, EContractDto>
+{
+    private readonly ApplicationDbContext _context;
+    private readonly IMapper _mapper;
+
+    public ApproveEContractHandler(ApplicationDbContext context, IMapper mapper)
+    {
+        _context = context;
+        _mapper = mapper;
+    }
+
+    public async Task<EContractDto> Handle(ApproveEContractCommand request, CancellationToken cancellationToken)
+    {
+        var eContract = await _context.EContracts
+            .Include(ec => ec.CoOwner)
+            .FirstOrDefaultAsync(ec => ec.Id == request.Id, cancellationToken);
+
+        if (eContract == null)
+        {
+            throw new KeyNotFoundException($"E-Contract with ID {request.Id} not found.");
+        }
+
+        // Only approve contracts that are Pending or Signed
+        if (eContract.ContractStatus != "Pending" && eContract.ContractStatus != "Signed")
+        {
+            throw new InvalidOperationException($"Cannot approve contract with status: {eContract.ContractStatus}");
+        }
+
+        // Update contract status to Approved
+        eContract.ContractStatus = "Approved";
+        
+        // Update notes with approval information
+        var approvalNote = $"Approved by Staff/Admin";
+        if (request.Notes != null)
+        {
+            approvalNote = $"{approvalNote}: {request.Notes}";
+        }
+        
+        if (!string.IsNullOrEmpty(eContract.Notes))
+        {
+            eContract.Notes = $"{eContract.Notes}\n{approvalNote}";
+        }
+        else
+        {
+            eContract.Notes = approvalNote;
+        }
+
+        eContract.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        return _mapper.Map<EContractDto>(eContract);
+    }
+}
+
