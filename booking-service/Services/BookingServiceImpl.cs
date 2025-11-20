@@ -256,13 +256,6 @@ namespace BookingService.Services
         }
 
 
-
-
-
-
-
-
-
         // Cập nhật booking
         public async Task<BookingResponse?> UpdateBookingAsync(int bookingId, UpdateBookingRequest request)
         {
@@ -433,33 +426,7 @@ namespace BookingService.Services
             };
         }
 
-        // Kiểm tra và tự động chuyển booking sang NoShow nếu quá thời gian check-in
-        public async Task CheckAndUpdateNoShowBookingsAsync()
-        {
-            var now = DateTime.UtcNow;
-            var allBookings = await _bookingRepository.GetAllAsync();
 
-            // Tìm các booking đã quá thời gian bắt đầu nhưng chưa check-in
-            // và status là Confirmed hoặc Đã đặt
-            var noShowBookings = allBookings
-                .Where(b => (b.Status == "Confirmed" || b.Status == "Đã đặt") &&
-                           !b.CheckInTime.HasValue &&
-                           b.StartTime < now &&
-                           (now - b.StartTime).TotalHours >= 1) // Quá 1 giờ sau thời gian bắt đầu
-                .ToList();
-
-            foreach (var booking in noShowBookings)
-            {
-                booking.Status = "NoShow";
-                await _bookingRepository.UpdateAsync(booking);
-                _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
-            }
-
-            if (noShowBookings.Any())
-            {
-                await _bookingRepository.SaveChangesAsync();
-            }
-        }
 
         // Hủy booking
         public async Task<bool> CancelBookingAsync(int bookingId)
@@ -507,17 +474,17 @@ namespace BookingService.Services
             };
         }
 
+
         public async Task<CheckInResponse> CheckInAsync(int bookingId, CheckInRequest request)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
             if (booking == null)
                 throw new Exception("Booking không tồn tại.");
 
-            // Validate QR code if provided
-            if (!string.IsNullOrEmpty(request.QrCode))
+            if (!string.IsNullOrEmpty(request.QrCode) &&
+                !_qrCodeService.ValidateQrCode(request.QrCode, bookingId))
             {
-                if (!_qrCodeService.ValidateQrCode(request.QrCode, bookingId))
-                    throw new Exception("QR code không hợp lệ hoặc đã hết hạn.");
+                throw new Exception("QR code không hợp lệ hoặc đã hết hạn.");
             }
 
             if (booking.CheckInTime.HasValue)
@@ -526,31 +493,35 @@ namespace BookingService.Services
             if (booking.Status != "Pending")
                 throw new Exception("Chỉ có thể check-in cho booking chưa được sử dụng.");
 
-            var checkInTime = DateTime.UtcNow;
-            booking.CheckInTime = checkInTime;
+            var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
+
+            // Chỉ cho check-in trước 5 phút và sau giờ bắt đầu
+            if (now < booking.StartTime.AddMinutes(-5))
+                throw new Exception("Chưa đến giờ check-in. Chỉ có thể check-in trước tối đa 5 phút.");
+
+            if (now > booking.EndTime)
+                throw new Exception("Quá thời gian check-in.");
+
+            booking.CheckInTime = now;
             booking.Status = "Confirmed";
             if (!string.IsNullOrEmpty(request.DigitalSignature))
-            {
                 booking.DigitalSignature = request.DigitalSignature;
-            }
-            // Model Booking không có trường UpdatedAt
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
 
-            // Publish event
             _rabbitMQService.PublishEvent("booking.checked-in", new
             {
                 BookingId = bookingId,
                 VehicleId = booking.VehicleId,
                 CoOwnerId = booking.CoOwnerId,
-                CheckInTime = checkInTime
+                CheckInTime = now
             });
 
             return new CheckInResponse
             {
                 BookingId = bookingId,
-                CheckInTime = TimeZoneHelper.ToVietnamTime(checkInTime),
+                CheckInTime = TimeZoneHelper.ToVietnamTime(now),
                 Message = "Check-in thành công"
             };
         }
@@ -567,20 +538,25 @@ namespace BookingService.Services
             if (booking.CheckOutTime.HasValue)
                 throw new Exception("Booking đã được check-out rồi.");
 
-            var checkOutTime = DateTime.UtcNow;
-            booking.CheckOutTime = checkOutTime;
+            var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
+
+            // Chỉ cho check-out trong khoảng kết thúc đến +5 phút
+            if (now < booking.StartTime)
+                throw new Exception("Chưa đến giờ kết thúc, không thể check-out.");
+            if (now > booking.EndTime.AddMinutes(5))
+                throw new Exception("Quá thời gian check-out.");
+
+            booking.CheckOutTime = now;
             booking.DistanceKm = request.DistanceKm;
             booking.Cost = request.Cost;
             if (!string.IsNullOrEmpty(request.Note))
-            {
                 booking.Note = request.Note;
-            }
+
             booking.Status = "Completed";
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
 
-            // Lưu vào lịch sử sử dụng
             var history = new BookingHistory
             {
                 BookingId = booking.Id,
@@ -589,7 +565,7 @@ namespace BookingService.Services
                 StartTime = booking.StartTime,
                 EndTime = booking.EndTime,
                 CheckInTime = booking.CheckInTime.Value,
-                CheckOutTime = checkOutTime,
+                CheckOutTime = now,
                 DistanceKm = request.DistanceKm,
                 Cost = request.Cost,
                 Note = booking.Note
@@ -598,7 +574,6 @@ namespace BookingService.Services
             await _bookingHistoryRepository.AddAsync(history);
             await _bookingHistoryRepository.SaveChangesAsync();
 
-            // Publish event for payment and report services
             _rabbitMQService.PublishEvent("booking.completed", new BookingCompletedEvent
             {
                 BookingId = bookingId,
@@ -609,19 +584,73 @@ namespace BookingService.Services
                 Distance = (double)request.DistanceKm,
                 Cost = (double)(request.Cost ?? 0),
                 CheckInTime = booking.CheckInTime.Value,
-                CheckOutTime = checkOutTime,
-                CompletedAt = checkOutTime
+                CheckOutTime = now,
+                CompletedAt = now
             });
 
             return new CheckOutResponse
             {
                 BookingId = bookingId,
-                CheckOutTime = TimeZoneHelper.ToVietnamTime(checkOutTime),
+                CheckOutTime = TimeZoneHelper.ToVietnamTime(now),
                 DistanceKm = request.DistanceKm,
                 Cost = request.Cost,
                 Message = "Check-out thành công"
             };
         }
+
+        // Kiểm tra và tự động chuyển booking sang NoShow nếu quá thời gian check-in
+        // public async Task CheckAndUpdateNoShowBookingsAsync()
+        // {
+        //     var now = DateTime.UtcNow;
+        //     var allBookings = await _bookingRepository.GetAllAsync();
+
+        //     // Tìm các booking đã quá thời gian bắt đầu nhưng chưa check-in
+        //     // và status là Confirmed hoặc Đã đặt
+        //     var noShowBookings = allBookings
+        //         .Where(b => (b.Status == "Confirmed" || b.Status == "Đã đặt") &&
+        //                    !b.CheckInTime.HasValue &&
+        //                    b.StartTime < now &&
+        //                    (now - b.StartTime).TotalHours >= 1) // Quá 1 giờ sau thời gian bắt đầu
+        //         .ToList();
+
+        //     foreach (var booking in noShowBookings)
+        //     {
+        //         booking.Status = "NoShow";
+        //         await _bookingRepository.UpdateAsync(booking);
+        //         _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
+        //     }
+
+        //     if (noShowBookings.Any())
+        //     {
+        //         await _bookingRepository.SaveChangesAsync();
+        //     }
+        // }
+        // Tự động đánh dấu NoShow nếu quá 5 phút chưa check-in
+        public async Task CheckAndUpdateNoShowBookingsAsync()
+        {
+            var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
+            var allBookings = await _bookingRepository.GetAllAsync();
+
+            var noShowBookings = allBookings
+                .Where(b => b.Status == "Pending" &&
+                        !b.CheckInTime.HasValue &&
+                        b.StartTime < now &&
+                        (now - b.StartTime).TotalMinutes >= 5)
+                .ToList();
+
+            foreach (var booking in noShowBookings)
+            {
+                booking.Status = "NoShow";
+                _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
+            }
+
+            if (noShowBookings.Any())
+                await _bookingRepository.SaveChangesAsync();
+
+        }
+
+
+
         public async Task<IEnumerable<BookingHistoryResponse>> GetBookingHistoryAsync(int coOwnerId)
         {
             var histories = await _bookingHistoryRepository.GetByCoOwnerIdAsync(coOwnerId);
