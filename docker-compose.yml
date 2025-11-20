@@ -32,7 +32,7 @@ services:
     networks:
       - ev_network
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -52,10 +52,11 @@ services:
     networks:
       - ev_network
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: ["CMD", "mongosh", "-u", "${MONGO_USER:-mongoadmin}", "-p", "${MONGO_PASSWORD:-mongopass123}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')", "--quiet"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # RabbitMQ Message Broker
   rabbitmq:
@@ -72,11 +73,12 @@ services:
     networks:
       - ev_network
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "ping" ]
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
       timeout: 10s
       retries: 10
       start_period: 40s
+    init: true
 
   # Apache NiFi for ETL and data flow
   nifi:
@@ -188,6 +190,8 @@ services:
     depends_on:
       mssql:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       redis:
@@ -267,48 +271,26 @@ services:
       - ev_network
 
   # AI Service (Python FastAPI)
-
   ai-service:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
-      container_name: ev-ai-service
-      depends_on:
+    container_name: ev-ai-service
+    depends_on:
       mongodb:
         condition: service_healthy
       redis:
         condition: service_healthy
-      environment:
-      MONGODB_URI: ${MONGODB_URI:-mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      FAIRNESS_ALPHA: ${FAIRNESS_ALPHA:-0.6}
-      FAIRNESS_BETA: ${FAIRNESS_BETA:-0.4}
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
-      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-1}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
-      CORS_ALLOW_CREDENTIALS: ${CORS_ALLOW_CREDENTIALS:-1}
-      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      METRICS_ENABLED: ${METRICS_ENABLED:-1}
-      ports:
-        - "${AI_PORT:-8010}:8000"
-      networks:
-        - ev_network
+    environment:
+      - MONGODB_URI=mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "${AI_PORT:-8010}:8000"
+    networks:
+      - ev_network
     volumes:
       - ai-models:/app/models
-    restart: unless-stopped
-    read_only: true
-    tmpfs:
-      - /tmp
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: [ "CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/health', timeout=3); sys.exit(0)" ]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
 
   # Frontend (React + Vite + TailAdmin - Role-based)
   frontend:
@@ -338,7 +320,6 @@ volumes:
   nifi-content:
   nifi-provenance:
   ai-models:
-
 
 networks:
   ev_network:
