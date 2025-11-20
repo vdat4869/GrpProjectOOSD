@@ -322,6 +322,84 @@ public class VehicleGroupsController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Update group member role (phân quyền nhóm)
+    /// </summary>
+    [HttpPut("{groupId}/members/{memberId}/role")]
+    public async Task<ActionResult<GroupMemberDto>> UpdateGroupMemberRole(Guid groupId, Guid memberId, [FromBody] UpdateGroupMemberDto dto)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var member = await _context.GroupMembers
+            .Include(m => m.CoOwner)
+            .Include(m => m.VehicleGroup)
+            .FirstOrDefaultAsync(m => m.Id == memberId && m.VehicleGroupId == groupId);
+        if (member == null)
+            return NotFound();
+
+        // Check if user has permission to update role (Owner or Admin of the group)
+        var currentUserCoOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == userId);
+        if (currentUserCoOwner == null)
+            return Unauthorized();
+
+        var currentUserMember = await _context.GroupMembers
+            .FirstOrDefaultAsync(m => m.VehicleGroupId == groupId && 
+                                      m.CoOwnerId == currentUserCoOwner.Id && 
+                                      m.Status == MemberStatus.Active);
+        
+        if (currentUserMember == null || (currentUserMember.Role != MemberRole.Owner && currentUserMember.Role != MemberRole.Admin))
+        {
+            return Forbid("Only Owner or Admin can update member roles");
+        }
+
+        // Prevent changing Owner role or removing the last Owner
+        if (member.Role == MemberRole.Owner && dto.Role != null && dto.Role != "Owner")
+        {
+            var ownerCount = await _context.GroupMembers
+                .CountAsync(m => m.VehicleGroupId == groupId && 
+                                m.Role == MemberRole.Owner && 
+                                m.Status == MemberStatus.Active);
+            if (ownerCount <= 1)
+            {
+                return BadRequest(new { message = "Cannot change role of the last Owner" });
+            }
+        }
+
+        // Update role if provided
+        if (!string.IsNullOrEmpty(dto.Role) && Enum.TryParse<MemberRole>(dto.Role, true, out var newRole))
+        {
+            member.Role = newRole;
+        }
+
+        // Update status if provided
+        if (!string.IsNullOrEmpty(dto.Status) && Enum.TryParse<MemberStatus>(dto.Status, true, out var newStatus))
+        {
+            member.Status = newStatus;
+            if (newStatus == MemberStatus.Removed)
+            {
+                member.LeftAt = DateTime.UtcNow;
+            }
+        }
+
+        member.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new GroupMemberDto
+        {
+            Id = member.Id,
+            VehicleGroupId = member.VehicleGroupId,
+            CoOwnerId = member.CoOwnerId,
+            CoOwnerName = member.CoOwner?.FullName ?? "",
+            CoOwnerEmail = member.CoOwner?.Email ?? "",
+            Role = member.Role.ToString(),
+            Status = member.Status.ToString(),
+            JoinedAt = member.JoinedAt,
+            LeftAt = member.LeftAt
+        });
+    }
+
     // Dev-only: create minimal group without auth to unblock smoke tests
     [HttpPost("dev-create")]
     [AllowAnonymous]
