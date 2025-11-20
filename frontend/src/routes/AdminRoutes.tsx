@@ -6,6 +6,8 @@ import ManageContracts from "../pages/admin/ManageContracts";
 import ManageStaff from "../pages/admin/ManageStaff";
 import DisputeManagement from "../pages/admin/DisputeManagement";
 import Reports from "../pages/admin/Reports";
+import UserProfiles from "../pages/UserProfiles";
+import KycPage from "../pages/KYC/KycPage";
 
 const AdminRoutes: React.FC = () => {
   return (
@@ -17,6 +19,8 @@ const AdminRoutes: React.FC = () => {
         <Route path="staff" element={<ManageStaff />} />
         <Route path="disputes" element={<DisputeManagement />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="profile" element={<UserProfiles />} />
+        <Route path="kyc" element={<KycPage />} />
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>

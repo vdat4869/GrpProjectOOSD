@@ -1,9 +1,30 @@
+import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import StatCard from "../../components/common/StatCard";
 import LineChartOne from "../../components/charts/line/LineChartOne";
+import { ownershipService } from "../../services/ownershipService";
 
 const AdminDashboard: React.FC = () => {
+  const [activeGroups, setActiveGroups] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const groups = await ownershipService.getGroups();
+        const active = groups.filter((g) => g.status === 1).length;
+        setActiveGroups(active);
+      } catch (err) {
+        console.error("Failed to load stats:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, []);
+
   return (
     <>
       <PageMeta title="Admin | Dashboard" />
@@ -12,7 +33,11 @@ const AdminDashboard: React.FC = () => {
         description="Monitor group performance, system health, and governance signals across the EV co-ownership network."
       />
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active Groups" value="24" trend="▲ 6.8%" />
+        <StatCard
+          label="Active Groups"
+          value={loading ? "..." : activeGroups.toString()}
+          trend=""
+        />
         <StatCard label="Pending Contracts" value="12" trend="▼ 1.1%" />
         <StatCard label="Open Disputes" value="3" trend="Stable" />
         <StatCard label="Monthly Revenue" value="₫128M" trend="▲ 12.4%" />

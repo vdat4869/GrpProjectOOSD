@@ -5,6 +5,8 @@ import {
   BoxCubeIcon,
   CalenderIcon,
   TaskIcon,
+  LockIcon,
+  UserCircleIcon,
 } from "../../icons";
 
 const sections: SidebarSection[] = [
@@ -16,6 +18,8 @@ const sections: SidebarSection[] = [
       { label: "Vehicle Maintenance", path: "/staff/maintenance", icon: <BoxCubeIcon /> },
       { label: "Monitor Bookings", path: "/staff/bookings", icon: <CalenderIcon /> },
       { label: "Dispute Tracking", path: "/staff/disputes", icon: <TaskIcon /> },
+      { label: "KYC Verification", path: "/staff/kyc", icon: <LockIcon /> },
+      { label: "Profile", path: "/staff/profile", icon: <UserCircleIcon /> },
     ],
   },
 ];

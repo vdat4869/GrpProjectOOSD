@@ -6,6 +6,7 @@ import {
   UserCircleIcon,
   PieChartIcon,
   TaskIcon,
+  LockIcon,
 } from "../../icons";
 
 const sections: SidebarSection[] = [
@@ -18,6 +19,8 @@ const sections: SidebarSection[] = [
       { label: "Manage Staff", path: "/admin/staff", icon: <UserCircleIcon /> },
       { label: "Dispute Management", path: "/admin/disputes", icon: <TaskIcon /> },
       { label: "Reports", path: "/admin/reports", icon: <PieChartIcon /> },
+      { label: "KYC Verification", path: "/admin/kyc", icon: <LockIcon /> },
+      { label: "Profile", path: "/admin/profile", icon: <UserCircleIcon /> },
     ],
   },
 ];

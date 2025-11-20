@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { useNavigate } from "react-router-dom";
+import { authService } from "../../services/authService";
 
 const getStoredUser = () => {
   const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
@@ -32,12 +33,16 @@ export default function UserDropdown() {
     setIsOpen(false);
   }
 
-  const handleSignOut = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("role");
-    localStorage.removeItem("firstName");
-    navigate("/signin", { replace: true });
-    closeDropdown();
+  const handleSignOut = async () => {
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Continue with logout even if API call fails
+    } finally {
+      navigate("/signin", { replace: true });
+      closeDropdown();
+    }
   };
 
   return (

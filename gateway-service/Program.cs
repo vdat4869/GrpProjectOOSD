@@ -68,14 +68,14 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+// Sử dụng Simple Proxy middleware FIRST (before everything)
+app.UseMiddleware<SimpleProxyMiddleware>();
+
 // Sử dụng CORS
 app.UseCors("AllowFrontend");
 
-// Sử dụng Authentication
+// Sử dụng Authentication (after proxy for routes that need auth)
 app.UseAuthentication();
-
-// Sử dụng Simple Proxy middleware
-app.UseMiddleware<SimpleProxyMiddleware>();
 
 // Debug endpoint để kiểm tra routing
 app.MapGet("/debug/routes", () => {
@@ -83,8 +83,17 @@ app.MapGet("/debug/routes", () => {
 });
 
 // Health check endpoint
-app.MapGet("/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow })
+app.MapGet("/health", () => {
+    Console.WriteLine("[Gateway] Health endpoint called");
+    return new { Status = "Healthy", Timestamp = DateTime.UtcNow };
+})
    .WithName("HealthCheck")
    .WithTags("Health");
+
+// Test endpoint để kiểm tra middleware
+app.MapGet("/test", () => {
+    Console.WriteLine("[Gateway] Test endpoint called");
+    return "Middleware working";
+});
 
 app.Run();

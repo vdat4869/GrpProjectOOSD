@@ -5,6 +5,8 @@ import CheckInOut from "../pages/staff/CheckInOut";
 import VehicleMaintenance from "../pages/staff/VehicleMaintenance";
 import MonitorBookings from "../pages/staff/MonitorBookings";
 import DisputeTracking from "../pages/staff/DisputeTracking";
+import UserProfiles from "../pages/UserProfiles";
+import KycPage from "../pages/KYC/KycPage";
 
 const StaffRoutes: React.FC = () => {
   return (
@@ -15,6 +17,8 @@ const StaffRoutes: React.FC = () => {
         <Route path="maintenance" element={<VehicleMaintenance />} />
         <Route path="bookings" element={<MonitorBookings />} />
         <Route path="disputes" element={<DisputeTracking />} />
+        <Route path="profile" element={<UserProfiles />} />
+        <Route path="kyc" element={<KycPage />} />
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="*" element={<Navigate to="dashboard" replace />} />
       </Routes>

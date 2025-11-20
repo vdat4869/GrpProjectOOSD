@@ -3,8 +3,13 @@ import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
+import { User } from "../../services/authService";
 
-export default function UserAddressCard() {
+interface UserAddressCardProps {
+  user?: User;
+}
+
+export default function UserAddressCard({ user: _user }: UserAddressCardProps) {
   const { isOpen, openModal, closeModal } = useModal();
   const handleSave = () => {
     // Handle save logic here

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using BookingService.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -14,13 +15,16 @@ public class BookingsController : ControllerBase
     private readonly IBookingService _service;
     private readonly IWebHostEnvironment _env;
     private readonly BookingDbContext _context;
+    private readonly ILogger<BookingsController> _logger;
 
 
-    public BookingsController(IBookingService service, IWebHostEnvironment env, BookingDbContext context)
+    public BookingsController(IBookingService service, IWebHostEnvironment env, BookingDbContext context, ILogger<BookingsController> logger)
+
     {
         _service = service;
         _env = env;
         _context = context;
+        _logger = logger;
     }
 
     //Hiển thị lịch
@@ -40,16 +44,39 @@ public class BookingsController : ControllerBase
         return Ok(await _service.GetAllBookingsAsync());
     }
 
+    [HttpGet("vehicles")]
+    public async Task<ActionResult<IEnumerable<VehicleDto>>> GetVehicles()
+    {
+        var vehicles = await _context.Vehicles
+            .Where(v => v.IsActive)
+            .Select(v => new VehicleDto
+            {
+                Id = v.Id,
+                Name = v.Name,
+                IsActive = v.IsActive
+            })
+            .ToListAsync();
+        return Ok(vehicles);
+    }
+
     [HttpPost("createBooking")]
     public async Task<ActionResult<BookingResponse>> Create(CreateBookingRequest request)
     {
-        var seed = await EnsureDevSeedAsync();
-        if (request.CoOwnerId <= 0) request.CoOwnerId = seed.coOwnerId;
-        if (request.VehicleId <= 0) request.VehicleId = seed.vehicleId;
+        try
+        {
+            var seed = await EnsureDevSeedAsync();
+            if (request.CoOwnerId <= 0) request.CoOwnerId = seed.coOwnerId;
+            if (request.VehicleId <= 0) request.VehicleId = seed.vehicleId;
 
-        var result = await _service.CreateBookingAsync(request);
-        if (result == null) return BadRequest("Cannot create booking.");
-        return CreatedAtAction(nameof(GetAll), new { id = result.Id }, result);
+            var result = await _service.CreateBookingAsync(request);
+            if (result == null) return BadRequest(new { error = "Cannot create booking.", message = "Service returned null result." });
+            return CreatedAtAction(nameof(GetAll), new { id = result.Id }, result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating booking: {Message}", ex.Message);
+            return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+        }
     }
 
     [HttpGet("history/{coOwnerId}")]
