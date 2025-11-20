@@ -12,6 +12,8 @@ namespace BookingService.Services
     public class BookingServiceImpl : IBookingService
     {
         private readonly IBookingRepository _bookingRepository;
+        private readonly IBookingHistoryRepository _bookingHistoryRepository;
+
         private readonly IVehicleRepository _vehicleRepository;
         private readonly ICoOwnerRepository _coOwnerRepository;
         private readonly IQrCodeService _qrCodeService;
@@ -25,14 +27,17 @@ namespace BookingService.Services
             ICoOwnerRepository coOwnerRepository,
             IQrCodeService qrCodeService,
             IRabbitMQService rabbitMQService,
+            IBookingHistoryRepository bookingHistoryRepository,
             IAiService? aiService = null,
-            ILogger<BookingServiceImpl>? logger = null)
+            ILogger<BookingServiceImpl>? logger = null
+            )
         {
             _bookingRepository = bookingRepository;
             _vehicleRepository = vehicleRepository;
             _coOwnerRepository = coOwnerRepository;
             _qrCodeService = qrCodeService;
             _rabbitMQService = rabbitMQService;
+            _bookingHistoryRepository = bookingHistoryRepository;
             _aiService = aiService;
             _logger = logger;
         }
@@ -104,16 +109,30 @@ namespace BookingService.Services
             });
         }
 
+        // Tạo booking mới
         public async Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request)
         {
-            // Sử dụng trực tiếp StartTime/EndTime từ request, không convert
+            // === 1. VALIDATION CƠ BẢN ===
             var startTime = request.StartTime;
             var endTime = request.EndTime;
 
+            // Lấy giờ VN chính xác
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
-            var hoursBeforeStart = (startTime - now).TotalHours;
 
-            // Lấy xe và chủ sở hữu  
+            if (startTime < now)
+                throw new Exception("Không thể đặt lịch trong quá khứ.");
+
+            if (endTime <= startTime)
+                throw new Exception("Thời gian kết thúc phải lớn hơn thời gian bắt đầu.");
+
+            // Ràng buộc giờ hoạt động
+            var minTime = new TimeSpan(4, 0, 0);      // 04:00
+            var maxTime = new TimeSpan(23, 59, 0);    // 23:59
+
+            if (startTime.TimeOfDay < minTime || endTime.TimeOfDay > maxTime)
+                throw new Exception("Chỉ được đặt xe trong khoảng 04:00 – 23:59");
+
+            // === 2. LẤY DỮ LIỆU LIÊN QUAN ===
             var vehicle = await _vehicleRepository.GetByIdAsync(request.VehicleId);
             var coOwner = await _coOwnerRepository.GetByIdAsync(request.CoOwnerId);
             var allBookings = await _bookingRepository.GetAllAsync();
@@ -121,85 +140,66 @@ namespace BookingService.Services
             if (vehicle == null || coOwner == null)
                 throw new Exception("Xe hoặc người đồng sở hữu không tồn tại.");
 
-            // Lọc booking trùng giờ  
+            // === 3. KIỂM TRA TRÙNG LỊCH ===
             var overlappingBookings = allBookings
-                .Where(b => b.VehicleId == request.VehicleId &&
-                            b.Status != "Cancelled" &&
-                            b.EndTime > startTime &&
-                            b.StartTime < endTime)
+                .Where(b =>
+                    b.VehicleId == request.VehicleId &&
+                    b.Status != "Cancelled" &&
+                    b.EndTime > startTime &&
+                    b.StartTime < endTime
+                )
                 .ToList();
 
-            // TRƯỜNG HỢP 2: Trong 4 giờ trước khi bắt đầu  
+            var hoursBeforeStart = (startTime - now).TotalHours;
+
+            // === 4. TRƯỜNG HỢP: ĐẶT TRONG 4 GIỜ TRƯỚC KHI BẮT ĐẦU ===
             if (hoursBeforeStart <= 4)
             {
                 if (overlappingBookings.Any())
-                    throw new Exception("Không thể đặt — trong 4h chỉ đặt khi xe trống.");
+                    throw new Exception("Không thể đặt — trong 4 giờ chỉ đặt khi xe trống.");
             }
             else
             {
-                // TRƯỜNG HỢP 1: Đặt trước 4 giờ  
+                // === 5. ĐẶT TRƯỚC 4 GIỜ – ÁP DỤNG RULE ƯU TIÊN ===
                 if (overlappingBookings.Any())
                 {
-                    var startOfMonth = new DateTime(startTime.Year, startTime.Month, 1, 0, 0, 0);
+                    var startOfMonth = new DateTime(startTime.Year, startTime.Month, 1);
 
+                    // Tính usage của người đang đặt
                     var userUsedHours = allBookings
-                        .Where(b => b.CoOwnerId == request.CoOwnerId &&
-                                    b.VehicleId == request.VehicleId &&
-                                    b.StartTime >= startOfMonth &&
-                                    b.StartTime < startTime &&
-                                    b.Status != "Cancelled")
+                        .Where(b =>
+                            b.CoOwnerId == request.CoOwnerId &&
+                            b.VehicleId == request.VehicleId &&
+                            b.StartTime >= startOfMonth &&
+                            b.StartTime < startTime &&
+                            b.Status != "Cancelled"
+                        )
                         .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
-                    double allowedHoursPerDay = 20 * ((double)coOwner.OwnershipRatio / 100.0);
-                    double userUsageRatio = userUsedHours / allowedHoursPerDay;
-
-                    BookingSuggestionResponse? aiSuggestion = null;
-                    if (_aiService != null)
-                    {
-                        try
-                        {
-                            var usageHistory = allBookings
-                                .Where(b => b.VehicleId == request.VehicleId && b.StartTime >= startOfMonth && b.Status != "Cancelled")
-                                .Select(b => new Dictionary<string, object>
-                                {
-                                { "co_owner_id", b.CoOwnerId.ToString() },
-                                { "hours", (b.EndTime - b.StartTime).TotalHours },
-                                { "start_time", b.StartTime },
-                                { "end_time", b.EndTime }
-                                })
-                                .ToList<Dictionary<string, object>>();
-
-                            var aiRequest = new BookingSuggestionRequest
-                            {
-                                VehicleGroupId = request.VehicleId.ToString(),
-                                RequestedStart = startTime,
-                                RequestedEnd = endTime,
-                                CoOwnerId = request.CoOwnerId.ToString(),
-                                OwnershipPercentage = (double)coOwner.OwnershipRatio / 100.0,
-                                UsageHistory = usageHistory
-                            };
-
-                            aiSuggestion = await _aiService.GetBookingSuggestionAsync(aiRequest);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger?.LogWarning(ex, "Failed to get AI suggestion, proceeding with default logic");
-                        }
-                    }
+                    double allowedHoursPerMonth = 20 * ((double)coOwner.OwnershipRatio / 100.0);
+                    double userUsageRatio = userUsedHours / allowedHoursPerMonth;
 
                     bool hasHigherPriority = true;
+
                     foreach (var existing in overlappingBookings)
                     {
                         var other = existing.CoOwner;
                         if (other == null) continue;
 
                         var otherUsedHours = allBookings
-                            .Where(b => b.CoOwnerId == other.Id && b.VehicleId == request.VehicleId && b.StartTime >= startOfMonth && b.StartTime < startTime && b.Status != "Cancelled")
+                            .Where(b =>
+                                b.CoOwnerId == other.Id &&
+                                b.VehicleId == request.VehicleId &&
+                                b.StartTime >= startOfMonth &&
+                                b.StartTime < startTime &&
+                                b.Status != "Cancelled"
+                            )
                             .Sum(b => (b.EndTime - b.StartTime).TotalHours);
 
-                        double otherAllowedPerDay = 20 * ((double)other.OwnershipRatio / 100.0);
-                        double otherUsageRatio = otherUsedHours / otherAllowedPerDay;
+                        double otherAllowed = 20 * ((double)other.OwnershipRatio / 100.0);
+                        double otherUsageRatio = otherUsedHours / otherAllowed;
 
+                        // Nếu user dùng nhiều hơn người kia => user *không* có ưu tiên
                         if (userUsageRatio >= otherUsageRatio)
                         {
                             hasHigherPriority = false;
@@ -209,21 +209,20 @@ namespace BookingService.Services
 
                     if (!hasHigherPriority)
                     {
-                        var message = "Không thể đặt — người khác có độ ưu tiên cao hơn.";
-                        if (aiSuggestion != null && aiSuggestion.AlternativeSlots != null && aiSuggestion.AlternativeSlots.Any())
-                            message += $" AI đề xuất các khung giờ thay thế.";
-                        throw new Exception(message);
+                        throw new Exception("Không thể đặt — người khác có độ ưu tiên cao hơn.");
                     }
-                    else
+
+                    // === 6. User có ưu tiên => cancel booking người khác ===
+                    foreach (var existing in overlappingBookings)
                     {
-                        foreach (var existing in overlappingBookings)
-                            existing.Status = "Cancelled";
-                        await _bookingRepository.SaveChangesAsync();
+                        existing.Status = "Cancelled";
                     }
+
+                    await _bookingRepository.SaveChangesAsync();
                 }
             }
 
-            // Tạo booking mới giữ nguyên giờ nhập  
+            // === 7. TẠO BOOKING ===
             var newBooking = new Booking
             {
                 VehicleId = request.VehicleId,
@@ -237,23 +236,25 @@ namespace BookingService.Services
             await _bookingRepository.AddAsync(newBooking);
             await _bookingRepository.SaveChangesAsync();
 
-            var savedBooking = await _bookingRepository.GetByIdAsync(newBooking.Id);
-            if (savedBooking == null) throw new Exception("Failed to retrieve saved booking");
+            var saved = await _bookingRepository.GetByIdAsync(newBooking.Id);
+            if (saved == null)
+                throw new Exception("Không thể lấy booking sau khi lưu.");
 
+            // === 8. TRẢ RESPONSE ===
             return new BookingResponse
             {
-                Id = savedBooking.Id,
-                VehicleId = savedBooking.VehicleId,
+                Id = saved.Id,
+                VehicleId = saved.VehicleId,
                 VehicleName = vehicle.Name,
-                CoOwnerId = savedBooking.CoOwnerId,
+                CoOwnerId = saved.CoOwnerId,
                 CoOwnerName = coOwner.Name,
-                StartTime = savedBooking.StartTime,  // giữ nguyên giờ nhập  
-                EndTime = savedBooking.EndTime,
-                Status = savedBooking.Status,
-                Note = savedBooking.Note
+                StartTime = saved.StartTime,
+                EndTime = saved.EndTime,
+                Status = saved.Status,
+                Note = saved.Note
             };
-
         }
+
 
 
 
@@ -268,7 +269,7 @@ namespace BookingService.Services
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
             if (booking == null) return null;
 
-            // Normalize thời gian từ request về UTC
+            // Normalize thời gian về UTC nếu cần  
             var startTime = request.StartTime.Kind == DateTimeKind.Unspecified
                 ? TimeZoneHelper.FromVietnamTime(request.StartTime)
                 : request.StartTime.ToUniversalTime();
@@ -276,9 +277,113 @@ namespace BookingService.Services
                 ? TimeZoneHelper.FromVietnamTime(request.EndTime)
                 : request.EndTime.ToUniversalTime();
 
+            // Lấy giờ VN hiện tại  
+            var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
+
+            // === 1. VALIDATION CƠ BẢN ===  
+            if (startTime < now)
+                throw new Exception("Không thể đặt lịch trong quá khứ.");
+
+            if (endTime <= startTime)
+                throw new Exception("Thời gian kết thúc phải lớn hơn thời gian bắt đầu.");
+
+            var minTime = new TimeSpan(4, 0, 0);      // 04:00  
+            var maxTime = new TimeSpan(23, 59, 0);    // 23:59  
+
+            if (startTime.TimeOfDay < minTime || endTime.TimeOfDay > maxTime)
+                throw new Exception("Chỉ được đặt xe trong khoảng 04:00 – 23:59");
+
+            // === 2. LẤY DỮ LIỆU LIÊN QUAN ===  
+            var vehicle = await _vehicleRepository.GetByIdAsync(booking.VehicleId);
+            var coOwner = await _coOwnerRepository.GetByIdAsync(booking.CoOwnerId);
+            var allBookings = await _bookingRepository.GetAllAsync();
+
+            if (vehicle == null || coOwner == null)
+                throw new Exception("Xe hoặc người đồng sở hữu không tồn tại.");
+
+            // === 3. KIỂM TRA TRÙNG LỊCH ===  
+            var overlappingBookings = allBookings
+                .Where(b =>
+                    b.VehicleId == booking.VehicleId &&
+                    b.Id != bookingId && // không tính chính booking này  
+                    b.Status != "Cancelled" &&
+                    b.EndTime > startTime &&
+                    b.StartTime < endTime
+                )
+                .ToList();
+
+            var hoursBeforeStart = (startTime - now).TotalHours;
+
+            // === 4. TRƯỜNG HỢP: ĐẶT TRONG 4 GIỜ TRƯỚC KHI BẮT ĐẦU ===  
+            if (hoursBeforeStart <= 4)
+            {
+                if (overlappingBookings.Any())
+                    throw new Exception("Không thể đặt — trong 4 giờ chỉ đặt khi xe trống.");
+            }
+            else
+            {
+                // === 5. ĐẶT TRƯỚC 4 GIỜ – ÁP DỤNG RULE ƯU TIÊN ===  
+                if (overlappingBookings.Any())
+                {
+                    var startOfMonth = new DateTime(startTime.Year, startTime.Month, 1);
+
+                    var userUsedHours = allBookings
+                        .Where(b => b.CoOwnerId == booking.CoOwnerId &&
+                                    b.VehicleId == booking.VehicleId &&
+                                    b.StartTime >= startOfMonth &&
+                                    b.StartTime < startTime &&
+                                    b.Status != "Cancelled" &&
+                                    b.Id != bookingId) // exclude chính booking này  
+                        .Sum(b => (b.EndTime - b.StartTime).TotalHours);
+
+                    double allowedHoursPerMonth = 20 * ((double)coOwner.OwnershipRatio / 100.0);
+                    double userUsageRatio = userUsedHours / allowedHoursPerMonth;
+
+                    bool hasHigherPriority = true;
+
+                    foreach (var existing in overlappingBookings)
+                    {
+                        var other = existing.CoOwner;
+                        if (other == null) continue;
+
+                        var otherUsedHours = allBookings
+                            .Where(b => b.CoOwnerId == other.Id &&
+                                        b.VehicleId == booking.VehicleId &&
+                                        b.StartTime >= startOfMonth &&
+                                        b.StartTime < startTime &&
+                                        b.Status != "Cancelled")
+                            .Sum(b => (b.EndTime - b.StartTime).TotalHours);
+
+                        double otherAllowed = 20 * ((double)other.OwnershipRatio / 100.0);
+                        double otherUsageRatio = otherUsedHours / otherAllowed;
+
+                        if (userUsageRatio >= otherUsageRatio)
+                        {
+                            hasHigherPriority = false;
+                            break;
+                        }
+                    }
+
+                    if (!hasHigherPriority)
+                    {
+                        throw new Exception("Không thể cập nhật — người khác có độ ưu tiên cao hơn.");
+                    }
+
+                    // User có ưu tiên => cancel booking người khác  
+                    foreach (var existing in overlappingBookings)
+                    {
+                        existing.Status = "Cancelled";
+                    }
+
+                    await _bookingRepository.SaveChangesAsync();
+                }
+            }
+
+            // === 6. CẬP NHẬT BOOKING ===  
             booking.StartTime = startTime;
             booking.EndTime = endTime;
             booking.Note = request.Note;
+            booking.Status = "Pending";
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
@@ -287,15 +392,17 @@ namespace BookingService.Services
             {
                 Id = booking.Id,
                 VehicleId = booking.VehicleId,
-                VehicleName = booking.Vehicle?.Name,
+                VehicleName = vehicle.Name,
                 CoOwnerId = booking.CoOwnerId,
-                CoOwnerName = booking.CoOwner?.Name,
+                CoOwnerName = coOwner.Name,
                 StartTime = TimeZoneHelper.ToVietnamTime(booking.StartTime),
                 EndTime = TimeZoneHelper.ToVietnamTime(booking.EndTime),
-                Status = booking.Status,
+                Status = "Pending",
                 Note = booking.Note
             };
+
         }
+
 
         // Cập nhật trạng thái booking
         public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
@@ -381,8 +488,8 @@ namespace BookingService.Services
             if (booking == null)
                 throw new Exception("Booking không tồn tại.");
 
-            if (booking.Status != "Đã đặt" && booking.Status != "Confirmed")
-                throw new Exception("Chỉ có thể tạo QR code cho booking đã được xác nhận.");
+            if (booking.Status != "Pending")
+                throw new Exception("Chỉ có thể tạo QR code cho booking chưa được sử dụng.");
 
             var qrCodeData = _qrCodeService.GenerateQrCode(bookingId);
             var qrCodeImageBase64 = _qrCodeService.GenerateQrCodeImageBase64(qrCodeData);
@@ -416,12 +523,12 @@ namespace BookingService.Services
             if (booking.CheckInTime.HasValue)
                 throw new Exception("Booking đã được check-in rồi.");
 
-            if (booking.Status != "Đã đặt" && booking.Status != "Confirmed")
-                throw new Exception("Chỉ có thể check-in cho booking đã được xác nhận.");
+            if (booking.Status != "Pending")
+                throw new Exception("Chỉ có thể check-in cho booking chưa được sử dụng.");
 
             var checkInTime = DateTime.UtcNow;
             booking.CheckInTime = checkInTime;
-            booking.Status = "InProgress";
+            booking.Status = "Confirmed";
             if (!string.IsNullOrEmpty(request.DigitalSignature))
             {
                 booking.DigitalSignature = request.DigitalSignature;
@@ -466,14 +573,30 @@ namespace BookingService.Services
             booking.Cost = request.Cost;
             if (!string.IsNullOrEmpty(request.Note))
             {
-                booking.Note = string.IsNullOrEmpty(booking.Note)
-                    ? request.Note
-                    : $"{booking.Note}\n{request.Note}";
+                booking.Note = request.Note;
             }
             booking.Status = "Completed";
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
+
+            // Lưu vào lịch sử sử dụng
+            var history = new BookingHistory
+            {
+                BookingId = booking.Id,
+                VehicleId = booking.VehicleId,
+                CoOwnerId = booking.CoOwnerId,
+                StartTime = booking.StartTime,
+                EndTime = booking.EndTime,
+                CheckInTime = booking.CheckInTime.Value,
+                CheckOutTime = checkOutTime,
+                DistanceKm = request.DistanceKm,
+                Cost = request.Cost,
+                Note = booking.Note
+            };
+
+            await _bookingHistoryRepository.AddAsync(history);
+            await _bookingHistoryRepository.SaveChangesAsync();
 
             // Publish event for payment and report services
             _rabbitMQService.PublishEvent("booking.completed", new BookingCompletedEvent
@@ -499,6 +622,24 @@ namespace BookingService.Services
                 Message = "Check-out thành công"
             };
         }
+        public async Task<IEnumerable<BookingHistoryResponse>> GetBookingHistoryAsync(int coOwnerId)
+        {
+            var histories = await _bookingHistoryRepository.GetByCoOwnerIdAsync(coOwnerId);
+
+            return histories.Select(h => new BookingHistoryResponse
+            {
+                BookingId = h.BookingId,
+                VehicleId = h.VehicleId,
+                StartTime = TimeZoneHelper.ToVietnamTime(h.StartTime),
+                EndTime = TimeZoneHelper.ToVietnamTime(h.EndTime),
+                CheckInTime = TimeZoneHelper.ToVietnamTime(h.CheckInTime),
+                CheckOutTime = TimeZoneHelper.ToVietnamTime(h.CheckOutTime),
+                DistanceKm = h.DistanceKm,
+                Cost = h.Cost,
+                Note = h.Note
+            });
+        }
+
     }
 }
 

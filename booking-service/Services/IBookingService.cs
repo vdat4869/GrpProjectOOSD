@@ -17,6 +17,8 @@ namespace BookingService.Services
         Task<QrCodeResponse> GenerateQrCodeAsync(int bookingId);
         Task<CheckInResponse> CheckInAsync(int bookingId, CheckInRequest request);
         Task<CheckOutResponse> CheckOutAsync(int bookingId, CheckOutRequest request);
+        Task<IEnumerable<BookingHistoryResponse>> GetBookingHistoryAsync(int coOwnerId);
+
     }
 }
 

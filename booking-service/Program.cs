@@ -31,6 +31,9 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+builder.Services.AddScoped<IBookingHistoryRepository, BookingHistoryRepository>();
+
+
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JWT");
 var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured");

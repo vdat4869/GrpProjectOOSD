@@ -15,6 +15,7 @@ public class BookingsController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly BookingDbContext _context;
 
+
     public BookingsController(IBookingService service, IWebHostEnvironment env, BookingDbContext context)
     {
         _service = service;
@@ -50,6 +51,14 @@ public class BookingsController : ControllerBase
         if (result == null) return BadRequest("Cannot create booking.");
         return CreatedAtAction(nameof(GetAll), new { id = result.Id }, result);
     }
+
+    [HttpGet("history/{coOwnerId}")]
+    public async Task<IActionResult> GetHistory(int coOwnerId)
+    {
+        var history = await _service.GetBookingHistoryAsync(coOwnerId);
+        return Ok(history);
+    }
+
 
     [HttpPut("edit/{id}")]
     public async Task<ActionResult<BookingResponse>> Update(int id, UpdateBookingRequest request)

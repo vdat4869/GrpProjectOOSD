@@ -11,12 +11,18 @@ namespace BookingService.Data
         }
 
         public DbSet<Booking> Bookings { get; set; }
+        public DbSet<BookingHistory> BookingHistories { get; set; } // <-- thêm đây
         public DbSet<Vehicle> Vehicles { get; set; }
         public DbSet<CoOwner> CoOwners { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<BookingHistory>(entity =>
+            {
+                entity.Property(e => e.Cost).HasColumnType("decimal(18,2)");
+                entity.Property(e => e.DistanceKm).HasColumnType("decimal(18,2)");
+            });
 
             // === Bảng Vehicle ===
             modelBuilder.Entity<Vehicle>(entity =>
