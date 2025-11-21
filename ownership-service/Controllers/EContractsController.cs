@@ -77,22 +77,42 @@ public class EContractsController : ControllerBase
     }
 
     /// <summary>
-    /// Approve e-contract (Staff/Admin only)
+    /// Get e-contract by ID
+    /// </summary>
+    [HttpGet("{id}")]
+    public async Task<ActionResult<EContractDto>> GetEContractById(Guid id)
+    {
+        var query = new GetEContractByIdQuery(id);
+        var result = await _mediator.Send(query);
+        
+        if (result == null)
+        {
+            return NotFound();
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Approve e-contract (Staff/Admin only) - Duyệt hợp đồng pháp lý điện tử
     /// </summary>
     [HttpPost("{id}/approve")]
     [Authorize(Roles = "Admin,Staff")]
-    public async Task<ActionResult<EContractDto>> ApproveEContract(Guid id)
+    public async Task<ActionResult<EContractDto>> ApproveEContract(Guid id, [FromBody] ApproveEContractRequest? request = null)
     {
         try
         {
-            // This would typically use a command, but for simplicity, we'll update directly
-            var eContract = await _mediator.Send(new GetEContractsByVehicleGroupQuery(Guid.Empty, null));
-            // Note: This is a simplified version. In production, you'd have a GetEContractByIdQuery
-            return Ok(new { message = "E-contract approval endpoint - implementation needed" });
+            var command = new ApproveEContractCommand(id, request?.Notes);
+            var result = await _mediator.Send(command);
+            return Ok(result);
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -118,5 +138,10 @@ public class EContractsController : ControllerBase
 public class SignEContractRequest
 {
     public string DigitalSignature { get; set; } = string.Empty;
+}
+
+public class ApproveEContractRequest
+{
+    public string? Notes { get; set; }
 }
 

@@ -20,11 +20,17 @@ public class SimpleProxyMiddleware
         { "/api/shared-fund", ("payment-service", "/api/SharedFund") },
         { "/api/ownership", ("ownership-service", "/api") },
         { "/api/coowners", ("ownership-service", "/api/CoOwners") },
+        { "/api/CoOwners", ("ownership-service", "/api/CoOwners") },
         { "/api/vehicles", ("ownership-service", "/api/Vehicles") },
         { "/api/econtract", ("ownership-service", "/api/EContract") },
         { "/api/groups", ("ownership-service", "/api/Group") },
         { "/api/voting", ("ownership-service", "/api/Voting") },
+        { "/api/Voting", ("ownership-service", "/api/Voting") },
         { "/api/fund", ("ownership-service", "/api/SharedFund") },
+        { "/api/VehicleGroups", ("ownership-service", "/api/VehicleGroups") },
+        { "/api/Ownerships", ("ownership-service", "/api/Ownerships") },
+        { "/api/EContracts", ("ownership-service", "/api/EContracts") },
+        { "/api/GroupFunds", ("ownership-service", "/api/GroupFunds") },
         { "/api/report", ("report-service", "/api/Report") },
         { "/api/analytics", ("report-service", "/api/Analytics") },
         { "/api/history", ("report-service", "/api/History") },
@@ -190,7 +196,9 @@ public class SimpleProxyMiddleware
                     if (await ProxyRequestAsync(context, serviceName, targetPath))
                         return;
                 }
-                else if (prefix == "/api/coowners" || prefix == "/api/vehicles" || prefix == "/api/econtract")
+                else if (prefix == "/api/coowners" || prefix == "/api/CoOwners" || prefix == "/api/vehicles" || prefix == "/api/econtract" ||
+                         prefix == "/api/VehicleGroups" || prefix == "/api/Ownerships" || prefix == "/api/EContracts" || prefix == "/api/GroupFunds" ||
+                         prefix == "/api/Voting")
                 {
                     // Direct mapping for ownership service endpoints
                     var remainder = path.Substring(prefix.Length);
@@ -209,6 +217,34 @@ public class SimpleProxyMiddleware
                     var targetPath = targetPrefix + remainder;
                     if (await ProxyRequestAsync(context, serviceName, targetPath))
                         return;
+                }
+                else if (prefix == "/api/payment")
+                {
+                    // Payment service routing - handle costshares and other sub-routes
+                    var remainder = path.Substring(prefix.Length);
+                    if (remainder.StartsWith("/costshares", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Map /api/payment/costshares -> /api/CostShares
+                        var costSharesPath = remainder.Substring("/costshares".Length);
+                        var targetPath = "/api/CostShares" + costSharesPath;
+                        if (await ProxyRequestAsync(context, "payment-service", targetPath))
+                            return;
+                    }
+                    else if (remainder.StartsWith("/transactions", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Map /api/payment/transactions -> /api/Transactions
+                        var transactionsPath = remainder.Substring("/transactions".Length);
+                        var targetPath = "/api/Transactions" + transactionsPath;
+                        if (await ProxyRequestAsync(context, "payment-service", targetPath))
+                            return;
+                    }
+                    else
+                    {
+                        // Standard payment routing
+                        var targetPath = targetPrefix + remainder;
+                        if (await ProxyRequestAsync(context, serviceName, targetPath))
+                            return;
+                    }
                 }
                 else
                 {
