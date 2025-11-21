@@ -52,11 +52,11 @@ services:
     networks:
       - ev_network
     healthcheck:
-      test: ["CMD", "mongosh", "-u", "${MONGO_USER:-mongoadmin}", "-p", "${MONGO_PASSWORD:-mongopass123}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')", "--quiet"]
+      test: ["CMD-SHELL", "mongosh -u mongoadmin -p mongopass123 --authenticationDatabase admin --eval 'db.adminCommand(\"ping\")' --quiet || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
+      retries: 10
+      start_period: 40s
 
   # RabbitMQ Message Broker
   rabbitmq:
