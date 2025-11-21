@@ -33,13 +33,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // Cấu hình CORS để frontend có thể gọi API
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    if (builder.Environment.IsDevelopment())
     {
-        policy.WithOrigins("http://localhost", "http://localhost:80", "http://localhost:5173", "http://frontend:5173")
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials();
-    });
+        // In development, allow all origins
+        options.AddPolicy("AllowFrontend", policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+    }
+    else
+    {
+        // In production, restrict to specific origins
+        options.AddPolicy("AllowFrontend", policy =>
+        {
+            policy.WithOrigins(
+                    "http://localhost",
+                    "http://localhost:80",
+                    "http://localhost:8000",
+                    "http://localhost:5173",
+                    "http://frontend:5173"
+                  )
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        });
+    }
     
     // Fallback policy for all origins (without credentials)
     options.AddDefaultPolicy(policy =>
@@ -77,11 +97,11 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Sử dụng Simple Proxy middleware FIRST (before everything)
-app.UseMiddleware<SimpleProxyMiddleware>();
-
-// Sử dụng CORS
+// Sử dụng CORS FIRST (before proxy to handle preflight requests)
 app.UseCors("AllowFrontend");
+
+// Sử dụng Simple Proxy middleware
+app.UseMiddleware<SimpleProxyMiddleware>();
 
 // Sử dụng Authentication (after proxy for routes that need auth)
 app.UseAuthentication();

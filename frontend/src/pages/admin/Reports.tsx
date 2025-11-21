@@ -9,7 +9,8 @@ import {
   reportService,
   AnalyticsReport,
 } from "../../services/reportService";
-import { ownershipService, VehicleGroup } from "../../services/ownershipService";
+import { ownershipService, VehicleGroup, Ownership } from "../../services/ownershipService";
+import { bookingService, Booking } from "../../services/bookingService";
 
 const Reports: React.FC = () => {
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
@@ -21,6 +22,8 @@ const Reports: React.FC = () => {
   );
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [reports, setReports] = useState<AnalyticsReport[]>([]);
+  const [ownerships, setOwnerships] = useState<Ownership[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +36,11 @@ const Reports: React.FC = () => {
     if (selectedVehicleId) {
       loadReports();
     }
-  }, [selectedVehicleId]);
+    if (selectedGroupId) {
+      loadOwnerships();
+      loadBookings();
+    }
+  }, [selectedVehicleId, selectedGroupId]);
 
   const loadGroups = async () => {
     try {
@@ -72,6 +79,62 @@ const Reports: React.FC = () => {
         setSelectedVehicleId(parseInt(group.id.replace(/-/g, "").substring(0, 8), 16) || 1);
       }
   };
+
+  const loadOwnerships = async () => {
+    if (!selectedGroupId) return;
+    try {
+      const data = await ownershipService.getOwnerships(selectedGroupId, undefined, true);
+      setOwnerships(data);
+    } catch (err) {
+      console.error("Failed to load ownerships:", err);
+    }
+  };
+
+  const loadBookings = async () => {
+    try {
+      const allBookings = await bookingService.getBookings();
+      setBookings(allBookings);
+    } catch (err) {
+      console.error("Failed to load bookings:", err);
+    }
+  };
+
+  // Calculate usage comparison data
+  const getUsageComparisonData = () => {
+    if (!ownerships.length || !bookings.length) return [];
+
+    // Group bookings by coOwnerId (booking.coOwnerId is number, ownership.coOwnerId is string)
+    const bookingsByCoOwner: { [key: string]: Booking[] } = {};
+    bookings.forEach((booking) => {
+      const coOwnerId = booking.coOwnerId.toString();
+      if (!bookingsByCoOwner[coOwnerId]) {
+        bookingsByCoOwner[coOwnerId] = [];
+      }
+      bookingsByCoOwner[coOwnerId].push(booking);
+    });
+
+    // Calculate usage statistics for each co-owner
+    return ownerships.map((ownership) => {
+      // Try to match bookings by coOwnerId (convert both to string for comparison)
+      const coOwnerBookings = bookingsByCoOwner[ownership.coOwnerId] || [];
+      const totalBookings = bookings.length;
+      const bookingPercentage = totalBookings > 0 ? (coOwnerBookings.length / totalBookings) * 100 : 0;
+      const totalDistance = coOwnerBookings.reduce((sum, b) => sum + (b.distanceKm || 0), 0);
+      const totalCost = coOwnerBookings.reduce((sum, b) => sum + (b.cost || 0), 0);
+
+      return {
+        coOwnerName: ownership.coOwnerName || ownership.coOwnerId.substring(0, 8),
+        ownershipPercentage: ownership.ownershipPercentage,
+        bookingCount: coOwnerBookings.length,
+        bookingPercentage: bookingPercentage,
+        totalDistance: totalDistance,
+        totalCost: totalCost,
+        difference: bookingPercentage - ownership.ownershipPercentage,
+      };
+    });
+  };
+
+  const usageComparisonData = getUsageComparisonData();
 
   const handleGenerateReport = async () => {
     if (!selectedVehicleId) {
@@ -118,30 +181,149 @@ const Reports: React.FC = () => {
     }
   };
 
-  const handleExportReport = (report: AnalyticsReport) => {
+  const handleExportReport = (report: AnalyticsReport, format: "csv" | "pdf" | "excel" = "csv") => {
     try {
       const reportData = JSON.parse(report.reportData);
-      const csvRows = [
-        ["Report Type", report.reportType],
-        ["Period", `${report.periodStart} to ${report.periodEnd}`],
-        ["Generated At", report.generatedAt],
-        [],
-        ...Object.entries(reportData).map(([key, value]) => [
-          key,
-          typeof value === "object" ? JSON.stringify(value) : String(value),
-        ]),
-      ];
+      
+      if (format === "csv") {
+        const csvRows = [
+          ["Report Type", report.reportType],
+          ["Period", `${report.periodStart} to ${report.periodEnd}`],
+          ["Generated At", report.generatedAt],
+          [],
+          ...Object.entries(reportData).map(([key, value]) => [
+            key,
+            typeof value === "object" ? JSON.stringify(value) : String(value),
+          ]),
+        ];
 
-      const csvContent = csvRows.map((row) => row.join(",")).join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv" });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${report.reportType}-report-${report.id}.csv`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+        const csvContent = csvRows.map((row) => row.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${report.reportType}-report-${report.id}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else if (format === "excel") {
+        // Excel export (using CSV format with .xlsx extension - simplified)
+        // For full Excel support, would need a library like xlsx
+        const csvRows = [
+          ["Report Type", report.reportType],
+          ["Period", `${report.periodStart} to ${report.periodEnd}`],
+          ["Generated At", report.generatedAt],
+          [],
+          ...Object.entries(reportData).map(([key, value]) => [
+            key,
+            typeof value === "object" ? JSON.stringify(value) : String(value),
+          ]),
+        ];
+
+        const csvContent = csvRows.map((row) => row.join("\t")).join("\n");
+        const blob = new Blob([csvContent], { type: "application/vnd.ms-excel" });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${report.reportType}-report-${report.id}.xls`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      } else if (format === "pdf") {
+        // PDF export - generate HTML and use browser print
+        const htmlContent = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>${report.reportType} Report</title>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  padding: 20px;
+                  color: #333;
+                }
+                h1 {
+                  color: #1f2937;
+                  border-bottom: 2px solid #1f2937;
+                  padding-bottom: 10px;
+                }
+                .info {
+                  margin: 20px 0;
+                }
+                .info-row {
+                  display: flex;
+                  justify-content: space-between;
+                  padding: 8px 0;
+                  border-bottom: 1px solid #e5e7eb;
+                }
+                .info-label {
+                  font-weight: bold;
+                  color: #6b7280;
+                }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 20px 0;
+                }
+                th, td {
+                  border: 1px solid #d1d5db;
+                  padding: 8px;
+                  text-align: left;
+                }
+                th {
+                  background-color: #f3f4f6;
+                  font-weight: bold;
+                }
+                @media print {
+                  body {
+                    padding: 0;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              <h1>${report.reportType} Report</h1>
+              <div class="info">
+                <div class="info-row">
+                  <span class="info-label">Period:</span>
+                  <span>${report.periodStart} to ${report.periodEnd}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Generated At:</span>
+                  <span>${report.generatedAt}</span>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${Object.entries(reportData).map(([key, value]) => `
+                    <tr>
+                      <td>${key}</td>
+                      <td>${typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </body>
+          </html>
+        `;
+
+        const printWindow = window.open("", "_blank");
+        if (printWindow) {
+          printWindow.document.write(htmlContent);
+          printWindow.document.close();
+          setTimeout(() => {
+            printWindow.print();
+          }, 250);
+        }
+      }
     } catch (err) {
       console.error("Failed to export report:", err);
+      setError("Failed to export report. Please try again.");
     }
   };
 
@@ -228,6 +410,82 @@ const Reports: React.FC = () => {
         </div>
       )}
 
+      {/* Usage Comparison Table */}
+      {usageComparisonData.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+          <div className="border-b border-gray-200 p-6 dark:border-gray-800">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
+              Usage Comparison by Member
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Compare each member's actual usage with their ownership percentage
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+              <thead className="bg-gray-50 dark:bg-gray-800/30">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Member
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Ownership %
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Booking Count
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Booking %
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Total Distance (km)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Total Cost (₫)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Difference
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white text-sm dark:divide-gray-800 dark:bg-gray-900">
+                {usageComparisonData.map((data, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                    <td className="whitespace-nowrap px-6 py-4 font-medium text-gray-900 dark:text-white/90">
+                      {data.coOwnerName}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {data.ownershipPercentage.toFixed(1)}%
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {data.bookingCount}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {data.bookingPercentage.toFixed(1)}%
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                      {data.totalDistance.toFixed(2)}
+                    </td>
+                    <td className="whitespace-nowrap px-6 py-4 text-gray-500 dark:text-gray-400">
+                      ₫{data.totalCost.toLocaleString()}
+                    </td>
+                    <td className={`whitespace-nowrap px-6 py-4 font-semibold ${
+                      Math.abs(data.difference) < 5
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : data.difference > 0
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-blue-600 dark:text-blue-400"
+                    }`}>
+                      {data.difference > 0 ? "+" : ""}{data.difference.toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {[
           {
@@ -306,13 +564,29 @@ const Reports: React.FC = () => {
                       Generated: {formatDate(report.generatedAt)}
                     </p>
                   </div>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => handleExportReport(report)}
-                  >
-                    Export CSV
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleExportReport(report, "csv")}
+                    >
+                      CSV
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleExportReport(report, "excel")}
+                    >
+                      Excel
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleExportReport(report, "pdf")}
+                    >
+                      PDF
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>

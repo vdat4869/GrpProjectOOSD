@@ -157,12 +157,105 @@ const PaymentHistory: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <button
-                        onClick={() => handleViewDetails(payment)}
-                        className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm font-medium"
-                      >
-                        View Details
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => handleViewDetails(payment)}
+                          className="text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm font-medium"
+                        >
+                          View Details
+                        </button>
+                        {payment.status === PaymentStatus.Completed && (
+                          <button
+                            onClick={() => {
+                              // Generate and download receipt
+                              const receiptHTML = `
+                                <!DOCTYPE html>
+                                <html>
+                                  <head>
+                                    <meta charset="UTF-8">
+                                    <title>Payment Receipt - ${payment.id.substring(0, 8)}</title>
+                                    <style>
+                                      body {
+                                        font-family: Arial, sans-serif;
+                                        max-width: 800px;
+                                        margin: 0 auto;
+                                        padding: 20px;
+                                        color: #333;
+                                      }
+                                      .header {
+                                        text-align: center;
+                                        border-bottom: 2px solid #333;
+                                        padding-bottom: 20px;
+                                        margin-bottom: 30px;
+                                      }
+                                      .header h1 {
+                                        margin: 0;
+                                        font-size: 28px;
+                                      }
+                                      .info-row {
+                                        display: flex;
+                                        justify-content: space-between;
+                                        padding: 10px 0;
+                                        border-bottom: 1px solid #eee;
+                                      }
+                                      .info-label {
+                                        font-weight: bold;
+                                        color: #666;
+                                      }
+                                      .amount {
+                                        font-size: 24px;
+                                        font-weight: bold;
+                                        color: #059669;
+                                        text-align: right;
+                                        margin-top: 20px;
+                                      }
+                                    </style>
+                                  </head>
+                                  <body>
+                                    <div class="header">
+                                      <h1>PAYMENT RECEIPT</h1>
+                                      <p>EV Co-ownership & Cost-sharing System</p>
+                                      <p>Receipt Date: ${formatDate(payment.createdAt)}</p>
+                                    </div>
+                                    <div class="info-row">
+                                      <span class="info-label">Payment ID:</span>
+                                      <span>${payment.id}</span>
+                                    </div>
+                                    <div class="info-row">
+                                      <span class="info-label">Amount:</span>
+                                      <span>${formatAmount(payment.amount)} ${payment.currency}</span>
+                                    </div>
+                                    <div class="info-row">
+                                      <span class="info-label">Method:</span>
+                                      <span>${payment.method === 2 ? "Banking" : payment.method === 3 ? "E-Wallet" : "Cash"}</span>
+                                    </div>
+                                    <div class="info-row">
+                                      <span class="info-label">Status:</span>
+                                      <span>${getStatusLabel(payment.status)}</span>
+                                    </div>
+                                    <div class="amount">
+                                      Total: ${formatAmount(payment.amount)} ${payment.currency}
+                                    </div>
+                                  </body>
+                                </html>
+                              `;
+                              const blob = new Blob([receiptHTML], { type: "text/html" });
+                              const url = URL.createObjectURL(blob);
+                              const link = document.createElement("a");
+                              link.href = url;
+                              link.download = `receipt-${payment.id.substring(0, 8)}.html`;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                              URL.revokeObjectURL(url);
+                            }}
+                            className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 text-sm font-medium"
+                            title="Download Receipt"
+                          >
+                            📥 Receipt
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

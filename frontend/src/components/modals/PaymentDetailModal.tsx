@@ -154,6 +154,180 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     }
   };
 
+  const handleDownloadReceipt = () => {
+    // Generate receipt HTML
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Payment Receipt - ${payment.id.substring(0, 8)}</title>
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              max-width: 800px;
+              margin: 0 auto;
+              padding: 20px;
+              color: #333;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #333;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+            }
+            .header p {
+              margin: 5px 0;
+              color: #666;
+            }
+            .receipt-info {
+              margin-bottom: 30px;
+            }
+            .receipt-info h2 {
+              font-size: 20px;
+              margin-bottom: 15px;
+              color: #333;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 10px 0;
+              border-bottom: 1px solid #eee;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #666;
+            }
+            .info-value {
+              color: #333;
+            }
+            .amount {
+              font-size: 24px;
+              font-weight: bold;
+              color: #059669;
+              text-align: right;
+              margin-top: 20px;
+            }
+            .status {
+              display: inline-block;
+              padding: 5px 15px;
+              border-radius: 5px;
+              font-weight: bold;
+              margin-top: 10px;
+            }
+            .status.completed {
+              background-color: #d1fae5;
+              color: #059669;
+            }
+            .status.pending {
+              background-color: #fef3c7;
+              color: #d97706;
+            }
+            .status.failed {
+              background-color: #fee2e2;
+              color: #dc2626;
+            }
+            .footer {
+              margin-top: 40px;
+              padding-top: 20px;
+              border-top: 2px solid #333;
+              text-align: center;
+              color: #666;
+              font-size: 12px;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+              .no-print {
+                display: none;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>PAYMENT RECEIPT</h1>
+            <p>EV Co-ownership & Cost-sharing System</p>
+            <p>Receipt Date: ${formatDate(payment.createdAt)}</p>
+          </div>
+          
+          <div class="receipt-info">
+            <h2>Payment Information</h2>
+            <div class="info-row">
+              <span class="info-label">Payment ID:</span>
+              <span class="info-value">${payment.id}</span>
+            </div>
+            ${payment.transactionId ? `
+            <div class="info-row">
+              <span class="info-label">Transaction ID:</span>
+              <span class="info-value">${payment.transactionId}</span>
+            </div>
+            ` : ''}
+            ${payment.externalTransactionId ? `
+            <div class="info-row">
+              <span class="info-label">External Transaction ID:</span>
+              <span class="info-value">${payment.externalTransactionId}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+              <span class="info-label">Payment Method:</span>
+              <span class="info-value">${getMethodLabel(payment.method)}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Status:</span>
+              <span class="info-value">
+                <span class="status ${getStatusLabel(payment.status).toLowerCase()}">
+                  ${getStatusLabel(payment.status)}
+                </span>
+              </span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Created At:</span>
+              <span class="info-value">${formatDate(payment.createdAt)}</span>
+            </div>
+            ${payment.processedAt ? `
+            <div class="info-row">
+              <span class="info-label">Processed At:</span>
+              <span class="info-value">${formatDate(payment.processedAt)}</span>
+            </div>
+            ` : ''}
+          </div>
+          
+          <div class="amount">
+            Amount: ${formatAmount(payment.amount)} ${payment.currency}
+          </div>
+          
+          ${payment.errorMessage ? `
+          <div style="margin-top: 20px; padding: 15px; background-color: #fee2e2; border-radius: 5px;">
+            <strong>Error:</strong> ${payment.errorMessage}
+          </div>
+          ` : ''}
+          
+          <div class="footer">
+            <p>This is an electronic receipt generated by the EV Co-ownership & Cost-sharing System.</p>
+            <p>For inquiries, please contact support.</p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    // Create blob and download
+    const blob = new Blob([receiptHTML], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `payment-receipt-${payment.id.substring(0, 8)}-${new Date().toISOString().split("T")[0]}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} className="max-w-[600px] m-4">
       <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
@@ -285,6 +459,19 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   className="w-full"
                 >
                   Open Payment URL
+                </Button>
+              </div>
+            )}
+
+            {payment.status === PaymentStatus.Completed && (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  onClick={handleDownloadReceipt}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Download Receipt
                 </Button>
               </div>
             )}

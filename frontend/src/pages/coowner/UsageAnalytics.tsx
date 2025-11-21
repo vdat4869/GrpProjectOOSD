@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
-import LineChartOne from "../../components/charts/line/LineChartOne";
+import Chart from "react-apexcharts";
 import Button from "../../components/ui/button/Button";
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
@@ -11,7 +11,8 @@ import {
   UsageStatistics,
   CostStatistics,
 } from "../../services/reportService";
-import { ownershipService, VehicleGroup } from "../../services/ownershipService";
+import { ownershipService, VehicleGroup, Ownership } from "../../services/ownershipService";
+import { bookingService, Booking } from "../../services/bookingService";
 import { aiService, FairnessCheckResponse } from "../../services/aiService";
 
 const UsageAnalytics: React.FC = () => {
@@ -25,6 +26,8 @@ const UsageAnalytics: React.FC = () => {
   const [usageStats, setUsageStats] = useState<UsageStatistics | null>(null);
   const [costStats, setCostStats] = useState<CostStatistics | null>(null);
   const [fairnessCheck, setFairnessCheck] = useState<FairnessCheckResponse | null>(null);
+  const [ownerships, setOwnerships] = useState<Ownership[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(false);
   const [_loadingFairness, setLoadingFairness] = useState(false);
   const [_selectedGroup, _setSelectedGroup] = useState<VehicleGroup | null>(null);
@@ -39,7 +42,11 @@ const UsageAnalytics: React.FC = () => {
       loadStatistics();
       loadFairnessCheck();
     }
-  }, [selectedVehicleId, startDate, endDate]);
+    if (selectedGroupId) {
+      loadOwnerships();
+      loadBookings();
+    }
+  }, [selectedVehicleId, selectedGroupId, startDate, endDate]);
 
   const loadGroups = async () => {
     try {
@@ -88,6 +95,30 @@ const UsageAnalytics: React.FC = () => {
       console.error("Failed to load fairness check:", err);
     } finally {
       setLoadingFairness(false);
+    }
+  };
+
+  const loadOwnerships = async () => {
+    if (!selectedGroupId) return;
+    try {
+      const data = await ownershipService.getOwnerships(selectedGroupId, undefined, true);
+      setOwnerships(data);
+    } catch (err) {
+      console.error("Failed to load ownerships:", err);
+    }
+  };
+
+  const loadBookings = async () => {
+    try {
+      const allBookings = await bookingService.getBookings();
+      // Filter bookings by date range and group
+      const filtered = allBookings.filter((booking) => {
+        const bookingDate = new Date(booking.startTime);
+        return bookingDate >= startDate && bookingDate <= endDate;
+      });
+      setBookings(filtered);
+    } catch (err) {
+      console.error("Failed to load bookings:", err);
     }
   };
 
@@ -140,6 +171,59 @@ const UsageAnalytics: React.FC = () => {
   const formatNumber = (num: number) => {
     return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
   };
+
+  // Prepare data for usage vs ownership chart
+  const getUsageVsOwnershipData = () => {
+    if (!ownerships.length || !bookings.length) return null;
+
+    const userId = localStorage.getItem("userId");
+    if (!userId) return null;
+
+    // Get current user's ownership percentage
+    const userOwnership = ownerships.find((o) => o.coOwnerId === userId);
+    const ownershipPercentage = userOwnership?.ownershipPercentage || 0;
+
+    // Calculate user's booking percentage
+    // Try to match by coOwnerId
+    const userBookings = bookings.filter((b) => {
+      // Check if booking's coOwnerId matches any ownership's coOwnerId for this user
+      const matchingOwnership = ownerships.find((o) => 
+        o.coOwnerId === userId && 
+        o.coOwnerId === b.coOwnerId.toString()
+      );
+      return matchingOwnership !== undefined || b.coOwnerId.toString() === userId;
+    });
+    const totalBookings = bookings.length;
+    const userBookingPercentage = totalBookings > 0 ? (userBookings.length / totalBookings) * 100 : 0;
+
+    return {
+      ownership: ownershipPercentage,
+      booking: userBookingPercentage,
+    };
+  };
+
+  // Prepare data for booking frequency chart
+  const getBookingFrequencyData = () => {
+    if (!bookings.length) return null;
+
+    // Group bookings by date
+    const bookingsByDate: { [key: string]: number } = {};
+    bookings.forEach((booking) => {
+      const date = new Date(booking.startTime).toISOString().split("T")[0];
+      bookingsByDate[date] = (bookingsByDate[date] || 0) + 1;
+    });
+
+    // Sort dates
+    const sortedDates = Object.keys(bookingsByDate).sort();
+    
+    return {
+      dates: sortedDates,
+      counts: sortedDates.map((date) => bookingsByDate[date]),
+    };
+  };
+
+  const usageVsOwnershipData = getUsageVsOwnershipData();
+  const bookingFrequencyData = getBookingFrequencyData();
 
   return (
     <>
@@ -242,17 +326,191 @@ const UsageAnalytics: React.FC = () => {
           </div>
         )}
 
-        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
-            Booking vs. Ownership Ratio
-          </h2>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Track whether your bookings align with agreed ownership percentages. The AI service can recommend fair scheduling adjustments.
-          </p>
-          <div className="mt-6">
-            <LineChartOne />
+        {/* Usage vs Ownership Chart */}
+        {usageVsOwnershipData && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
+              Usage vs. Ownership Ratio
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Compare your actual booking percentage with your ownership percentage.
+            </p>
+            <div className="mt-6">
+              <Chart
+                options={{
+                  chart: {
+                    type: "bar",
+                    fontFamily: "Outfit, sans-serif",
+                    toolbar: { show: false },
+                  },
+                  colors: ["#465FFF", "#9CB9FF"],
+                  plotOptions: {
+                    bar: {
+                      horizontal: false,
+                      columnWidth: "55%",
+                      borderRadius: 4,
+                    },
+                  },
+                  dataLabels: {
+                    enabled: true,
+                    formatter: (val: number) => `${val.toFixed(1)}%`,
+                  },
+                  xaxis: {
+                    categories: ["Ownership %", "Booking %"],
+                    labels: {
+                      style: {
+                        fontSize: "12px",
+                        colors: ["#6B7280"],
+                      },
+                    },
+                  },
+                  yaxis: {
+                    labels: {
+                      style: {
+                        fontSize: "12px",
+                        colors: ["#6B7280"],
+                      },
+                      formatter: (val: number) => `${val.toFixed(1)}%`,
+                    },
+                    max: 100,
+                  },
+                  tooltip: {
+                    y: {
+                      formatter: (val: number) => `${val.toFixed(1)}%`,
+                    },
+                  },
+                  legend: {
+                    show: false,
+                  },
+                }}
+                series={[
+                  {
+                    name: "Percentage",
+                    data: [usageVsOwnershipData.ownership, usageVsOwnershipData.booking],
+                  },
+                ]}
+                type="bar"
+                height={310}
+              />
+            </div>
+            <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30">
+              <span className="text-sm text-gray-600 dark:text-gray-400">
+                Difference: {Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking).toFixed(1)}%
+              </span>
+              <span className={`text-sm font-semibold ${
+                Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking) < 5
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : "text-amber-600 dark:text-amber-400"
+              }`}>
+                {Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking) < 5
+                  ? "✓ Balanced"
+                  : "⚠ Needs Adjustment"}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Booking Frequency Chart */}
+        {bookingFrequencyData && bookingFrequencyData.dates.length > 0 && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+            <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
+              Booking Frequency
+            </h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              Number of bookings per day in the selected period.
+            </p>
+            <div className="mt-6">
+              <Chart
+                options={{
+                  chart: {
+                    type: "line",
+                    fontFamily: "Outfit, sans-serif",
+                    height: 310,
+                    toolbar: { show: false },
+                  },
+                  colors: ["#465FFF"],
+                  stroke: {
+                    curve: "smooth",
+                    width: 2,
+                  },
+                  fill: {
+                    type: "gradient",
+                    gradient: {
+                      opacityFrom: 0.55,
+                      opacityTo: 0,
+                    },
+                  },
+                  markers: {
+                    size: 4,
+                    strokeColors: "#465FFF",
+                    strokeWidth: 2,
+                    hover: {
+                      size: 6,
+                    },
+                  },
+                  grid: {
+                    xaxis: {
+                      lines: {
+                        show: false,
+                      },
+                    },
+                    yaxis: {
+                      lines: {
+                        show: true,
+                      },
+                    },
+                  },
+                  dataLabels: {
+                    enabled: false,
+                  },
+                  tooltip: {
+                    enabled: true,
+                    x: {
+                      format: "dd MMM yyyy",
+                    },
+                  },
+                  xaxis: {
+                    type: "category",
+                    categories: bookingFrequencyData.dates.map((date) => {
+                      const d = new Date(date);
+                      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    }),
+                    labels: {
+                      style: {
+                        fontSize: "12px",
+                        colors: ["#6B7280"],
+                      },
+                      rotate: -45,
+                    },
+                  },
+                  yaxis: {
+                    labels: {
+                      style: {
+                        fontSize: "12px",
+                        colors: ["#6B7280"],
+                      },
+                    },
+                    title: {
+                      text: "Number of Bookings",
+                      style: {
+                        fontSize: "12px",
+                        color: "#6B7280",
+                      },
+                    },
+                  },
+                }}
+                series={[
+                  {
+                    name: "Bookings",
+                    data: bookingFrequencyData.counts,
+                  },
+                ]}
+                type="line"
+                height={310}
+              />
+            </div>
+          </div>
+        )}
 
         {costStats && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">

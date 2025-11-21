@@ -105,10 +105,28 @@ const ManageContracts: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      // TODO: Implement create/update contract API call
+      if (!formData.vehicleGroupId || !formData.contractType) {
+        setError("Please fill in all required fields");
+        return;
+      }
+
+      if (isCreateModalOpen) {
+        await ownershipService.createContract({
+          vehicleGroupId: formData.vehicleGroupId,
+          contractType: formData.contractType,
+          status: formData.status,
+        });
+      } else if (_selectedContract) {
+        await ownershipService.updateContract(_selectedContract.id, {
+          contractType: formData.contractType,
+          status: formData.status,
+        });
+      }
+
       setIsCreateModalOpen(false);
       setIsEditModalOpen(false);
       setSelectedContract(null);
+      setError(null);
       if (selectedGroupId) {
         await loadContracts(selectedGroupId);
       }

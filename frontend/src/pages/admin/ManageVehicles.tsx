@@ -110,12 +110,32 @@ const ManageVehicles: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      // TODO: Implement create/update vehicle API call
-      // For now, just close modal and reload
+      if (isCreateModalOpen) {
+        // Create new vehicle group
+        await ownershipService.createGroup({
+          name: formData.name,
+          description: formData.description,
+          vehicleName: formData.vehicleName,
+          licensePlate: formData.licensePlate,
+          vehicleModel: formData.vehicleModel,
+          vehicleYear: formData.vehicleYear,
+        });
+      } else if (isEditModalOpen && _selectedVehicle) {
+        // Update existing vehicle group
+        await ownershipService.updateGroup(_selectedVehicle.id, {
+          name: formData.name,
+          description: formData.description,
+          vehicleName: formData.vehicleName,
+          licensePlate: formData.licensePlate,
+          vehicleModel: formData.vehicleModel,
+          vehicleYear: formData.vehicleYear,
+          status: formData.status.toString(),
+        });
+      }
       setIsCreateModalOpen(false);
       setIsEditModalOpen(false);
       setSelectedVehicle(null);
-      loadData();
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save vehicle");
     }

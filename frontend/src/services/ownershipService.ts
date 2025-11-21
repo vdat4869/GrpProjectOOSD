@@ -400,6 +400,7 @@ export const ownershipService = {
     contractType: string;
     content?: string;
     terms?: string;
+    status?: string;
   }): Promise<EContract> {
     const response = await apiClient.post<EContract>(
       API_ENDPOINTS.OWNERSHIP.CONTRACTS,
@@ -407,6 +408,20 @@ export const ownershipService = {
     );
     if (!response.success || !response.data) {
       throw new Error(response.message || "Failed to create contract");
+    }
+    return response.data;
+  },
+
+  async updateContract(contractId: string, data: {
+    contractType?: string;
+    content?: string;
+    terms?: string;
+    status?: string;
+  }): Promise<EContract> {
+    const endpoint = `${API_ENDPOINTS.OWNERSHIP.CONTRACTS}/${contractId}`;
+    const response = await apiClient.put<EContract>(endpoint, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update contract");
     }
     return response.data;
   },

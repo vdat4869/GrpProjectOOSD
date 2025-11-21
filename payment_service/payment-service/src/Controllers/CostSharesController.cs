@@ -22,6 +22,13 @@ namespace PaymentService.Controllers
             _createCostShareValidator = createCostShareValidator;
         }
 
+        [HttpGet]
+        public async Task<ActionResult<List<CostShareDto>>> GetCostShares([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            var costShares = await _costSharingService.GetAllCostSharesAsync(page, pageSize);
+            return Ok(costShares);
+        }
+
         [HttpGet("{id}")]
         public async Task<ActionResult<CostShareDto>> GetCostShare(Guid id)
         {

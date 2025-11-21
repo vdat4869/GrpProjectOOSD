@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
-import { User } from "../../services/authService";
+import { UserSummary, authService } from "../../services/authService";
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
@@ -20,11 +20,11 @@ const PERMISSIONS: StaffPermission[] = [
 ];
 
 const ManageStaff: React.FC = () => {
-  const [staff, setStaff] = useState<User[]>([]);
+  const [staff, setStaff] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedStaff, setSelectedStaff] = useState<User | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<UserSummary | null>(null);
   const [permission, setPermission] = useState<string>("full");
 
   useEffect(() => {
@@ -35,13 +35,12 @@ const ManageStaff: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      // TODO: Implement get all users with Staff role API call
-      // For now, using mock data structure
-      // const data = await authService.getAllUsers("Staff");
-      // setStaff(data.filter(user => user.roles.includes("Staff")));
-      
-      // Mock data - replace with actual API call
-      setStaff([]);
+      const response = await authService.getUsers();
+      // Filter users with Staff role
+      const staffUsers = response.users.filter((user: UserSummary) => 
+        user.roles && user.roles.some((role: string) => role.toLowerCase() === "staff")
+      );
+      setStaff(staffUsers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load staff");
     } finally {
@@ -49,7 +48,7 @@ const ManageStaff: React.FC = () => {
     }
   };
 
-  const handleEdit = (staffMember: User) => {
+  const handleEdit = (staffMember: UserSummary) => {
     setSelectedStaff(staffMember);
     // TODO: Get current permission from user metadata
     setPermission("full");
@@ -79,13 +78,6 @@ const ManageStaff: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("vi-VN", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  };
 
   return (
     <>
@@ -139,14 +131,11 @@ const ManageStaff: React.FC = () => {
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                           {staffMember.email}
                         </p>
-                        {staffMember.phoneNumber && (
-                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                            {staffMember.phoneNumber}
+                        {staffMember.roles && staffMember.roles.length > 0 && (
+                          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            Roles: {staffMember.roles.join(", ")}
                           </p>
                         )}
-                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Created: {formatDate(staffMember.createdAt)}
-                        </p>
                       </div>
                       <div className="flex flex-col gap-2">
                         <Button size="sm" variant="outline" onClick={() => handleEdit(staffMember)}>

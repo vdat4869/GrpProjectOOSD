@@ -53,16 +53,17 @@ public class SimpleProxyMiddleware
         if (!string.IsNullOrEmpty(origin))
         {
             context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
         }
         else
         {
-            // Allow all origins for development
+            // Allow all origins for development (without credentials)
             context.Response.Headers["Access-Control-Allow-Origin"] = "*";
+            // Don't set Allow-Credentials when using wildcard
         }
         context.Response.Headers["Vary"] = "Origin";
         context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
         context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type,Accept";
-        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
     }
 
     private async Task<bool> ProxyRequestAsync(HttpContext context, string serviceName, string targetPath)
@@ -78,9 +79,10 @@ public class SimpleProxyMiddleware
 
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
 
-        // Copy headers
+        // Copy headers (including Authorization)
         foreach (var header in context.Request.Headers)
         {
+            // Skip headers that should not be forwarded
             if (header.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) ||
                 header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) ||
                 header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase))
@@ -88,10 +90,19 @@ public class SimpleProxyMiddleware
                 continue;
             }
 
+            // Try to add to request headers first (for headers like Authorization)
             if (!request.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray()))
             {
+                // If it fails, try to add to content headers (for Content-Type, etc.)
                 request.Content?.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
             }
+        }
+
+        // Explicitly ensure Authorization header is forwarded if present
+        var authHeader = context.Request.Headers["Authorization"].ToString();
+        if (!string.IsNullOrEmpty(authHeader) && !request.Headers.Contains("Authorization"))
+        {
+            request.Headers.Add("Authorization", authHeader);
         }
 
         // Copy body for methods that can have a body

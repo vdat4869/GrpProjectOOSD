@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
-import { ownershipService, VehicleGroup } from "../../services/ownershipService";
+import Button from "../../components/ui/button/Button";
+import { ownershipService, VehicleGroup, GroupFund, FundTransaction } from "../../services/ownershipService";
 import { paymentService, CostShare, CostType } from "../../services/paymentService";
+import { Modal } from "../../components/ui/modal";
+import Label from "../../components/form/Label";
+import Input from "../../components/form/input/InputField";
+import Select from "../../components/form/Select";
 
 interface FundSummary {
   maintenanceFund: number;
@@ -15,9 +20,22 @@ interface FundSummary {
 const CommonFund: React.FC = () => {
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
   const [costShares, setCostShares] = useState<CostShare[]>([]);
+  const [groupFunds, setGroupFunds] = useState<GroupFund[]>([]);
+  const [fundTransactions, setFundTransactions] = useState<FundTransaction[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
+  const [selectedFundId, setSelectedFundId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateTransactionModalOpen, setIsCreateTransactionModalOpen] = useState(false);
+  const [transactionFormData, setTransactionFormData] = useState({
+    fundId: "",
+    type: "Contribution",
+    amount: 0,
+    description: "",
+    category: "",
+    receiptNumber: "",
+    transactionDate: new Date().toISOString().split("T")[0],
+  });
   const [fundSummary, setFundSummary] = useState<FundSummary>({
     maintenanceFund: 0,
     reserveFund: 0,
@@ -33,8 +51,15 @@ const CommonFund: React.FC = () => {
   useEffect(() => {
     if (selectedGroupId) {
       loadCostShares(selectedGroupId);
+      loadGroupFunds(selectedGroupId);
     }
   }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (selectedFundId) {
+      loadFundTransactions(selectedFundId);
+    }
+  }, [selectedFundId]);
 
   const loadData = async () => {
     try {
@@ -84,6 +109,69 @@ const CommonFund: React.FC = () => {
     }
   };
 
+  const loadGroupFunds = async (groupId: string) => {
+    try {
+      const funds = await ownershipService.getGroupFunds(groupId);
+      setGroupFunds(funds);
+      if (funds.length > 0 && !selectedFundId) {
+        setSelectedFundId(funds[0].id);
+      }
+    } catch (err) {
+      console.error("Failed to load group funds:", err);
+    }
+  };
+
+  const loadFundTransactions = async (fundId: string) => {
+    try {
+      const transactions = await ownershipService.getFundTransactions(fundId);
+      setFundTransactions(transactions);
+    } catch (err) {
+      console.error("Failed to load fund transactions:", err);
+    }
+  };
+
+  const handleCreateTransaction = () => {
+    if (!selectedFundId) {
+      setError("Please select a fund first");
+      return;
+    }
+    setTransactionFormData({
+      fundId: selectedFundId,
+      type: "Contribution",
+      amount: 0,
+      description: "",
+      category: "",
+      receiptNumber: "",
+      transactionDate: new Date().toISOString().split("T")[0],
+    });
+    setIsCreateTransactionModalOpen(true);
+  };
+
+  const handleSaveTransaction = async () => {
+    try {
+      if (!transactionFormData.fundId || !transactionFormData.amount || transactionFormData.amount <= 0) {
+        setError("Please fill in all required fields");
+        return;
+      }
+      await ownershipService.createFundTransaction(transactionFormData.fundId, {
+        type: transactionFormData.type,
+        amount: transactionFormData.amount,
+        description: transactionFormData.description || undefined,
+        category: transactionFormData.category || undefined,
+        receiptNumber: transactionFormData.receiptNumber || undefined,
+        transactionDate: transactionFormData.transactionDate || undefined,
+      });
+      setIsCreateTransactionModalOpen(false);
+      if (selectedFundId) {
+        await loadFundTransactions(selectedFundId);
+        await loadGroupFunds(selectedGroupId);
+      }
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create transaction");
+    }
+  };
+
   const formatAmount = (amount: number) => {
     return `₫${amount.toLocaleString()}`;
   };
@@ -125,6 +213,13 @@ const CommonFund: React.FC = () => {
       <PageHeader
         title="Common Fund Management"
         description="View and manage maintenance fund, reserve fund, and transparent fund history for your vehicle group."
+        actions={
+          selectedGroupId && groupFunds.length > 0 ? (
+            <Button size="sm" onClick={handleCreateTransaction}>
+              Add Transaction
+            </Button>
+          ) : null
+        }
       />
 
       {/* Group Selector */}
@@ -189,11 +284,139 @@ const CommonFund: React.FC = () => {
             </div>
           </div>
 
-          {/* Fund History */}
+          {/* Group Funds */}
+          {groupFunds.length > 0 && (
+            <div className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                  Group Funds
+                </h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Select a fund to view transactions
+                </p>
+              </div>
+              <div className="p-4">
+                <Select
+                  value={selectedFundId}
+                  onChange={(value) => setSelectedFundId(value)}
+                >
+                  <option value="">Select a fund</option>
+                  {groupFunds.map((fund) => (
+                    <option key={fund.id} value={fund.id}>
+                      {fund.name} - Balance: {formatAmount(fund.balance)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+          )}
+
+          {/* Fund Transactions */}
+          {selectedFundId && (
+            <div className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+              <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                      Fund Transactions
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Contributions and expenses for selected fund
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={handleCreateTransaction}>
+                    Add Transaction
+                  </Button>
+                </div>
+              </div>
+              <div className="p-4">
+                {fundTransactions.length === 0 ? (
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                    No transactions found.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {fundTransactions.map((transaction) => (
+                      <div
+                        key={transaction.id}
+                        className={`flex items-center justify-between rounded-lg border p-4 ${
+                          transaction.type === "Contribution"
+                            ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-500/10"
+                            : "border-red-200 bg-red-50 dark:border-red-500/40 dark:bg-red-500/10"
+                        }`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <h4 className="font-medium text-gray-900 dark:text-white/90">
+                              {transaction.description || transaction.type}
+                            </h4>
+                            <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                              transaction.type === "Contribution"
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                                : "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                            }`}>
+                              {transaction.type}
+                            </span>
+                            {transaction.status === "Pending" && (
+                              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                Pending Approval
+                              </span>
+                            )}
+                          </div>
+                          {transaction.category && (
+                            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                              Category: {transaction.category}
+                            </p>
+                          )}
+                          {transaction.receiptNumber && (
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                              Receipt: {transaction.receiptNumber}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            {formatDate(transaction.transactionDate || transaction.createdAt)} • By: {transaction.coOwnerName || transaction.coOwnerId.substring(0, 8)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-lg font-semibold ${
+                            transaction.type === "Contribution"
+                              ? "text-emerald-700 dark:text-emerald-200"
+                              : "text-red-700 dark:text-red-200"
+                          }`}>
+                            {transaction.type === "Contribution" ? "+" : "-"}
+                            {formatAmount(transaction.amount)}
+                          </p>
+                          {transaction.status === "Pending" && (
+                            <Button
+                              size="xs"
+                              variant="outline"
+                              onClick={async () => {
+                                try {
+                                  await ownershipService.approveFundTransaction(transaction.id);
+                                  await loadFundTransactions(selectedFundId);
+                                } catch (err) {
+                                  setError(err instanceof Error ? err.message : "Failed to approve");
+                                }
+                              }}
+                              className="mt-2"
+                            >
+                              Approve
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Fund History (Cost Shares) */}
           <div className="rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                Fund History
+                Cost Shares History
               </h3>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 Transparent history of all contributions and expenses
@@ -244,6 +467,139 @@ const CommonFund: React.FC = () => {
           </div>
         </>
       )}
+
+      {/* Create Fund Transaction Modal */}
+      <Modal
+        isOpen={isCreateTransactionModalOpen}
+        onClose={() => {
+          setIsCreateTransactionModalOpen(false);
+          setError(null);
+        }}
+        className="max-w-[600px] m-4"
+      >
+        <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
+          <div className="px-2 pr-14">
+            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+              Add Fund Transaction
+            </h4>
+            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
+              Record a contribution or expense for the group fund.
+            </p>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveTransaction();
+            }}
+            className="px-2 space-y-4"
+          >
+            {error && (
+              <div className="rounded-lg border border-error-200 bg-error-50 p-3 text-sm text-error-600 dark:border-error-500/40 dark:bg-error-500/10 dark:text-error-200">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <Label>Fund <span className="text-error-500">*</span></Label>
+              <Select
+                value={transactionFormData.fundId}
+                onChange={(value) => setTransactionFormData({ ...transactionFormData, fundId: value })}
+                required
+              >
+                <option value="">Select a fund</option>
+                {groupFunds.map((fund) => (
+                  <option key={fund.id} value={fund.id}>
+                    {fund.name} - Balance: {formatAmount(fund.balance)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+
+            <div>
+              <Label>Transaction Type <span className="text-error-500">*</span></Label>
+              <Select
+                value={transactionFormData.type}
+                onChange={(value) => setTransactionFormData({ ...transactionFormData, type: value })}
+                required
+              >
+                <option value="Contribution">Contribution</option>
+                <option value="Expense">Expense</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Amount <span className="text-error-500">*</span></Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={transactionFormData.amount === 0 ? "" : transactionFormData.amount}
+                onChange={(e) => setTransactionFormData({ ...transactionFormData, amount: parseFloat(e.target.value) || 0 })}
+                placeholder="Enter amount"
+                required
+              />
+            </div>
+
+            <div>
+              <Label>Description</Label>
+              <Input
+                type="text"
+                value={transactionFormData.description}
+                onChange={(e) => setTransactionFormData({ ...transactionFormData, description: e.target.value })}
+                placeholder="Enter description"
+              />
+            </div>
+
+            <div>
+              <Label>Category</Label>
+              <Input
+                type="text"
+                value={transactionFormData.category}
+                onChange={(e) => setTransactionFormData({ ...transactionFormData, category: e.target.value })}
+                placeholder="e.g., Maintenance, Insurance, etc."
+              />
+            </div>
+
+            <div>
+              <Label>Receipt Number</Label>
+              <Input
+                type="text"
+                value={transactionFormData.receiptNumber}
+                onChange={(e) => setTransactionFormData({ ...transactionFormData, receiptNumber: e.target.value })}
+                placeholder="Enter receipt number (if any)"
+              />
+            </div>
+
+            <div>
+              <Label>Transaction Date</Label>
+              <Input
+                type="date"
+                value={transactionFormData.transactionDate}
+                onChange={(e) => setTransactionFormData({ ...transactionFormData, transactionDate: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="flex items-center gap-3 lg:justify-end mt-6">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setIsCreateTransactionModalOpen(false);
+                  setError(null);
+                }}
+                type="button"
+              >
+                Cancel
+              </Button>
+              <Button size="sm" type="submit">
+                Create Transaction
+              </Button>
+            </div>
+          </form>
+        </div>
+      </Modal>
     </>
   );
 };

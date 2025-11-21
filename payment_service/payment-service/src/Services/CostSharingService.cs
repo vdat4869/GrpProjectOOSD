@@ -11,6 +11,7 @@ namespace PaymentService.Services
     {
         Task<CostShareDto?> GetCostShareAsync(Guid id);
         Task<List<CostShareDto>> GetCostSharesByGroupAsync(Guid groupId, int page = 1, int pageSize = 20);
+        Task<List<CostShareDto>> GetAllCostSharesAsync(int page = 1, int pageSize = 20);
         Task<CostShareDto> CreateCostShareAsync(CreateCostShareDto dto);
         Task<CostShareDto?> UpdateCostShareAsync(Guid id, UpdateCostShareDto dto);
         Task<bool> DeleteCostShareAsync(Guid id);
@@ -43,6 +44,19 @@ namespace PaymentService.Services
             var costShares = await _context.CostShares
                 .Include(cs => cs.CostShareDetails)
                 .Where(cs => cs.GroupId == groupId && !cs.IsDeleted)
+                .OrderByDescending(cs => cs.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+            
+            return _mapper.Map<List<CostShareDto>>(costShares);
+        }
+
+        public async Task<List<CostShareDto>> GetAllCostSharesAsync(int page = 1, int pageSize = 20)
+        {
+            var costShares = await _context.CostShares
+                .Include(cs => cs.CostShareDetails)
+                .Where(cs => !cs.IsDeleted)
                 .OrderByDescending(cs => cs.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)

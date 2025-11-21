@@ -108,11 +108,32 @@ const ManageGroups: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      // TODO: Implement create/update group API call
+      if (isCreateModalOpen) {
+        // Create new group
+        await ownershipService.createGroup({
+          name: formData.name,
+          description: formData.description,
+          vehicleName: formData.vehicleName,
+          licensePlate: formData.licensePlate,
+          vehicleModel: formData.vehicleModel,
+          vehicleYear: formData.vehicleYear,
+        });
+      } else if (isEditModalOpen && selectedGroup) {
+        // Update existing group
+        await ownershipService.updateGroup(selectedGroup.id, {
+          name: formData.name,
+          description: formData.description,
+          vehicleName: formData.vehicleName,
+          licensePlate: formData.licensePlate,
+          vehicleModel: formData.vehicleModel,
+          vehicleYear: formData.vehicleYear,
+          status: formData.status.toString(),
+        });
+      }
       setIsCreateModalOpen(false);
       setIsEditModalOpen(false);
       setSelectedGroup(null);
-      loadData();
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save group");
     }

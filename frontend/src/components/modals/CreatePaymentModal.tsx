@@ -24,6 +24,13 @@ const PAYMENT_METHODS = [
   { value: PaymentMethodType.Cash, label: "Cash" },
 ];
 
+const PAYMENT_GATEWAYS = [
+  { value: "VNPay", label: "VNPay" },
+  { value: "MoMo", label: "MoMo" },
+  { value: "ZaloPay", label: "ZaloPay" },
+  { value: "None", label: "Direct Payment" },
+];
+
 const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
   isOpen,
   onClose,
@@ -33,7 +40,7 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
 }) => {
   const [formData, setFormData] = useState({
     method: PaymentMethodType.Banking,
-    useVNPay: false,
+    gateway: "None",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,8 +58,8 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
         throw new Error("User ID not found. Please login again.");
       }
 
-      // Use VNPay if selected
-      if (formData.useVNPay) {
+      // Use Payment Gateway if selected
+      if (formData.gateway === "VNPay") {
         const orderId = `ORDER${Date.now()}`;
         const orderInfo = `Payment for cost share detail ${costShareDetailId.substring(0, 8)}`;
         
@@ -75,6 +82,9 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
         } else {
           throw new Error("Failed to get VNPay payment URL");
         }
+      } else if (formData.gateway === "MoMo" || formData.gateway === "ZaloPay") {
+        // TODO: Implement MoMo and ZaloPay payment gateways
+        throw new Error(`${formData.gateway} payment gateway is not yet implemented`);
       }
 
       // Regular payment
@@ -156,7 +166,7 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
                     setFormData({
                       ...formData,
                       method: parseInt(value) as PaymentMethodType,
-                      useVNPay: false,
+                      gateway: "None", // Reset gateway when method changes
                     })
                   }
                   disabled={loading}
@@ -170,29 +180,38 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
                 </Select>
               </div>
 
-              {formData.method === PaymentMethodType.Banking && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="useVNPay"
-                    checked={formData.useVNPay}
-                    onChange={(e) =>
-                      setFormData({ ...formData, useVNPay: e.target.checked })
+              {(formData.method === PaymentMethodType.Banking || formData.method === PaymentMethodType.EWallet) && (
+                <div>
+                  <Label>
+                    Payment Gateway <span className="text-error-500">*</span>
+                  </Label>
+                  <Select
+                    value={formData.gateway}
+                    onChange={(value) =>
+                      setFormData({ ...formData, gateway: value })
                     }
                     disabled={loading}
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-gray-700 dark:bg-gray-800"
-                  />
-                  <Label htmlFor="useVNPay" className="cursor-pointer">
-                    Use VNPay Gateway
-                  </Label>
+                    required
+                  >
+                    {PAYMENT_GATEWAYS.map((gateway) => (
+                      <option key={gateway.value} value={gateway.value}>
+                        {gateway.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {formData.gateway === "None"
+                      ? "Payment will be processed directly without a gateway."
+                      : `You will be redirected to ${formData.gateway} to complete the payment.`}
+                  </p>
                 </div>
               )}
 
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-300">
                 <p className="font-medium">Payment Information</p>
                 <p className="mt-1 text-xs">
-                  {formData.useVNPay
-                    ? "You will be redirected to VNPay to complete the payment."
+                  {formData.gateway !== "None"
+                    ? `You will be redirected to ${formData.gateway} to complete the payment.`
                     : "Payment will be processed using the selected method."}
                 </p>
               </div>
@@ -210,7 +229,11 @@ const CreatePaymentModal: React.FC<CreatePaymentModalProps> = ({
               Cancel
             </Button>
             <Button size="sm" type="submit" disabled={loading}>
-              {loading ? "Processing..." : formData.useVNPay ? "Pay with VNPay" : "Create Payment"}
+              {loading
+                ? "Processing..."
+                : formData.gateway !== "None"
+                ? `Pay with ${formData.gateway}`
+                : "Create Payment"}
             </Button>
           </div>
         </form>
