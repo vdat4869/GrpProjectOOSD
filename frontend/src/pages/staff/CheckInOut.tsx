@@ -5,7 +5,6 @@ import Button from "../../components/ui/button/Button";
 import { bookingService, Booking } from "../../services/bookingService";
 import CheckInModal from "../../components/modals/CheckInModal";
 import CheckOutModal from "../../components/modals/CheckOutModal";
-import { Modal } from "../../components/ui/modal";
 
 const CheckInOut: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -106,35 +105,35 @@ const CheckInOut: React.FC = () => {
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
-          variant={filter === "all" ? "default" : "outline"}
+          variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
           All
         </Button>
         <Button
           size="sm"
-          variant={filter === "pending" ? "default" : "outline"}
+          variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
           Pending Check-in
         </Button>
         <Button
           size="sm"
-          variant={filter === "confirmed" ? "default" : "outline"}
+          variant={filter === "confirmed" ? "primary" : "outline"}
           onClick={() => setFilter("confirmed")}
         >
           Confirmed
         </Button>
         <Button
           size="sm"
-          variant={filter === "in-progress" ? "default" : "outline"}
+          variant={filter === "in-progress" ? "primary" : "outline"}
           onClick={() => setFilter("in-progress")}
         >
           In Progress
         </Button>
         <Button
           size="sm"
-          variant={filter === "completed" ? "default" : "outline"}
+          variant={filter === "completed" ? "primary" : "outline"}
           onClick={() => setFilter("completed")}
         >
           Completed

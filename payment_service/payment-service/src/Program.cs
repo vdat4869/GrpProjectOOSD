@@ -6,11 +6,13 @@ using PaymentService.Validators;
 using PaymentService.Hubs;
 using PaymentService.Repositories;
 using PaymentService.Repositories.Interfaces;
+using PaymentService.Infrastructure;
 using FluentValidation;
 using System.Reflection;
 using Consul;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-// Microservice components removed for now
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -64,24 +66,34 @@ builder.Services.AddScoped<PaymentService.Services.PaymentService>();
 builder.Services.AddScoped<PaymentService.Services.CostSharingService>();
 builder.Services.AddScoped<PaymentService.Services.PaymentGatewayService>();
 
+// Infrastructure Services (Singleton)
+builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
+builder.Services.AddSingleton<IRedisService, RedisService>();
+
+// AI Service (HttpClient for calling AI Service)
+builder.Services.AddHttpClient<IAiService, AiService>();
+builder.Services.AddScoped<IAiService, AiService>();
+
 // Basic Health Checks
 builder.Services.AddHealthChecks();
 
 // JWT Authentication
+var jwtSettings = builder.Configuration.GetSection("JWT");
+var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured");
+
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer("Bearer", options =>
     {
-        options.Authority = builder.Configuration["Jwt:Authority"];
         options.RequireHttpsMetadata = false; // Allow HTTP in development
-        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateAudience = false,
+            ValidateAudience = true,
             ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidIssuer = jwtSettings["Issuer"],
+            ValidAudience = jwtSettings["Audience"],
             ValidateLifetime = true,
             ClockSkew = TimeSpan.Zero,
-            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
-                System.Text.Encoding.UTF8.GetBytes("your-super-secret-key-for-testing-only-32-chars"))
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
         };
     });
 
@@ -135,9 +147,6 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-// Microservice Middleware
-// app.UseMiddleware<DistributedTracingMiddleware>();
-
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication();
@@ -149,16 +158,60 @@ app.MapHealthChecks("/health");
 app.MapControllers();
 app.MapHub<PaymentHub>("/paymentHub");
 
-// Ensure database is created
+// Apply database migrations on startup
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
-    context.Database.EnsureCreated();
+    try
+    {
+        context.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        var loggerInit = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        loggerInit.LogError(ex, "Error migrating Payment database");
+    }
+}
+
+// Subscribe to RabbitMQ events (services are Singleton, so they're available here)
+var rabbitMQService = app.Services.GetRequiredService<IRabbitMQService>();
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
+try
+{
+    // Subscribe to booking completed events
+    rabbitMQService.SubscribeEvent<BookingCompletedEvent>("booking.completed", (bookingEvent) =>
+    {
+        logger.LogInformation("Received booking completed event: BookingId={BookingId}, CoOwnerId={CoOwnerId}",
+            bookingEvent.BookingId, bookingEvent.CoOwnerId);
+
+        // Process payment for completed booking asynchronously
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                using var serviceScope = app.Services.CreateScope();
+                // Here you would process the payment
+                // var paymentService = serviceScope.ServiceProvider.GetRequiredService<PaymentService.Services.PaymentService>();
+                // await paymentService.ProcessBookingPaymentAsync(bookingEvent);
+                logger.LogInformation("Processing payment for booking {BookingId}", bookingEvent.BookingId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing booking payment");
+            }
+        });
+    });
+
+    Log.Information("Starting Payment Service with RabbitMQ integration");
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Error setting up RabbitMQ subscriptions");
 }
 
 try
 {
-    Log.Information("Starting Payment Service");
     app.Run();
 }
 catch (Exception ex)

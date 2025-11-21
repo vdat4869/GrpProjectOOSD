@@ -6,16 +6,26 @@ import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
 
+import { BookingNeedType } from "./BookingNeedModal";
+import { generateOwnerCode } from "../../utils/ownerCode";
+import OwnerCodeDisplay from "../common/OwnerCodeDisplay";
+
 interface CreateBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  vehicleId?: string | number;
+  needType?: BookingNeedType;
+  duration?: number;
 }
 
 export default function CreateBookingModal({
   isOpen,
   onClose,
   onSuccess,
+  vehicleId: propVehicleId,
+  needType,
+  duration: _duration,
 }: CreateBookingModalProps) {
   const [vehicleId, setVehicleId] = useState<number>(0);
   const [startTime, setStartTime] = useState("");
@@ -28,6 +38,7 @@ export default function CreateBookingModal({
   const [loadingVehicles, setLoadingVehicles] = useState(false);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdBooking, setCreatedBooking] = useState<{ id: number; ownerCode: string; vehicleName?: string; vehicleModel?: string } | null>(null);
 
   // Load vehicles and groups when modal opens
   useEffect(() => {
@@ -41,6 +52,14 @@ export default function CreateBookingModal({
           ]);
           setVehicles(vehiclesData);
           setGroups(groupsData);
+          
+          // If vehicleId prop is provided, set it
+          if (propVehicleId) {
+            const vehicleIdNum = typeof propVehicleId === 'string' ? parseInt(propVehicleId) : propVehicleId;
+            if (!isNaN(vehicleIdNum)) {
+              setVehicleId(vehicleIdNum);
+            }
+          }
         } catch (err) {
           console.error("Error loading data:", err);
           setError("Failed to load vehicles");
@@ -50,7 +69,7 @@ export default function CreateBookingModal({
       };
       loadData();
     }
-  }, [isOpen]);
+  }, [isOpen, propVehicleId]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -88,7 +107,43 @@ export default function CreateBookingModal({
         note: note || undefined,
       };
 
-      await bookingService.createBooking(data);
+      const booking = await bookingService.createBooking(data);
+      
+      // Generate owner code if needType and vehicle info available
+      if (needType && booking) {
+        // Try to find group by propVehicleId first
+        let selectedGroup: VehicleGroup | undefined;
+        if (propVehicleId) {
+          const propId = typeof propVehicleId === 'string' ? propVehicleId : propVehicleId.toString();
+          selectedGroup = groups.find((g) => g.id === propId || g.id.toString() === propId);
+        }
+        
+        // If not found, try to find by vehicle name from booking
+        if (!selectedGroup && booking.vehicleName) {
+          selectedGroup = groups.find((g) => g.vehicleName === booking.vehicleName);
+        }
+        
+        // If still not found, use first group as fallback
+        if (!selectedGroup && groups.length > 0) {
+          selectedGroup = groups[0];
+        }
+        
+        if (selectedGroup) {
+          const vehicleModel = selectedGroup.vehicleModel || selectedGroup.vehicleName || "UNK";
+          const ownerCode = generateOwnerCode(needType, vehicleModel, new Date(), booking.id % 99 + 1);
+          
+          setCreatedBooking({
+            id: booking.id,
+            ownerCode,
+            vehicleName: selectedGroup.vehicleName,
+            vehicleModel: selectedGroup.vehicleModel,
+          });
+          
+          // Don't close modal yet, show owner code
+          return;
+        }
+      }
+      
       onSuccess();
       onClose();
       // Reset form
@@ -331,20 +386,51 @@ export default function CreateBookingModal({
             </div>
           )}
 
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              size="sm"
-              onClick={onClose}
-              className="flex-1"
-              variant="outline"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" className="flex-1" disabled={loading || loadingVehicles}>
-              {loading ? "Creating..." : "Create Booking"}
-            </Button>
-          </div>
+          {createdBooking ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600 dark:border-green-500/40 dark:bg-green-500/10 dark:text-green-200">
+                Booking created successfully!
+              </div>
+              <OwnerCodeDisplay
+                ownerCode={createdBooking.ownerCode}
+                vehicleName={createdBooking.vehicleName}
+                vehicleModel={createdBooking.vehicleModel}
+                status="Available"
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setCreatedBooking(null);
+                  onSuccess();
+                  onClose();
+                  // Reset form
+                  setVehicleId(0);
+                  setStartTime("");
+                  setEndTime("");
+                  setNote("");
+                }}
+                className="w-full"
+              >
+                Done
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                size="sm"
+                onClick={onClose}
+                className="flex-1"
+                variant="outline"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" className="flex-1" disabled={loading || loadingVehicles}>
+                {loading ? "Creating..." : "Create Booking"}
+              </Button>
+            </div>
+          )}
         </form>
       </div>
     </div>

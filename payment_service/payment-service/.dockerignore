@@ -1,0 +1,39 @@
+# Build artifacts
+**/bin/
+**/obj/
+*.user
+*.suo
+*.cache
+*.pdb
+*.dll
+*.exe
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Documentation
+*.md
+.git/
+.gitignore
+
+# Config files
+appsettings.Development.json
+
+# NuGet cache
+**/project.assets.json
+**/project.nuget.cache
+**/*.nuget.g.props
+**/*.nuget.g.targets
+**/*.nuget.dgspec.json
+

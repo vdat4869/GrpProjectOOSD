@@ -42,12 +42,23 @@ class ApiClient {
         headers,
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If response is not JSON, return text
+        const text = await response.text();
+        return {
+          success: false,
+          message: text || `HTTP ${response.status}: ${response.statusText}`,
+        };
+      }
 
       if (!response.ok) {
         return {
           success: false,
-          message: data.message || `HTTP ${response.status}`,
+          message: data.error || data.message || `HTTP ${response.status}`,
+          data: data, // Include full error object
           errors: data.errors,
         };
       }
@@ -84,8 +95,11 @@ class ApiClient {
     });
   }
 
-  async delete<T>(endpoint: string): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { method: "DELETE" });
+  async delete<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: "DELETE",
+      body: body ? JSON.stringify(body) : undefined,
+    });
   }
 }
 

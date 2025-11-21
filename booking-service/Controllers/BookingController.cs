@@ -64,18 +64,40 @@ public class BookingsController : ControllerBase
     {
         try
         {
+            _logger.LogInformation("Creating booking: VehicleId={VehicleId}, CoOwnerId={CoOwnerId}, StartTime={StartTime}, EndTime={EndTime}",
+                request.VehicleId, request.CoOwnerId, request.StartTime, request.EndTime);
+
             var seed = await EnsureDevSeedAsync();
-            if (request.CoOwnerId <= 0) request.CoOwnerId = seed.coOwnerId;
-            if (request.VehicleId <= 0) request.VehicleId = seed.vehicleId;
+            if (request.CoOwnerId <= 0) 
+            {
+                _logger.LogInformation("CoOwnerId is 0 or negative, using seed value: {CoOwnerId}", seed.coOwnerId);
+                request.CoOwnerId = seed.coOwnerId;
+            }
+            if (request.VehicleId <= 0) 
+            {
+                _logger.LogInformation("VehicleId is 0 or negative, using seed value: {VehicleId}", seed.vehicleId);
+                request.VehicleId = seed.vehicleId;
+            }
 
             var result = await _service.CreateBookingAsync(request);
-            if (result == null) return BadRequest(new { error = "Cannot create booking.", message = "Service returned null result." });
+            if (result == null) 
+            {
+                _logger.LogWarning("CreateBookingAsync returned null result");
+                return BadRequest(new { error = "Cannot create booking.", message = "Service returned null result." });
+            }
+            
+            _logger.LogInformation("Booking created successfully: BookingId={BookingId}", result.Id);
             return CreatedAtAction(nameof(GetAll), new { id = result.Id }, result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating booking: {Message}", ex.Message);
-            return StatusCode(500, new { error = ex.Message, details = ex.InnerException?.Message });
+            _logger.LogError(ex, "Error creating booking: {Message}. StackTrace: {StackTrace}", 
+                ex.Message, ex.StackTrace);
+            return StatusCode(500, new { 
+                error = ex.Message, 
+                details = ex.InnerException?.Message,
+                stackTrace = _env.IsDevelopment() ? ex.StackTrace : null
+            });
         }
     }
 

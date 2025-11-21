@@ -7,6 +7,8 @@ import CreateBookingModal from "../../components/modals/CreateBookingModal";
 import UpdateBookingModal from "../../components/modals/UpdateBookingModal";
 import CheckInModal from "../../components/modals/CheckInModal";
 import CheckOutModal from "../../components/modals/CheckOutModal";
+import BookingNeedModal, { BookingNeedType } from "../../components/modals/BookingNeedModal";
+import VehicleSelection from "./VehicleSelection";
 
 const MyBookings: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -16,7 +18,11 @@ const MyBookings: React.FC = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [showNeedModal, setShowNeedModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedNeedType, setSelectedNeedType] = useState<BookingNeedType | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState<number>(0);
+  const [showVehicleSelection, setShowVehicleSelection] = useState(false);
 
   const loadBookings = async () => {
     try {
@@ -34,6 +40,11 @@ const MyBookings: React.FC = () => {
 
   useEffect(() => {
     loadBookings();
+    // Show need selection modal on first visit
+    const hasSeenModal = sessionStorage.getItem("booking-need-selected");
+    if (!hasSeenModal && bookings.length === 0) {
+      setShowNeedModal(true);
+    }
   }, []);
 
   const formatDate = (dateString: string) => {
@@ -77,7 +88,6 @@ const MyBookings: React.FC = () => {
       alert(err instanceof Error ? err.message : "Failed to cancel booking");
     }
   };
-
 
   const handleUpdate = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -126,6 +136,21 @@ const MyBookings: React.FC = () => {
     );
   };
 
+  // Show vehicle selection if need type is selected
+  if (showVehicleSelection && selectedNeedType) {
+    return (
+      <VehicleSelection
+        needType={selectedNeedType}
+        duration={selectedDuration}
+        onBack={() => {
+          setShowVehicleSelection(false);
+          setSelectedNeedType(null);
+          setSelectedDuration(0);
+        }}
+      />
+    );
+  }
+
   return (
     <>
       <PageMeta title="Co-owner | My Bookings" />
@@ -136,9 +161,9 @@ const MyBookings: React.FC = () => {
           <Button 
             size="sm" 
             type="button"
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => setShowNeedModal(true)}
           >
-            New Booking
+            Đặt Xe Mới
           </Button>
         }
       />
@@ -158,7 +183,7 @@ const MyBookings: React.FC = () => {
       {!loading && !error && (
         <div className="grid gap-4">
           {bookings.length === 0 ? (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <p className="text-gray-600 dark:text-gray-400">No bookings found.</p>
             </div>
           ) : (
@@ -257,6 +282,18 @@ const MyBookings: React.FC = () => {
           )}
         </div>
       )}
+
+      <BookingNeedModal
+        isOpen={showNeedModal}
+        onClose={() => setShowNeedModal(false)}
+        onSelect={(needType, duration) => {
+          setSelectedNeedType(needType);
+          setSelectedDuration(duration);
+          setShowNeedModal(false);
+          setShowVehicleSelection(true);
+          sessionStorage.setItem("booking-need-selected", "true");
+        }}
+      />
 
       <CreateBookingModal
         isOpen={showCreateModal}

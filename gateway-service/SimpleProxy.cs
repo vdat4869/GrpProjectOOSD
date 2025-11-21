@@ -56,17 +56,22 @@ public class SimpleProxyMiddleware
         }
         else
         {
+            // Allow all origins for development
             context.Response.Headers["Access-Control-Allow-Origin"] = "*";
         }
         context.Response.Headers["Vary"] = "Origin";
         context.Response.Headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
-        context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type";
+        context.Response.Headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type,Accept";
+        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
     }
 
     private async Task<bool> ProxyRequestAsync(HttpContext context, string serviceName, string targetPath)
     {
         var queryString = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty;
-        var targetUrl = $"http://{serviceName}{targetPath}{queryString}";
+        
+        // Special handling for AI service - it runs on port 8000
+        var port = serviceName == "ai-service" ? ":8000" : "";
+        var targetUrl = $"http://{serviceName}{port}{targetPath}{queryString}";
         
         // Debug logging
         _logger.LogInformation("[Gateway] Proxying {Method} {Path} -> {TargetUrl}", context.Request.Method, context.Request.Path, targetUrl);
@@ -114,9 +119,16 @@ public class SimpleProxyMiddleware
 
             context.Response.StatusCode = (int)response.StatusCode;
 
-            // Copy response headers
+            // Add CORS headers FIRST (before copying other headers)
+            WriteCorsHeaders(context);
+
+            // Copy response headers (but skip CORS headers to avoid conflicts)
             foreach (var header in response.Headers)
             {
+                if (header.Key.StartsWith("Access-Control-", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // Skip CORS headers from backend, use our own
+                }
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
 
@@ -126,15 +138,16 @@ public class SimpleProxyMiddleware
                 {
                     continue; // Let ASP.NET Core handle this
                 }
+                if (header.Key.StartsWith("Access-Control-", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue; // Skip CORS headers from backend
+                }
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
 
             // Remove transfer-encoding as it will be set by Kestrel
             context.Response.Headers.Remove("transfer-encoding");
             context.Response.Headers.Remove("Transfer-Encoding");
-
-            // Add CORS headers
-            WriteCorsHeaders(context);
 
             await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
             return true;

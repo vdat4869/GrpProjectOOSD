@@ -45,4 +45,26 @@ public class KycStatusResponse
     public string Message { get; set; } = string.Empty;
 }
 
+public class VerifyKycRequest
+{
+    public string Status { get; set; } = string.Empty; // "Approved" or "Rejected"
+    public string? Notes { get; set; }
+}
+
+public class KycRequestDto
+{
+    public int UserId { get; set; }
+    public string UserEmail { get; set; } = string.Empty;
+    public string UserName { get; set; } = string.Empty;
+    public int IdentityDocumentId { get; set; }
+    public string IdentityStatus { get; set; } = string.Empty;
+    public string IdentityDocumentNumber { get; set; } = string.Empty;
+    public string IdentityFullName { get; set; } = string.Empty;
+    public int? LicenseId { get; set; }
+    public string LicenseStatus { get; set; } = string.Empty;
+    public string? LicenseNumber { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
 

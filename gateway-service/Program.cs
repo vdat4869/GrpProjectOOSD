@@ -37,6 +37,15 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost", "http://localhost:80", "http://localhost:5173", "http://frontend:5173")
               .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+    
+    // Fallback policy for all origins (without credentials)
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
               .AllowAnyMethod();
     });
 });

@@ -70,7 +70,6 @@ builder.Services.AddScoped<IQrCodeService, QrCodeService>();
 
 // AI Service (HttpClient for calling AI Service)
 builder.Services.AddHttpClient<IAiService, AiService>();
-builder.Services.AddScoped<IAiService, AiService>();
 
 // Repositories
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();

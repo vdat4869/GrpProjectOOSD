@@ -16,6 +16,7 @@ export interface RegisterRequest {
   dateOfBirth?: string;
   address?: string;
   identityNumber?: string;
+  roles?: string[];
 }
 
 export interface User {
@@ -177,5 +178,76 @@ export const authService = {
     if (typeof window === "undefined") return false;
     return !!localStorage.getItem("token");
   },
+
+  // Admin: User Management
+  async getUsers(search?: string, page: number = 1, pageSize: number = 10): Promise<PagedUsersResponse> {
+    let endpoint = `${API_ENDPOINTS.ROLE.USERS}?page=${page}&pageSize=${pageSize}`;
+    if (search) {
+      endpoint += `&search=${encodeURIComponent(search)}`;
+    }
+    const response = await apiClient.get<PagedUsersResponse>(endpoint);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to get users");
+    }
+    return response.data;
+  },
+
+  async getUserDetails(userId: number): Promise<UserSummary> {
+    const endpoint = API_ENDPOINTS.ROLE.USER_DETAILS.replace("{userId}", userId.toString());
+    const response = await apiClient.get<UserSummary>(endpoint);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to get user details");
+    }
+    return response.data;
+  },
+
+  async updateUser(userId: number, data: { firstName?: string; lastName?: string; email?: string }): Promise<UserSummary> {
+    const endpoint = API_ENDPOINTS.ROLE.UPDATE_USER.replace("{userId}", userId.toString());
+    const response = await apiClient.put<UserSummary>(endpoint, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update user");
+    }
+    return response.data;
+  },
+
+  async deleteUser(userId: number): Promise<void> {
+    const endpoint = API_ENDPOINTS.ROLE.DELETE_USER.replace("{userId}", userId.toString());
+    const response = await apiClient.delete(endpoint);
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete user");
+    }
+  },
+
+  async assignRole(userId: number, roleName: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.ROLE.ASSIGN_ROLE.replace("{userId}", userId.toString());
+    const response = await apiClient.post(endpoint, { roleName });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to assign role");
+    }
+  },
+
+  async removeRole(userId: number, roleName: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.ROLE.REMOVE_ROLE.replace("{userId}", userId.toString());
+    const response = await apiClient.delete(endpoint, { roleName });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to remove role");
+    }
+  },
 };
+
+export interface UserSummary {
+  id: number;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  isActive: boolean;
+  roles: string[];
+}
+
+export interface PagedUsersResponse {
+  page: number;
+  pageSize: number;
+  total: number;
+  users: UserSummary[];
+}
 

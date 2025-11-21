@@ -110,28 +110,28 @@ const MonitorBookings: React.FC = () => {
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
-          variant={filter === "all" ? "default" : "outline"}
+          variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
           All
         </Button>
         <Button
           size="sm"
-          variant={filter === "active" ? "default" : "outline"}
+          variant={filter === "active" ? "primary" : "outline"}
           onClick={() => setFilter("active")}
         >
           Active
         </Button>
         <Button
           size="sm"
-          variant={filter === "upcoming" ? "default" : "outline"}
+          variant={filter === "upcoming" ? "primary" : "outline"}
           onClick={() => setFilter("upcoming")}
         >
           Upcoming
         </Button>
         <Button
           size="sm"
-          variant={filter === "completed" ? "default" : "outline"}
+          variant={filter === "completed" ? "primary" : "outline"}
           onClick={() => setFilter("completed")}
         >
           Completed

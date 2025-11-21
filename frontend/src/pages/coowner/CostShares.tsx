@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import {
@@ -9,20 +10,31 @@ import {
 } from "../../services/paymentService";
 import CreateCostShareModal from "../../components/modals/CreateCostShareModal";
 import CreatePaymentModal from "../../components/modals/CreatePaymentModal";
+import PaymentTypeModal from "../../components/modals/PaymentTypeModal";
 
 const CostShares: React.FC = () => {
+  const navigate = useNavigate();
   const [costShares, setCostShares] = useState<CostShare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [showPaymentTypeModal, setShowPaymentTypeModal] = useState(false);
   const [selectedCostShareDetailId, setSelectedCostShareDetailId] = useState<
     string | null
   >(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [totalPendingAmount, setTotalPendingAmount] = useState(0);
+  const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
 
   useEffect(() => {
     loadCostShares();
+    // Show payment type modal on first visit
+    const hasSeenModal = sessionStorage.getItem("payment-type-selected");
+    if (!hasSeenModal) {
+      setShowPaymentTypeModal(true);
+    }
   }, []);
 
   const loadCostShares = async () => {
@@ -45,6 +57,22 @@ const CostShares: React.FC = () => {
       );
       
       setCostShares(costSharesWithDetails);
+
+      // Calculate pending payments for current user
+      let pending = 0;
+      let totalPending = 0;
+      costSharesWithDetails.forEach((costShare) => {
+        if (costShare.costShareDetails) {
+          costShare.costShareDetails.forEach((detail) => {
+            if (detail.userId === userId && detail.status === PaymentStatus.Pending) {
+              pending++;
+              totalPending += detail.amount;
+            }
+          });
+        }
+      });
+      setPendingCount(pending);
+      setTotalPendingAmount(totalPending);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load cost shares");
     } finally {
@@ -144,6 +172,34 @@ const CostShares: React.FC = () => {
         description="View and manage shared costs for your vehicle groups."
       />
 
+      {/* Pending Payments Alert */}
+      {pendingCount > 0 && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-theme-xs dark:border-amber-500/40 dark:bg-amber-500/10">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                You have {pendingCount} pending payment{pendingCount > 1 ? "s" : ""}
+              </h3>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                Total amount due: <span className="font-semibold">{formatAmount(totalPendingAmount)}</span>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                // Scroll to first pending payment
+                const firstPending = document.querySelector('[data-pending="true"]');
+                if (firstPending) {
+                  firstPending.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }}
+              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+            >
+              View Pending Payments
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex justify-end">
         <button
           onClick={() => setIsCreateModalOpen(true)}
@@ -214,39 +270,51 @@ const CostShares: React.FC = () => {
                         Cost Share Details
                       </h4>
                       <div className="space-y-2">
-                        {costShare.costShareDetails.map((detail) => (
-                          <div
-                            key={detail.id}
-                            className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30"
-                          >
-                            <div>
-                              <p className="text-sm font-medium text-gray-900 dark:text-white/90">
-                                User: {detail.userId.substring(0, 8)}...
-                              </p>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Ownership: {detail.ownershipPercentage}% | Amount:{" "}
-                                {formatAmount(detail.amount)}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span
-                                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
-                                  detail.status
-                                )}`}
-                              >
-                                {getStatusLabel(detail.status)}
-                              </span>
-                              {detail.status === PaymentStatus.Pending && (
-                                <button
-                                  onClick={() => handlePay(detail.id, detail.amount)}
-                                  className="rounded-lg bg-primary-600 px-3 py-1 text-xs font-medium text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
+                        {costShare.costShareDetails.map((detail) => {
+                          const isUserPending = detail.userId === userId && detail.status === PaymentStatus.Pending;
+                          return (
+                            <div
+                              key={detail.id}
+                              data-pending={isUserPending}
+                              className={`flex items-center justify-between rounded-lg border p-3 ${
+                                isUserPending
+                                  ? "border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10"
+                                  : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-800/30"
+                              }`}
+                            >
+                              <div>
+                                <p className="text-sm font-medium text-gray-900 dark:text-white/90">
+                                  {detail.userId === userId ? (
+                                    <span className="font-semibold">You</span>
+                                  ) : (
+                                    `User: ${detail.userId.substring(0, 8)}...`
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Ownership: {detail.ownershipPercentage}% | Amount:{" "}
+                                  {formatAmount(detail.amount)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span
+                                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
+                                    detail.status
+                                  )}`}
                                 >
-                                  Pay Now
-                                </button>
-                              )}
+                                  {getStatusLabel(detail.status)}
+                                </span>
+                                {isUserPending && (
+                                  <button
+                                    onClick={() => handlePay(detail.id, detail.amount)}
+                                    className="rounded-lg bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 shadow-md hover:shadow-lg transition-all"
+                                  >
+                                    Pay Now
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -262,6 +330,24 @@ const CostShares: React.FC = () => {
         onSuccess={() => {
           setIsCreateModalOpen(false);
           loadCostShares();
+        }}
+      />
+
+      <PaymentTypeModal
+        isOpen={showPaymentTypeModal}
+        onClose={() => {
+          setShowPaymentTypeModal(false);
+          sessionStorage.setItem("payment-type-selected", "true");
+        }}
+        onSelectCompany={() => {
+          setShowPaymentTypeModal(false);
+          navigate("/coowner/company-payment");
+          sessionStorage.setItem("payment-type-selected", "true");
+        }}
+        onSelectPersonal={() => {
+          setShowPaymentTypeModal(false);
+          sessionStorage.setItem("payment-type-selected", "true");
+          // Stay on this page for personal payment
         }}
       />
 

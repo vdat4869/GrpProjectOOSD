@@ -1,9 +1,11 @@
 using AuthService.DTOs;
 using AuthService.Models;
 using AuthService.Repositories;
+using AuthService.Data;
 using AutoMapper;
 using BCrypt.Net;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 namespace AuthService.Services;
 
@@ -28,12 +30,14 @@ public class AuthService : IAuthService
     private readonly IUserRepository _userRepository;
     private readonly IJwtService _jwtService;
     private readonly IMapper _mapper;
+    private readonly AuthDbContext _dbContext;
 
-    public AuthService(IUserRepository userRepository, IJwtService jwtService, IMapper mapper)
+    public AuthService(IUserRepository userRepository, IJwtService jwtService, IMapper mapper, AuthDbContext dbContext)
     {
         _userRepository = userRepository;
         _jwtService = jwtService;
         _mapper = mapper;
+        _dbContext = dbContext;
     }
 
     /// <summary>
@@ -151,18 +155,40 @@ public class AuthService : IAuthService
             var createdUser = await _userRepository.CreateAsync(user);
 
             // Gán role CoOwner mặc định cho user mới
-            var coOwnerRole = new UserRole
+            // Tìm hoặc tạo role CoOwner
+            var coOwnerRole = await _dbContext.Roles.FirstOrDefaultAsync(r => r.Name == "CoOwner");
+            if (coOwnerRole == null)
+            {
+                // Nếu chưa có role CoOwner, tạo mới
+                coOwnerRole = new Role
+                {
+                    Name = "CoOwner",
+                    Description = "Chủ sở hữu đồng sở hữu xe",
+                    CreatedAt = DateTime.UtcNow
+                };
+                _dbContext.Roles.Add(coOwnerRole);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            // Gán role cho user
+            var userRole = new UserRole
             {
                 UserId = createdUser.Id,
-                RoleId = 1, // CoOwner role
+                RoleId = coOwnerRole.Id,
                 AssignedAt = DateTime.UtcNow
             };
+            _dbContext.UserRoles.Add(userRole);
+            await _dbContext.SaveChangesAsync();
 
-            // TODO: Cần thêm logic để gán role vào database
-            // Hiện tại chỉ tạo user, role sẽ được gán sau
-
-            var userDto = _mapper.Map<UserDto>(createdUser);
-            userDto.Roles = new List<string> { "CoOwner" };
+            // Load lại user với roles để map đúng
+            var userWithRoles = await _userRepository.GetByIdAsync(createdUser.Id);
+            var userDto = _mapper.Map<UserDto>(userWithRoles);
+            
+            // Đảm bảo roles được map đúng
+            if (userDto.Roles == null || userDto.Roles.Count == 0)
+            {
+                userDto.Roles = new List<string> { "CoOwner" };
+            }
 
             return new ApiResponse<UserDto>
             {

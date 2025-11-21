@@ -7,6 +7,8 @@ namespace BookingService.Repositories
     {
         Task<CoOwner?> GetByIdAsync(int id);
         Task<IEnumerable<CoOwner>> GetAllAsync();
+        Task AddAsync(CoOwner coOwner);
         Task UpdateAsync(CoOwner coOwner);
+        Task SaveChangesAsync();
     }
 }

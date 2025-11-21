@@ -109,7 +109,18 @@ export const bookingService = {
       data
     );
     if (!response.success || !response.data) {
-      throw new Error(response.message || "Failed to create booking");
+      // Try to extract error message from response
+      let errorMessage = response.message || "Failed to create booking";
+      
+      // If response.data exists but is an error object, extract error message
+      if (response.data && typeof response.data === 'object' && 'error' in response.data) {
+        errorMessage = (response.data as any).error || errorMessage;
+        if ((response.data as any).details) {
+          errorMessage += `: ${(response.data as any).details}`;
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
     return response.data;
   },

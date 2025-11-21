@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import StatCard from "../../components/common/StatCard";
-import { bookingService, Booking } from "../../services/bookingService";
-import { reportService, MaintenanceRecord } from "../../services/reportService";
+import { bookingService } from "../../services/bookingService";
+import { reportService } from "../../services/reportService";
 
 const StaffDashboard: React.FC = () => {
   const [stats, setStats] = useState({

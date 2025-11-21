@@ -19,9 +19,18 @@ namespace BookingService.Repositories
         public async Task<IEnumerable<CoOwner>> GetAllAsync() =>
             await _context.CoOwners.ToListAsync();
 
+        public async Task AddAsync(CoOwner coOwner)
+        {
+            await _context.CoOwners.AddAsync(coOwner);
+        }
+
         public async Task UpdateAsync(CoOwner coOwner)
         {
             _context.CoOwners.Update(coOwner);
+        }
+
+        public async Task SaveChangesAsync()
+        {
             await _context.SaveChangesAsync();
         }
     }

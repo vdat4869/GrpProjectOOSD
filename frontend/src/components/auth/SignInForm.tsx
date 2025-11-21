@@ -33,8 +33,10 @@ export default function SignInForm() {
       const result = await authService.login(email.trim(), password);
 
       // authService.login() already stores token and user info
-      // Just get the role for navigation
-      const primaryRole = result.user.roles[0] || "Co-owner";
+      // Just get the role for navigation - default to Co-owner if roles is undefined
+      const primaryRole = (result.user?.roles && result.user.roles.length > 0) 
+        ? result.user.roles[0] 
+        : "Co-owner";
 
       if (isChecked) {
         localStorage.setItem("rememberedEmail", email.trim());
