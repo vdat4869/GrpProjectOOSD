@@ -14,11 +14,24 @@ export const API_ENDPOINTS = {
     CHANGE_PASSWORD: "/api/auth/change-password",
     REFRESH_TOKEN: "/api/auth/refresh-token",
   },
+  // Role/User Management (Admin only)
+  ROLE: {
+    USERS: "/api/role/users",
+    USER_DETAILS: "/api/role/users/{userId}/details",
+    USER_ROLES: "/api/role/users/{userId}",
+    ASSIGN_ROLE: "/api/role/users/{userId}/assign",
+    REMOVE_ROLE: "/api/role/users/{userId}/remove",
+    UPDATE_USER: "/api/role/users/{userId}",
+    DELETE_USER: "/api/role/users/{userId}",
+  },
   // KYC
   KYC: {
     SUBMIT_IDENTITY: "/api/kyc/identity",
     UPLOAD_LICENSE: "/api/kyc/license/upload",
     STATUS: "/api/kyc/status",
+    ALL_REQUESTS: "/api/kyc/all",
+    VERIFY_IDENTITY: "/api/kyc/identity/{documentId}/verify",
+    VERIFY_LICENSE: "/api/kyc/license/{licenseId}/verify",
   },
   // Ownership
   OWNERSHIP: {
@@ -35,6 +48,10 @@ export const API_ENDPOINTS = {
     OWNERSHIPS_BY_COOWNER: "/api/ownership/ownerships/co-owner/{coOwnerId}",
     CONTRACTS: "/api/ownership/econtracts",
     CONTRACTS_BY_GROUP: "/api/ownership/econtracts/vehicle-group/{vehicleGroupId}",
+    GROUP_FUNDS: "/api/ownership/groupfunds/vehicle-group/{groupId}",
+    GROUP_FUND_TRANSACTIONS: "/api/ownership/groupfunds/{fundId}/transactions",
+    CREATE_GROUP_FUND_TRANSACTION: "/api/ownership/groupfunds/{fundId}/transactions",
+    APPROVE_FUND_TRANSACTION: "/api/ownership/groupfunds/transactions/{transactionId}/approve",
   },
   // Booking
   BOOKING: {
@@ -59,6 +76,12 @@ export const API_ENDPOINTS = {
     COST_SHARE_BY_ID: "/api/payment/costshares/{id}",
     COST_SHARE_SUGGEST: "/api/payment/costshares/suggest",
     TRANSACTIONS: "/api/payment/transactions",
+    COMPANY_PAYMENT_REQUESTS: "/api/payment/companypaymentrequests",
+    COMPANY_PAYMENT_REQUEST_BY_ID: "/api/payment/companypaymentrequests/{id}",
+    COMPANY_PAYMENT_REQUESTS_BY_USER: "/api/payment/companypaymentrequests/user/{userId}",
+    MY_COMPANY_PAYMENT_REQUESTS: "/api/payment/companypaymentrequests/my-requests",
+    COMPANY_PAYMENT_REQUEST_CANCEL: "/api/payment/companypaymentrequests/{id}/cancel",
+    COMPANY_PAYMENT_REQUEST_DELETE: "/api/payment/companypaymentrequests/{id}",
   },
   // VNPay
   VNPAY: {

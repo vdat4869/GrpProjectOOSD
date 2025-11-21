@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
@@ -15,15 +15,34 @@ const UploadLicenseForm: React.FC<UploadLicenseFormProps> = ({ onSuccess }) => {
     expiryDate: "",
   });
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      
+      // Tạo preview URL nếu là image
+      if (selectedFile.type.startsWith("image/")) {
+        const url = URL.createObjectURL(selectedFile);
+        setPreviewUrl(url);
+      } else {
+        setPreviewUrl(null);
+      }
     }
   };
+
+  // Cleanup preview URL khi component unmount hoặc file thay đổi
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +77,17 @@ const UploadLicenseForm: React.FC<UploadLicenseFormProps> = ({ onSuccess }) => {
       setLoading(true);
       await kycService.uploadLicense(file, formData);
       setSuccess(true);
+      // Cleanup preview URL sau khi upload thành công
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        setPreviewUrl(null);
+      }
+      setFile(null);
+      setFormData({
+        licenseNumber: "",
+        issuedDate: "",
+        expiryDate: "",
+      });
       setTimeout(() => {
         if (onSuccess) onSuccess();
       }, 2000);
@@ -100,9 +130,33 @@ const UploadLicenseForm: React.FC<UploadLicenseFormProps> = ({ onSuccess }) => {
             required
           />
           {file && (
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Selected: {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-            </p>
+            <div className="mt-3">
+              <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
+                Selected: <span className="font-medium">{file.name}</span> ({(file.size / 1024 / 1024).toFixed(2)} MB)
+              </p>
+              {previewUrl && (
+                <div className="mt-3 rounded-lg border border-gray-200 overflow-hidden dark:border-gray-700">
+                  <img
+                    src={previewUrl}
+                    alt="License preview"
+                    className="w-full h-auto max-h-96 object-contain bg-gray-50 dark:bg-gray-800"
+                  />
+                </div>
+              )}
+              {!previewUrl && file.type === "application/pdf" && (
+                <div className="mt-3 rounded-lg border border-gray-200 p-4 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                  <div className="flex items-center gap-3">
+                    <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">PDF File</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Preview không khả dụng cho file PDF</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

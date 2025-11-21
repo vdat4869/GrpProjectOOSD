@@ -1,21 +1,24 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-WORKDIR /app
-EXPOSE 80
-
+# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+
+# Copy project file and restore dependencies (cache layer)
 COPY ["booking-service.csproj", "."]
-RUN dotnet restore "booking-service.csproj"
+RUN dotnet restore "booking-service.csproj" --no-cache
+
+# Copy source code
 COPY . .
-WORKDIR "/src"
-RUN dotnet build "booking-service.csproj" -c Release -o /app/build
 
-FROM build AS publish
-RUN dotnet publish "booking-service.csproj" -c Release -o /app/publish /p:UseAppHost=false
+# Build and publish
+RUN dotnet publish "booking-service.csproj" -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
-FROM base AS final
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
-ENV ASPNETCORE_URLS=http://+:80
-ENTRYPOINT ["dotnet", "booking-service.dll"]
 
+# Copy published files
+COPY --from=build /app/publish .
+
+ENV ASPNETCORE_URLS=http://+:80
+EXPOSE 80
+ENTRYPOINT ["dotnet", "booking-service.dll"]

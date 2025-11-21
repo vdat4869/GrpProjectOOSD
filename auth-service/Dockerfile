@@ -1,19 +1,23 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-WORKDIR /app
-EXPOSE 80
-
+# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+
+# Copy project file and restore dependencies (cache layer)
 COPY ["AuthService.csproj", "."]
-RUN dotnet restore "AuthService.csproj"
+RUN dotnet restore "AuthService.csproj" --no-cache
+
+# Copy source code
 COPY . .
-WORKDIR "/src"
-RUN dotnet build "AuthService.csproj" -c Release -o /app/build
 
-FROM build AS publish
-RUN dotnet publish "AuthService.csproj" -c Release -o /app/publish
+# Build and publish
+RUN dotnet publish "AuthService.csproj" -c Release -o /app/publish --no-restore
 
-FROM base AS final
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+
+# Copy published files
+COPY --from=build /app/publish .
+
+EXPOSE 80
 ENTRYPOINT ["dotnet", "AuthService.dll"]

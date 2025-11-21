@@ -4,6 +4,8 @@ import Dashboard from "../pages/coowner/Dashboard";
 import MyBookings from "../pages/coowner/MyBookings";
 import PaymentHistory from "../pages/coowner/PaymentHistory";
 import CostShares from "../pages/coowner/CostShares";
+import CompanyPayment from "../pages/coowner/CompanyPayment";
+import CommonFund from "../pages/coowner/CommonFund";
 import OwnershipDetails from "../pages/coowner/OwnershipDetails";
 import GroupVoting from "../pages/coowner/GroupVoting";
 import UsageAnalytics from "../pages/coowner/UsageAnalytics";
@@ -18,6 +20,8 @@ const CoownerRoutes: React.FC = () => {
         <Route path="bookings" element={<MyBookings />} />
         <Route path="payments" element={<PaymentHistory />} />
         <Route path="cost-shares" element={<CostShares />} />
+        <Route path="company-payment" element={<CompanyPayment />} />
+        <Route path="common-fund" element={<CommonFund />} />
         <Route path="ownership" element={<OwnershipDetails />} />
         <Route path="voting" element={<GroupVoting />} />
         <Route path="analytics" element={<UsageAnalytics />} />

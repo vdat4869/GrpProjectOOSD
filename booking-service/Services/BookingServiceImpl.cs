@@ -99,8 +99,43 @@ namespace BookingService.Services
             var coOwner = await _coOwnerRepository.GetByIdAsync(request.CoOwnerId);
             var allBookings = await _bookingRepository.GetAllAsync();
 
-            if (vehicle == null || coOwner == null)
-                throw new Exception("Xe hoặc người đồng sở hữu không tồn tại.");
+            if (vehicle == null)
+                throw new Exception($"Xe với ID {request.VehicleId} không tồn tại.");
+
+            // Tự động tạo CoOwner nếu chưa tồn tại (sync với auth-service)
+            if (coOwner == null)
+            {
+                _logger?.LogWarning("CoOwner với ID {CoOwnerId} không tồn tại, đang tạo mới...", request.CoOwnerId);
+                
+                // Kiểm tra xem có CoOwner nào với name pattern tương ứng không (tránh duplicate)
+                var existingCoOwners = await _coOwnerRepository.GetAllAsync();
+                var coOwnerName = $"CoOwner {request.CoOwnerId}";
+                coOwner = existingCoOwners.FirstOrDefault(c => c.Name == coOwnerName);
+                
+                if (coOwner == null)
+                {
+                    // Tạo CoOwner mới (không set ID, để database tự generate)
+                    coOwner = new BookingService.Models.CoOwner
+                    {
+                        // Không set Id - để database tự generate
+                        Name = coOwnerName,
+                        OwnershipRatio = 50m, // Default 50%, có thể cập nhật sau
+                        UsageCount = 0
+                    };
+                    await _coOwnerRepository.AddAsync(coOwner);
+                    await _coOwnerRepository.SaveChangesAsync();
+                    _logger?.LogInformation("Đã tạo CoOwner mới với ID {CoOwnerId} (mapped from user ID {UserId})", 
+                        coOwner.Id, request.CoOwnerId);
+                }
+                else
+                {
+                    _logger?.LogInformation("Tìm thấy CoOwner existing với name {Name}, ID {CoOwnerId}", 
+                        coOwner.Name, coOwner.Id);
+                }
+                
+                // Cập nhật CoOwnerId trong request để dùng ID từ database
+                request.CoOwnerId = coOwner.Id;
+            }
 
             // Lấy các booking bị trùng giờ
             var overlappingBookings = allBookings

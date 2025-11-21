@@ -22,26 +22,55 @@ export default function CheckInModal({
   const [loading, setLoading] = useState(false);
   const [loadingQr, setLoadingQr] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [qrCodeError, setQrCodeError] = useState<string | null>(null);
+
+  // Check if booking is confirmed (can generate QR code)
+  const isBookingConfirmed = () => {
+    const status = booking.status.toLowerCase();
+    return (
+      status.includes("confirmed") ||
+      status.includes("đã xác nhận") ||
+      status.includes("đã đặt")
+    );
+  };
 
   useEffect(() => {
     if (isOpen && booking) {
-      // Try to get QR code if not already available
-      if (!booking.qrCode) {
+      // Reset states when modal opens
+      setQrCodeError(null);
+      
+      // If booking already has QR code, use it
+      if (booking.qrCode) {
+        setQrCode(booking.qrCode);
+      } else if (isBookingConfirmed()) {
+        // Only try to load QR code if booking is confirmed
         loadQrCode();
       } else {
-        setQrCode(booking.qrCode);
+        // Booking not confirmed yet
+        setQrCodeError("Booking chưa được xác nhận. Vui lòng chờ xác nhận trước khi check-in.");
       }
     }
   }, [isOpen, booking]);
 
   const loadQrCode = async () => {
+    // Don't load if booking is not confirmed
+    if (!isBookingConfirmed()) {
+      setQrCodeError("Booking chưa được xác nhận. Không thể tạo QR code.");
+      return;
+    }
+
     try {
       setLoadingQr(true);
+      setQrCodeError(null);
       const qrResponse = await bookingService.getQrCode(booking.id);
       setQrCode(qrResponse.qrCode);
     } catch (err) {
-      console.error("Failed to load QR code:", err);
-      // Continue without QR code - user can enter manually
+      const errorMessage = err instanceof Error ? err.message : "Failed to load QR code";
+      setQrCodeError(errorMessage);
+      // Don't log to console if it's expected (booking not confirmed)
+      if (!errorMessage.includes("xác nhận") && !errorMessage.includes("confirmed")) {
+        console.error("Failed to load QR code:", err);
+      }
     } finally {
       setLoadingQr(false);
     }
@@ -113,22 +142,36 @@ export default function CheckInModal({
                 type="text"
                 value={qrCode}
                 onChange={(e) => setQrCode(e.target.value)}
-                placeholder="QR code will be loaded automatically"
-                disabled={loadingQr}
+                placeholder={
+                  isBookingConfirmed()
+                    ? "QR code will be loaded automatically"
+                    : "Booking chưa được xác nhận"
+                }
+                disabled={loadingQr || !isBookingConfirmed()}
               />
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={loadQrCode}
-                disabled={loadingQr}
+                disabled={loadingQr || !isBookingConfirmed()}
               >
                 {loadingQr ? "Loading..." : "Load QR"}
               </Button>
             </div>
             {qrCode && (
+              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                QR Code loaded successfully
+              </p>
+            )}
+            {qrCodeError && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                {qrCodeError}
+              </p>
+            )}
+            {!isBookingConfirmed() && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                QR Code loaded
+                Booking status: {booking.status}. Cần xác nhận trước khi check-in.
               </p>
             )}
           </div>

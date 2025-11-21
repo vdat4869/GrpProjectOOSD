@@ -22,7 +22,7 @@ public class KycController : ControllerBase
     }
 
     /// <summary>
-    /// Nộp giấy tờ định danh (CMND/CCCD)
+    /// Nộp giấy tờ định danh (CMND/CCCD) - Chỉ CoOwner
     /// </summary>
     [HttpPost("identity")]
     public async Task<ActionResult<ApiResponse<SubmitIdentityResponse>>> SubmitIdentity([FromBody] SubmitIdentityRequest request)
@@ -32,6 +32,16 @@ public class KycController : ControllerBase
             var userId = GetCurrentUserId();
             if (userId == null)
                 return Unauthorized();
+
+            // Chỉ CoOwner mới được submit KYC
+            if (!await IsCoOwnerAsync(userId.Value))
+            {
+                return StatusCode(403, new ApiResponse<SubmitIdentityResponse>
+                {
+                    Success = false,
+                    Message = "Chỉ CoOwner mới cần thực hiện KYC. Admin và Staff đã được xác minh qua quy trình tuyển dụng/quản trị."
+                });
+            }
 
             // Check if already exists
             var existing = await _db.IdentityDocuments
@@ -95,7 +105,7 @@ public class KycController : ControllerBase
     }
 
     /// <summary>
-    /// Upload ảnh bằng lái xe
+    /// Upload ảnh bằng lái xe - Chỉ CoOwner
     /// </summary>
     [HttpPost("license/upload")]
     [RequestSizeLimit(20_000_000)] // 20MB
@@ -108,6 +118,16 @@ public class KycController : ControllerBase
             var userId = GetCurrentUserId();
             if (userId == null)
                 return Unauthorized();
+
+            // Chỉ CoOwner mới được upload license
+            if (!await IsCoOwnerAsync(userId.Value))
+            {
+                return StatusCode(403, new ApiResponse<UploadLicenseResponse>
+                {
+                    Success = false,
+                    Message = "Chỉ CoOwner mới cần thực hiện KYC. Admin và Staff đã được xác minh qua quy trình tuyển dụng/quản trị."
+                });
+            }
 
             if (file == null || file.Length == 0)
             {
@@ -176,7 +196,7 @@ public class KycController : ControllerBase
     }
 
     /// <summary>
-    /// Lấy trạng thái KYC của user hiện tại
+    /// Lấy trạng thái KYC của user hiện tại - Admin/Staff trả về Approved tự động
     /// </summary>
     [HttpGet("status")]
     public async Task<ActionResult<ApiResponse<KycStatusResponse>>> GetKycStatus()
@@ -190,6 +210,20 @@ public class KycController : ControllerBase
                 {
                     Success = false,
                     Message = "Không thể xác định người dùng. Vui lòng đăng nhập lại."
+                });
+            }
+
+            // Admin và Staff không cần KYC - trả về Approved tự động
+            if (!await IsCoOwnerAsync(userId.Value))
+            {
+                return Ok(new ApiResponse<KycStatusResponse>
+                {
+                    Success = true,
+                    Data = new KycStatusResponse
+                    {
+                        Status = KycStatus.Approved,
+                        Message = "Admin và Staff đã được xác minh qua quy trình tuyển dụng/quản trị"
+                    }
                 });
             }
 
@@ -270,6 +304,214 @@ public class KycController : ControllerBase
                 Errors = new List<string> { ex.GetType().Name }
             });
         }
+    }
+
+    /// <summary>
+    /// Admin: Lấy danh sách tất cả KYC requests của CoOwner
+    /// </summary>
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<List<KycRequestDto>>>> GetAllKycRequests(
+        [FromQuery] string? status = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20)
+    {
+        try
+        {
+            var query = _db.Users
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .Where(u => u.UserRoles.Any(ur => ur.Role.Name == "CoOwner"));
+
+            var users = await query.ToListAsync();
+            var userIds = users.Select(u => u.Id).ToList();
+
+            var identityQuery = _db.IdentityDocuments
+                .Where(d => userIds.Contains(d.UserId) && d.IsActive);
+
+            var licenseQuery = _db.DrivingLicenses
+                .Where(l => userIds.Contains(l.UserId) && l.IsActive);
+
+            if (!string.IsNullOrEmpty(status) && Enum.TryParse<VerificationStatus>(status, true, out var statusEnum))
+            {
+                identityQuery = identityQuery.Where(d => d.VerificationStatus == statusEnum);
+                licenseQuery = licenseQuery.Where(l => l.VerificationStatus == statusEnum);
+            }
+
+            var identities = await identityQuery
+                .Include(d => d.User)
+                .OrderByDescending(d => d.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var licenses = await licenseQuery
+                .Include(l => l.User)
+                .OrderByDescending(l => l.CreatedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            var result = new List<KycRequestDto>();
+
+            foreach (var identity in identities)
+            {
+                var license = licenses.FirstOrDefault(l => l.UserId == identity.UserId);
+                result.Add(new KycRequestDto
+                {
+                    UserId = identity.UserId,
+                    UserEmail = identity.User?.Email ?? "",
+                    UserName = identity.User != null ? $"{identity.User.FirstName} {identity.User.LastName}".Trim() : "",
+                    IdentityDocumentId = identity.Id,
+                    IdentityStatus = identity.VerificationStatus.ToString(),
+                    IdentityDocumentNumber = identity.DocumentNumber,
+                    IdentityFullName = identity.FullName,
+                    LicenseId = license?.Id,
+                    LicenseStatus = license?.VerificationStatus.ToString() ?? "NotSubmitted",
+                    LicenseNumber = license?.LicenseNumber,
+                    CreatedAt = identity.CreatedAt,
+                    UpdatedAt = identity.UpdatedAt
+                });
+            }
+
+            return Ok(new ApiResponse<List<KycRequestDto>> { Success = true, Data = result });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<List<KycRequestDto>>
+            {
+                Success = false,
+                Message = $"Lỗi khi lấy danh sách KYC: {ex.Message}"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Admin: Xác thực Identity Document của CoOwner
+    /// </summary>
+    [HttpPost("identity/{documentId}/verify")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<object>>> VerifyIdentity(
+        int documentId,
+        [FromBody] VerifyKycRequest request)
+    {
+        try
+        {
+            var document = await _db.IdentityDocuments
+                .FirstOrDefaultAsync(d => d.Id == documentId && d.IsActive);
+
+            if (document == null)
+                return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy giấy tờ" });
+
+            // Kiểm tra user có phải CoOwner không
+            var user = await _db.Users
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == document.UserId);
+
+            if (user == null || !user.UserRoles.Any(ur => ur.Role.Name == "CoOwner"))
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Chỉ có thể xác thực KYC của CoOwner" });
+            }
+
+            if (request.Status == "Approved")
+            {
+                document.VerificationStatus = VerificationStatus.Approved;
+            }
+            else if (request.Status == "Rejected")
+            {
+                document.VerificationStatus = VerificationStatus.Rejected;
+            }
+            else
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Status không hợp lệ" });
+            }
+
+            document.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return Ok(new ApiResponse<object> { Success = true, Message = "Xác thực thành công" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = $"Lỗi khi xác thực: {ex.Message}"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Admin: Xác thực Driving License của CoOwner
+    /// </summary>
+    [HttpPost("license/{licenseId}/verify")]
+    [Authorize(Roles = "Admin")]
+    public async Task<ActionResult<ApiResponse<object>>> VerifyLicense(
+        int licenseId,
+        [FromBody] VerifyKycRequest request)
+    {
+        try
+        {
+            var license = await _db.DrivingLicenses
+                .FirstOrDefaultAsync(l => l.Id == licenseId && l.IsActive);
+
+            if (license == null)
+                return NotFound(new ApiResponse<object> { Success = false, Message = "Không tìm thấy bằng lái" });
+
+            // Kiểm tra user có phải CoOwner không
+            var user = await _db.Users
+                .Include(u => u.UserRoles)
+                .ThenInclude(ur => ur.Role)
+                .FirstOrDefaultAsync(u => u.Id == license.UserId);
+
+            if (user == null || !user.UserRoles.Any(ur => ur.Role.Name == "CoOwner"))
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Chỉ có thể xác thực KYC của CoOwner" });
+            }
+
+            if (request.Status == "Approved")
+            {
+                license.VerificationStatus = VerificationStatus.Approved;
+            }
+            else if (request.Status == "Rejected")
+            {
+                license.VerificationStatus = VerificationStatus.Rejected;
+            }
+            else
+            {
+                return BadRequest(new ApiResponse<object> { Success = false, Message = "Status không hợp lệ" });
+            }
+
+            license.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return Ok(new ApiResponse<object> { Success = true, Message = "Xác thực thành công" });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new ApiResponse<object>
+            {
+                Success = false,
+                Message = $"Lỗi khi xác thực: {ex.Message}"
+            });
+        }
+    }
+
+    /// <summary>
+    /// Kiểm tra user có phải CoOwner không
+    /// </summary>
+    private async Task<bool> IsCoOwnerAsync(int userId)
+    {
+        var user = await _db.Users
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
+        if (user == null)
+            return false;
+
+        return user.UserRoles.Any(ur => ur.Role.Name == "CoOwner" || ur.Role.Name == "co-owner");
     }
 
     private int? GetCurrentUserId()

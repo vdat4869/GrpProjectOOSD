@@ -89,5 +89,49 @@ export const kycService = {
     }
     return response.data;
   },
+
+  // Admin functions
+  async getAllKycRequests(status?: string, page: number = 1, pageSize: number = 20): Promise<KycRequestDto[]> {
+    let endpoint = `${API_ENDPOINTS.KYC.ALL_REQUESTS}?page=${page}&pageSize=${pageSize}`;
+    if (status) {
+      endpoint += `&status=${status}`;
+    }
+    const response = await apiClient.get<KycRequestDto[]>(endpoint);
+    if (!response.success || !response.data) {
+      return [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async verifyIdentity(documentId: string, status: "Approved" | "Rejected", notes?: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.KYC.VERIFY_IDENTITY.replace("{documentId}", documentId);
+    const response = await apiClient.post(endpoint, { status, notes });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to verify identity");
+    }
+  },
+
+  async verifyLicense(licenseId: string, status: "Approved" | "Rejected", notes?: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.KYC.VERIFY_LICENSE.replace("{licenseId}", licenseId);
+    const response = await apiClient.post(endpoint, { status, notes });
+    if (!response.success) {
+      throw new Error(response.message || "Failed to verify license");
+    }
+  },
 };
+
+export interface KycRequestDto {
+  userId: number;
+  userEmail: string;
+  userName: string;
+  identityDocumentId: string;
+  identityStatus: string;
+  identityDocumentNumber: string;
+  identityFullName: string;
+  licenseId?: string;
+  licenseStatus: string;
+  licenseNumber?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 

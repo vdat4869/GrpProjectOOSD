@@ -236,7 +236,7 @@ public class AuthController : ControllerBase
     /// <param name="request">Thông tin đăng ký</param>
     /// <returns>Thông tin user đã tạo</returns>
     [HttpPost("register")]
-    public async Task<ActionResult<ApiResponse<UserDto>>> Register([FromBody] RegisterRequest request)
+    public async Task<ActionResult<ApiResponse<LoginResponse>>> Register([FromBody] RegisterRequest request)
     {
         var result = await _authService.RegisterAsync(request);
         if (!result.Success)
@@ -244,25 +244,32 @@ public class AuthController : ControllerBase
             return BadRequest(result);
         }
 
-        // Gán role CoOwner mặc định (idempotent)
-        var user = await _db.Users.Include(u => u.UserRoles).FirstOrDefaultAsync(u => u.Email == request.Email);
-        if (user != null)
+        // Sau khi đăng ký thành công, tự động đăng nhập user
+        var loginRequest = new LoginRequest
         {
-            var coRole = await _db.Roles.FirstOrDefaultAsync(r => r.Name == "CoOwner");
-            if (coRole == null)
+            Email = request.Email,
+            Password = request.Password
+        };
+        
+        var loginResult = await _authService.LoginAsync(loginRequest);
+        if (!loginResult.Success)
+        {
+            // Nếu login thất bại, vẫn trả về user đã tạo nhưng không có token
+            return Ok(new ApiResponse<LoginResponse>
             {
-                coRole = new Role { Name = "CoOwner", Description = "Đồng sở hữu", CreatedAt = DateTime.UtcNow };
-                _db.Roles.Add(coRole);
-                await _db.SaveChangesAsync();
-            }
-            if (!user.UserRoles.Any(ur => ur.RoleId == coRole.Id))
-            {
-                _db.UserRoles.Add(new UserRole { UserId = user.Id, RoleId = coRole.Id, AssignedAt = DateTime.UtcNow });
-                await _db.SaveChangesAsync();
-            }
+                Success = true,
+                Message = "Đăng ký thành công. Vui lòng đăng nhập.",
+                Data = new LoginResponse
+                {
+                    AccessToken = "",
+                    RefreshToken = "",
+                    ExpiresAt = 0,
+                    User = result.Data!
+                }
+            });
         }
 
-        return Ok(await _authService.GetUserProfileAsync(user!.Id));
+        return Ok(loginResult);
     }
 
     /// <summary>

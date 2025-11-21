@@ -1,0 +1,140 @@
+import { useEffect, useState } from "react";
+import PageMeta from "../../components/common/PageMeta";
+import PageHeader from "../../components/common/PageHeader";
+import Button from "../../components/ui/button/Button";
+import { ownershipService, VehicleGroup } from "../../services/ownershipService";
+import Select from "../../components/form/Select";
+
+const VEHICLE_STATUSES = [
+  { id: 0, label: "Available", color: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300" },
+  { id: 1, label: "In Use", color: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" },
+  { id: 2, label: "Maintenance", color: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300" },
+  { id: 3, label: "Technical Issue", color: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300" },
+];
+
+const ManageVehicles: React.FC = () => {
+  const [vehicles, setVehicles] = useState<VehicleGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadVehicles();
+  }, []);
+
+  const loadVehicles = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await ownershipService.getGroups();
+      setVehicles(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load vehicles");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (vehicleId: string, newStatus: number) => {
+    try {
+      // TODO: Implement update vehicle status API call
+      setVehicles((prev) =>
+        prev.map((v) => (v.id === vehicleId ? { ...v, status: newStatus } : v))
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update vehicle status");
+    }
+  };
+
+  const getStatus = (status: number) => {
+    return VEHICLE_STATUSES.find((s) => s.id === status) || VEHICLE_STATUSES[0];
+  };
+
+  return (
+    <>
+      <PageMeta title="Staff | Manage Vehicles" />
+      <PageHeader
+        title="Vehicle Management"
+        description="View vehicle list and update vehicle status for your assigned groups."
+        actions={<Button size="sm" onClick={loadVehicles} disabled={loading}>Refresh</Button>}
+      />
+
+      {loading && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+          <p className="text-gray-600 dark:text-gray-400">Loading vehicles...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-error-200 bg-error-50 p-6 shadow-theme-xs dark:border-error-500/40 dark:bg-error-500/10">
+          <p className="text-error-600 dark:text-error-200">{error}</p>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="grid gap-4">
+          {vehicles.length === 0 ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
+              <p className="text-gray-600 dark:text-gray-400">No vehicles found.</p>
+            </div>
+          ) : (
+            vehicles.map((vehicle) => {
+              const status = getStatus(vehicle.status);
+              return (
+                <div
+                  key={vehicle.id}
+                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
+                >
+                  <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                            {vehicle.vehicleName}
+                          </h3>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.color}`}>
+                            {status.label}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {vehicle.name} • {vehicle.licensePlate || "No license plate"}
+                        </p>
+                        {vehicle.vehicleModel && vehicle.vehicleYear && (
+                          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            {vehicle.vehicleModel} • {vehicle.vehicleYear}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Update Status
+                        </p>
+                        <Select
+                          value={vehicle.status.toString()}
+                          onChange={(value) => handleStatusChange(vehicle.id, parseInt(value))}
+                        >
+                          {VEHICLE_STATUSES.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+export default ManageVehicles;
+

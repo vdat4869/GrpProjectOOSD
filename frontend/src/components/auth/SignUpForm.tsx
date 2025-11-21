@@ -65,8 +65,10 @@ export default function SignUpForm() {
         confirmPassword: formData.confirmPassword,
       });
 
-      // Get primary role (first role in the array)
-      const primaryRole = result.user.roles[0] || "Co-owner";
+      // Get primary role (first role in the array) - default to Co-owner if roles is undefined
+      const primaryRole = (result.user?.roles && result.user.roles.length > 0) 
+        ? result.user.roles[0] 
+        : "Co-owner";
       
       // Navigate to dashboard
       navigate(getDashboardPath(primaryRole), { replace: true });

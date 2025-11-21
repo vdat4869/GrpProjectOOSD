@@ -17,6 +17,7 @@ const sections: SidebarSection[] = [
       { label: "My Bookings", path: "/coowner/bookings", icon: <CalenderIcon /> },
       { label: "Payment History", path: "/coowner/payments", icon: <DollarLineIcon /> },
       { label: "Cost Shares", path: "/coowner/cost-shares", icon: <DollarLineIcon /> },
+      { label: "Common Fund", path: "/coowner/common-fund", icon: <DollarLineIcon /> },
       { label: "Ownership Details", path: "/coowner/ownership", icon: <UserCircleIcon /> },
       { label: "Group Voting", path: "/coowner/voting", icon: <TaskIcon /> },
       { label: "Usage Analytics", path: "/coowner/analytics", icon: <PieChartIcon /> },

@@ -64,4 +64,30 @@ namespace PaymentService.Validators
             RuleFor(x => x.AccountNumber).NotEmpty().MaximumLength(200).WithMessage("AccountNumber is required and must not exceed 200 characters");
         }
     }
+
+    public class CreateCompanyPaymentRequestValidator : AbstractValidator<CreateCompanyPaymentRequestDto>
+    {
+        public CreateCompanyPaymentRequestValidator()
+        {
+            RuleFor(x => x.ServiceType)
+                .NotEmpty()
+                .Must(type => new[] { "charging", "maintenance", "cleaning", "parking", "other" }.Contains(type.ToLower()))
+                .WithMessage("ServiceType must be one of: charging, maintenance, cleaning, parking, other");
+            
+            RuleFor(x => x.QrCode)
+                .NotEmpty()
+                .When(x => new[] { "charging", "parking" }.Contains(x.ServiceType.ToLower()))
+                .WithMessage("QR code is required for charging and parking services");
+            
+            RuleFor(x => x.Amount)
+                .GreaterThan(0)
+                .When(x => !new[] { "charging", "parking" }.Contains(x.ServiceType.ToLower()))
+                .WithMessage("Amount is required and must be greater than 0 for non-QR services");
+            
+            RuleFor(x => x.ImageUrls)
+                .NotEmpty()
+                .When(x => !new[] { "charging", "parking" }.Contains(x.ServiceType.ToLower()))
+                .WithMessage("Image URLs are required for non-QR services");
+        }
+    }
 }

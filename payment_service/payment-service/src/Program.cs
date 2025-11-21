@@ -186,7 +186,7 @@ try
             bookingEvent.BookingId, bookingEvent.CoOwnerId);
 
         // Process payment for completed booking asynchronously
-        _ = Task.Run(async () =>
+        _ = Task.Run(() =>
         {
             try
             {

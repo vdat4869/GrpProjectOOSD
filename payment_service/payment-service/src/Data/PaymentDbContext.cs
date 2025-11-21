@@ -15,6 +15,7 @@ namespace PaymentService.Data
         public DbSet<Payment> Payments { get; set; }
         public DbSet<PaymentMethod> PaymentMethods { get; set; }
         public DbSet<Wallet> Wallets { get; set; }
+        public DbSet<CompanyPaymentRequest> CompanyPaymentRequests { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -86,12 +87,22 @@ namespace PaymentService.Data
                 entity.HasIndex(e => new { e.UserId, e.MethodType, e.AccountNumber }).IsUnique();
             });
 
+            // CompanyPaymentRequest configuration
+            modelBuilder.Entity<CompanyPaymentRequest>(entity =>
+            {
+                entity.Property(e => e.Amount).HasPrecision(18, 2);
+                entity.Property(e => e.RefundAmount).HasPrecision(18, 2);
+                entity.HasIndex(e => e.UserId);
+                entity.HasIndex(e => e.Status);
+            });
+
             // Global query filters for soft delete
             modelBuilder.Entity<Transaction>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<CostShare>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<CostShareDetail>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<Payment>().HasQueryFilter(e => !e.IsDeleted);
             modelBuilder.Entity<PaymentMethod>().HasQueryFilter(e => !e.IsDeleted);
+            modelBuilder.Entity<CompanyPaymentRequest>().HasQueryFilter(e => !e.IsDeleted);
         }
     }
 }

@@ -314,5 +314,113 @@ export const paymentService = {
     }
     return response.data;
   },
+
+  // Company Payment Request methods
+  async createCompanyPaymentRequest(request: {
+    serviceType: string;
+    amount?: number;
+    description?: string;
+    qrCode?: string;
+    imageUrls?: string[];
+  }): Promise<CompanyPaymentRequest> {
+    const response = await apiClient.post<CompanyPaymentRequest>(
+      API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUESTS,
+      request
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create company payment request");
+    }
+    return response.data;
+  },
+
+  async getCompanyPaymentRequestById(id: string): Promise<CompanyPaymentRequest | null> {
+    const endpoint = API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUEST_BY_ID.replace("{id}", id);
+    const response = await apiClient.get<CompanyPaymentRequest>(endpoint);
+    if (!response.success || !response.data) {
+      return null;
+    }
+    return response.data;
+  },
+
+  async getCompanyPaymentRequestsByUser(userId: string, page: number = 1, pageSize: number = 20): Promise<CompanyPaymentRequest[]> {
+    const endpoint = `${API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUESTS_BY_USER.replace("{userId}", userId)}?page=${page}&pageSize=${pageSize}`;
+    const response = await apiClient.get<CompanyPaymentRequest[]>(endpoint);
+    if (!response.success || !response.data) {
+      return [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async getMyCompanyPaymentRequests(status?: string, page: number = 1, pageSize: number = 20): Promise<CompanyPaymentRequest[]> {
+    let endpoint = `${API_ENDPOINTS.PAYMENT.MY_COMPANY_PAYMENT_REQUESTS}?page=${page}&pageSize=${pageSize}`;
+    if (status) {
+      endpoint += `&status=${status}`;
+    }
+    const response = await apiClient.get<CompanyPaymentRequest[]>(endpoint);
+    if (!response.success || !response.data) {
+      return [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async getAllCompanyPaymentRequests(status?: string, page: number = 1, pageSize: number = 20): Promise<CompanyPaymentRequest[]> {
+    let endpoint = `${API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUESTS}?page=${page}&pageSize=${pageSize}`;
+    if (status) {
+      endpoint += `&status=${status}`;
+    }
+    const response = await apiClient.get<CompanyPaymentRequest[]>(endpoint);
+    if (!response.success || !response.data) {
+      return [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async updateCompanyPaymentRequest(id: string, data: {
+    status?: string;
+    companyNotes?: string;
+    refundAmount?: number;
+    refundTransactionId?: string;
+  }): Promise<CompanyPaymentRequest> {
+    const endpoint = `${API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUESTS}/${id}`;
+    const response = await apiClient.put<CompanyPaymentRequest>(endpoint, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update company payment request");
+    }
+    return response.data;
+  },
+
+  async cancelCompanyPaymentRequest(id: string): Promise<CompanyPaymentRequest> {
+    const endpoint = API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUEST_CANCEL.replace("{id}", id);
+    const response = await apiClient.post<CompanyPaymentRequest>(endpoint);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to cancel company payment request");
+    }
+    return response.data;
+  },
+
+  async deleteCompanyPaymentRequest(id: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.PAYMENT.COMPANY_PAYMENT_REQUEST_DELETE.replace("{id}", id);
+    const response = await apiClient.delete(endpoint);
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete company payment request");
+    }
+  },
 };
+
+export interface CompanyPaymentRequest {
+  id: string;
+  userId: string;
+  serviceType: string;
+  amount?: number;
+  description?: string;
+  qrCode?: string;
+  imageUrls?: string[];
+  status: string;
+  companyNotes?: string;
+  processedAt?: string;
+  refundAmount?: number;
+  refundTransactionId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
