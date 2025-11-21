@@ -405,6 +405,77 @@ export const paymentService = {
       throw new Error(response.message || "Failed to delete company payment request");
     }
   },
+
+  // Payment Methods
+  async getPaymentMethodsByUser(userId: string): Promise<PaymentMethod[]> {
+    const endpoint = API_ENDPOINTS.PAYMENT.PAYMENT_METHODS_BY_USER.replace("{userId}", userId);
+    const response = await apiClient.get<PaymentMethod[]>(endpoint);
+    if (!response.success || !response.data) {
+      return [];
+    }
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async getPaymentMethodById(id: string): Promise<PaymentMethod | null> {
+    const endpoint = API_ENDPOINTS.PAYMENT.PAYMENT_METHOD_BY_ID.replace("{id}", id);
+    const response = await apiClient.get<PaymentMethod>(endpoint);
+    if (!response.success || !response.data) {
+      return null;
+    }
+    return response.data;
+  },
+
+  async createPaymentMethod(data: {
+    userId: string;
+    methodType: PaymentMethodType | string;
+    accountNumber?: string;
+    accountName?: string;
+    bankName?: string;
+    bankCode?: string;
+    isDefault?: boolean;
+  }): Promise<PaymentMethod> {
+    // Convert enum to string if needed
+    const methodTypeString = typeof data.methodType === "number" 
+      ? PaymentMethodType[data.methodType] || data.methodType.toString()
+      : data.methodType;
+    
+    const requestData = {
+      ...data,
+      methodType: methodTypeString,
+    };
+    
+    const response = await apiClient.post<PaymentMethod>(
+      API_ENDPOINTS.PAYMENT.PAYMENT_METHODS,
+      requestData
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create payment method");
+    }
+    return response.data;
+  },
+
+  async updatePaymentMethod(id: string, data: {
+    accountName?: string;
+    bankName?: string;
+    bankCode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }): Promise<PaymentMethod> {
+    const endpoint = API_ENDPOINTS.PAYMENT.PAYMENT_METHOD_BY_ID.replace("{id}", id);
+    const response = await apiClient.put<PaymentMethod>(endpoint, data);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update payment method");
+    }
+    return response.data;
+  },
+
+  async deletePaymentMethod(id: string): Promise<void> {
+    const endpoint = API_ENDPOINTS.PAYMENT.PAYMENT_METHOD_BY_ID.replace("{id}", id);
+    const response = await apiClient.delete(endpoint);
+    if (!response.success) {
+      throw new Error(response.message || "Failed to delete payment method");
+    }
+  },
 };
 
 export interface CompanyPaymentRequest {
@@ -422,5 +493,18 @@ export interface CompanyPaymentRequest {
   refundTransactionId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PaymentMethod {
+  id: string;
+  userId: string;
+  methodType: string; // Backend returns string (e.g., "Banking", "EWallet", "Cash")
+  accountNumber?: string;
+  accountName?: string;
+  bankName?: string;
+  bankCode?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
 }
 

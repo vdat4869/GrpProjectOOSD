@@ -55,6 +55,7 @@ export interface VehicleSchedule {
   vehicleId: number;
   vehicleName: string;
   isActive: boolean;
+  isCurrentlyInUse?: boolean; // true = đang sử dụng, false = trống
   bookings: BookingPeriod[];
 }
 

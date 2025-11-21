@@ -82,6 +82,10 @@ export const API_ENDPOINTS = {
     MY_COMPANY_PAYMENT_REQUESTS: "/api/payment/companypaymentrequests/my-requests",
     COMPANY_PAYMENT_REQUEST_CANCEL: "/api/payment/companypaymentrequests/{id}/cancel",
     COMPANY_PAYMENT_REQUEST_DELETE: "/api/payment/companypaymentrequests/{id}",
+    // Payment Methods
+    PAYMENT_METHODS_BY_USER: "/api/paymentmethods/user/{userId}",
+    PAYMENT_METHOD_BY_ID: "/api/paymentmethods/{id}",
+    PAYMENT_METHODS: "/api/paymentmethods",
   },
   // VNPay
   VNPAY: {

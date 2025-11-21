@@ -6,7 +6,7 @@ using PaymentService.Validators;
 using PaymentService.Hubs;
 using PaymentService.Repositories;
 using PaymentService.Repositories.Interfaces;
-using PaymentService.Infrastructure;
+// using PaymentService.Infrastructure; // TODO: Implement Infrastructure services
 using FluentValidation;
 using System.Reflection;
 using Consul;
@@ -67,12 +67,14 @@ builder.Services.AddScoped<PaymentService.Services.CostSharingService>();
 builder.Services.AddScoped<PaymentService.Services.PaymentGatewayService>();
 
 // Infrastructure Services (Singleton)
-builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
-builder.Services.AddSingleton<IRedisService, RedisService>();
+// TODO: Implement RabbitMQ and Redis services
+// builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
+// builder.Services.AddSingleton<IRedisService, RedisService>();
 
 // AI Service (HttpClient for calling AI Service)
-builder.Services.AddHttpClient<IAiService, AiService>();
-builder.Services.AddScoped<IAiService, AiService>();
+// TODO: Implement AI service interface and class
+// builder.Services.AddHttpClient<IAiService, AiService>();
+// builder.Services.AddScoped<IAiService, AiService>();
 
 // Basic Health Checks
 builder.Services.AddHealthChecks();
@@ -174,6 +176,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Subscribe to RabbitMQ events (services are Singleton, so they're available here)
+// TODO: Implement RabbitMQ service and uncomment this section
+/*
 var rabbitMQService = app.Services.GetRequiredService<IRabbitMQService>();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
@@ -209,6 +213,9 @@ catch (Exception ex)
 {
     Log.Fatal(ex, "Error setting up RabbitMQ subscriptions");
 }
+*/
+
+Log.Information("Starting Payment Service");
 
 try
 {
