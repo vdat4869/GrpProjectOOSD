@@ -166,8 +166,41 @@ public class BookingCompletedEvent
     public int VehicleId { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
-    public decimal Distance { get; set; }
-    public decimal Cost { get; set; }
+    public double Distance { get; set; }
+    public double Cost { get; set; }
+    public DateTime CheckInTime { get; set; }
+    public DateTime CheckOutTime { get; set; }
     public DateTime CompletedAt { get; set; }
+}
+
+// Event models from other services
+public class UserCreatedEvent
+{
+    public int UserId { get; set; }
+    public string Email { get; set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string? PhoneNumber { get; set; }
+    public List<string> Roles { get; set; } = new();
+    public DateTime CreatedAt { get; set; }
+}
+
+public class VehicleGroupUpdatedEvent
+{
+    public Guid VehicleGroupId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime UpdatedAt { get; set; }
+}
+
+public class OwnershipUpdatedEvent
+{
+    public Guid OwnershipId { get; set; }
+    public Guid CoOwnerId { get; set; }
+    public Guid VehicleGroupId { get; set; }
+    public decimal OwnershipPercentage { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }
 

@@ -212,6 +212,78 @@ try
         });
     });
 
+    // Subscribe to user created events
+    rabbitMQService.SubscribeEvent<UserCreatedEvent>("user.created", (userEvent) =>
+    {
+        logger.LogInformation("Received user created event: UserId={UserId}, Email={Email}",
+            userEvent.UserId, userEvent.Email);
+
+        // Update report data asynchronously
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await mongoService.LogAsync("user_logs", new ReportLog
+                {
+                    Action = "UserCreated",
+                    Details = $"UserId: {userEvent.UserId}, Email: {userEvent.Email}, Roles: {string.Join(", ", userEvent.Roles)}"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error logging user created event to MongoDB");
+            }
+        });
+    });
+
+    // Subscribe to vehicle group updated events
+    rabbitMQService.SubscribeEvent<VehicleGroupUpdatedEvent>("vehicle.group.updated", (groupEvent) =>
+    {
+        logger.LogInformation("Received vehicle group updated event: VehicleGroupId={VehicleGroupId}, Status={Status}",
+            groupEvent.VehicleGroupId, groupEvent.Status);
+
+        // Update report data asynchronously
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await mongoService.LogAsync("vehicle_group_logs", new ReportLog
+                {
+                    Action = "VehicleGroupUpdated",
+                    Details = $"VehicleGroupId: {groupEvent.VehicleGroupId}, Name: {groupEvent.Name}, Status: {groupEvent.Status}"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error logging vehicle group updated event to MongoDB");
+            }
+        });
+    });
+
+    // Subscribe to ownership updated events
+    rabbitMQService.SubscribeEvent<OwnershipUpdatedEvent>("ownership.updated", (ownershipEvent) =>
+    {
+        logger.LogInformation("Received ownership updated event: OwnershipId={OwnershipId}, CoOwnerId={CoOwnerId}, VehicleGroupId={VehicleGroupId}",
+            ownershipEvent.OwnershipId, ownershipEvent.CoOwnerId, ownershipEvent.VehicleGroupId);
+
+        // Update report data asynchronously
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await mongoService.LogAsync("ownership_logs", new ReportLog
+                {
+                    Action = "OwnershipUpdated",
+                    Details = $"OwnershipId: {ownershipEvent.OwnershipId}, CoOwnerId: {ownershipEvent.CoOwnerId}, VehicleGroupId: {ownershipEvent.VehicleGroupId}, Percentage: {ownershipEvent.OwnershipPercentage}%, IsActive: {ownershipEvent.IsActive}"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error logging ownership updated event to MongoDB");
+            }
+        });
+    });
+
     logger.LogInformation("Report Service started with RabbitMQ and MongoDB integration");
 }
 catch (Exception ex)

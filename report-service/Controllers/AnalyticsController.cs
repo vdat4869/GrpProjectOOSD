@@ -33,11 +33,28 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
+        // Validate vehicleId is reasonable (not a parsed GUID)
+        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        {
+            return Ok(new ApiResponse<UsageStatisticsDto>
+            {
+                Success = false,
+                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Data = null
+            });
+        }
+
         var result = await _analyticsService.GetUsageStatisticsAsync(vehicleId, startDate, endDate);
         
         if (!result.Success)
         {
-            return BadRequest(result);
+            // Return empty data instead of BadRequest for better UX
+            return Ok(new ApiResponse<UsageStatisticsDto>
+            {
+                Success = true,
+                Message = result.Message ?? "No usage statistics found for this vehicle",
+                Data = null
+            });
         }
 
         return Ok(result);
@@ -56,11 +73,28 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
+        // Validate vehicleId is reasonable (not a parsed GUID)
+        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        {
+            return Ok(new ApiResponse<CostStatisticsDto>
+            {
+                Success = false,
+                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Data = null
+            });
+        }
+
         var result = await _analyticsService.GetCostStatisticsAsync(vehicleId, startDate, endDate);
         
         if (!result.Success)
         {
-            return BadRequest(result);
+            // Return empty data instead of BadRequest for better UX
+            return Ok(new ApiResponse<CostStatisticsDto>
+            {
+                Success = true,
+                Message = result.Message ?? "No cost statistics found for this vehicle",
+                Data = null
+            });
         }
 
         return Ok(result);
