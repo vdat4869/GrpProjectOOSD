@@ -36,10 +36,23 @@ const ManageVehicles: React.FC = () => {
 
   const handleStatusChange = async (vehicleId: string, newStatus: number) => {
     try {
-      // TODO: Implement update vehicle status API call
-      setVehicles((prev) =>
-        prev.map((v) => (v.id === vehicleId ? { ...v, status: newStatus } : v))
-      );
+      setError(null);
+      // Map frontend status (0-3) to backend GroupStatus
+      // 0=Available, 1=In Use -> Active
+      // 2=Maintenance, 3=Technical Issue -> Inactive
+      const statusMap: Record<number, string> = {
+        0: "Active",   // Available
+        1: "Active",   // In Use
+        2: "Inactive", // Maintenance
+        3: "Inactive", // Technical Issue
+      };
+      const backendStatus = statusMap[newStatus] || "Active";
+      
+      // Call API to update status in database
+      await ownershipService.updateGroupStatus(vehicleId, backendStatus);
+      
+      // Reload vehicles from database to get updated data
+      await loadVehicles();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update vehicle status");
     }
@@ -78,7 +91,10 @@ const ManageVehicles: React.FC = () => {
             </div>
           ) : (
             vehicles.map((vehicle) => {
-              const status = getStatus(vehicle.status);
+              const statusNumber = typeof vehicle.status === 'string' 
+                ? (parseInt(vehicle.status) || 0) 
+                : vehicle.status;
+              const status = getStatus(statusNumber);
               return (
                 <div
                   key={vehicle.id}

@@ -176,9 +176,15 @@ public class GetAllCoOwnersHandler : IRequestHandler<GetAllCoOwnersQuery, List<C
     {
         var query = _context.CoOwners.AsQueryable();
 
+        // Log total count before filtering
+        var totalCount = await _context.CoOwners.CountAsync(cancellationToken);
+        Console.WriteLine($"[GetAllCoOwnersHandler] Total co-owners in database: {totalCount}");
+
         if (request.IsVerified.HasValue)
         {
             query = query.Where(c => c.IsVerified == request.IsVerified.Value);
+            var filteredCount = await query.CountAsync(cancellationToken);
+            Console.WriteLine($"[GetAllCoOwnersHandler] After IsVerified filter ({request.IsVerified.Value}): {filteredCount}");
         }
 
         if (!string.IsNullOrWhiteSpace(request.Search))
@@ -189,6 +195,8 @@ public class GetAllCoOwnersHandler : IRequestHandler<GetAllCoOwnersQuery, List<C
                 c.FullName.Contains(s) ||
                 c.Email.Contains(s) ||
                 c.IdentityCardNumber.Contains(s));
+            var searchCount = await query.CountAsync(cancellationToken);
+            Console.WriteLine($"[GetAllCoOwnersHandler] After Search filter ({s}): {searchCount}");
         }
 
         // Sắp xếp mới nhất trước
@@ -196,7 +204,11 @@ public class GetAllCoOwnersHandler : IRequestHandler<GetAllCoOwnersQuery, List<C
 
         // Phân trang
         var skip = (request.Page - 1) * request.PageSize;
+        Console.WriteLine($"[GetAllCoOwnersHandler] Pagination: page={request.Page}, pageSize={request.PageSize}, skip={skip}");
+        
         var coOwners = await query.Skip(skip).Take(request.PageSize).ToListAsync(cancellationToken);
+        Console.WriteLine($"[GetAllCoOwnersHandler] Returning {coOwners.Count} co-owners");
+        
         return _mapper.Map<List<CoOwnerDto>>(coOwners);
     }
 }

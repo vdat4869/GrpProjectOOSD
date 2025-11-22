@@ -176,6 +176,7 @@ services:
       - JWT__Secret=${JWT_SECRET:-YourSuperSecretKeyForJWTTokenGeneration2024}
       - JWT__Issuer=${JWT_ISSUER:-EV-CoOwnership-System}
       - JWT__Audience=${JWT_AUDIENCE:-EV-CoOwnership-System}
+      - GatewayUrl=http://gateway-service:80
     ports:
       - "${OWNERSHIP_PORT:-5001}:80"
     networks:

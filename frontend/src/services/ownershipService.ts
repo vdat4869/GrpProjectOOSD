@@ -9,7 +9,7 @@ export interface VehicleGroup {
   licensePlate?: string;
   vehicleModel?: string;
   vehicleYear?: string;
-  status: number;
+  status: number | string; // Backend returns string ("Active", "Inactive"), frontend uses number (0, 1)
   createdAt: string;
   updatedAt: string;
 }
@@ -70,12 +70,18 @@ export interface Ownership {
 
 export interface EContract {
   id: string;
+  coOwnerId: string;
+  coOwnerName?: string;
   vehicleGroupId: string;
-  contractType: string;
-  status: string;
-  signedBy?: string[];
+  contractTitle: string;
+  contractContent: string;
+  ownershipPercentage: number;
+  contractStatus: string;
   signedAt?: string;
+  notes?: string;
   createdAt: string;
+  updatedAt: string;
+  expiresAt?: string;
 }
 
 export interface GroupMember {
@@ -151,6 +157,15 @@ export const ownershipService = {
     }
   },
 
+  async updateGroupStatus(id: string, status: string): Promise<VehicleGroup> {
+    const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${id}/status`;
+    const response = await apiClient.patch<VehicleGroup>(endpoint, { status });
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update vehicle group status");
+    }
+    return response.data;
+  },
+
   async getGroupMembers(groupId: string): Promise<GroupMember[]> {
     const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${groupId}/members`;
     const response = await apiClient.get<GroupMember[]>(endpoint);
@@ -180,14 +195,59 @@ export const ownershipService = {
     }
   },
 
-  async getCoOwners(): Promise<CoOwner[]> {
-    const response = await apiClient.get<CoOwner[]>(
-      API_ENDPOINTS.OWNERSHIP.COOWNERS
-    );
+  async updateGroupMemberRole(groupId: string, memberId: string, role: string): Promise<GroupMember> {
+    const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${groupId}/members/${memberId}/role`;
+    const response = await apiClient.put<GroupMember>(endpoint, { role });
     if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to update group member role");
+    }
+    return response.data;
+  },
+
+  async getCoOwners(isVerified?: boolean): Promise<CoOwner[]> {
+    // API requires pagination, request with large pageSize to get all co-owners
+    // Don't filter by isVerified to get all co-owners (verified and unverified)
+    let endpoint = `${API_ENDPOINTS.OWNERSHIP.COOWNERS}?page=1&pageSize=1000`;
+    if (isVerified !== undefined) {
+      endpoint += `&isVerified=${isVerified}`;
+    }
+    
+    const response = await apiClient.get<CoOwner[]>(endpoint);
+    
+    console.log("getCoOwners response:", response);
+    console.log("getCoOwners endpoint:", endpoint);
+    
+    if (!response.success) {
+      console.error("getCoOwners failed:", response.message);
       return [];
     }
-    return Array.isArray(response.data) ? response.data : [];
+    
+    // Handle different response formats
+    let coOwners: CoOwner[] = [];
+    if (Array.isArray(response.data)) {
+      coOwners = response.data;
+    } else if (response.data && Array.isArray((response.data as any).data)) {
+      coOwners = (response.data as any).data;
+    } else if (response.data && Array.isArray((response.data as any).items)) {
+      coOwners = (response.data as any).items;
+    }
+    
+    console.log("Parsed co-owners:", coOwners);
+    console.log("Co-owners count:", coOwners.length);
+    
+    // If empty and we filtered by verified, try without filter
+    if (coOwners.length === 0 && isVerified === undefined) {
+      console.log("Trying to get all co-owners (including unverified)...");
+      // Try again with explicit include all
+      const allEndpoint = `${API_ENDPOINTS.OWNERSHIP.COOWNERS}?page=1&pageSize=1000`;
+      const allResponse = await apiClient.get<CoOwner[]>(allEndpoint);
+      if (allResponse.success && Array.isArray(allResponse.data)) {
+        coOwners = allResponse.data;
+        console.log("All co-owners (including unverified):", coOwners);
+      }
+    }
+    
+    return coOwners;
   },
 
   async getCoOwnerById(id: string): Promise<CoOwner | null> {
@@ -215,6 +275,17 @@ export const ownershipService = {
     );
     if (!response.success || !response.data) {
       throw new Error(response.message || "Failed to create co-owner");
+    }
+    return response.data;
+  },
+
+  async syncCoOwnersFromAuth(): Promise<{ message: string; created: number; skipped: number; errors?: string[] }> {
+    const response = await apiClient.post<{ message: string; created: number; skipped: number; errors?: string[] }>(
+      `${API_ENDPOINTS.OWNERSHIP.COOWNERS}/sync-from-auth`,
+      {}
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to sync co-owners");
     }
     return response.data;
   },
@@ -396,15 +467,25 @@ export const ownershipService = {
   },
 
   async createContract(data: {
+    coOwnerId: string;
     vehicleGroupId: string;
-    contractType: string;
-    content?: string;
-    terms?: string;
-    status?: string;
+    contractTitle: string;
+    contractContent: string;
+    ownershipPercentage: number;
+    notes?: string;
+    expiresAt?: string;
   }): Promise<EContract> {
     const response = await apiClient.post<EContract>(
       API_ENDPOINTS.OWNERSHIP.CONTRACTS,
-      data
+      {
+        coOwnerId: data.coOwnerId,
+        vehicleGroupId: data.vehicleGroupId,
+        contractTitle: data.contractTitle,
+        contractContent: data.contractContent,
+        ownershipPercentage: data.ownershipPercentage,
+        notes: data.notes,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt).toISOString() : undefined,
+      }
     );
     if (!response.success || !response.data) {
       throw new Error(response.message || "Failed to create contract");
@@ -413,13 +494,20 @@ export const ownershipService = {
   },
 
   async updateContract(contractId: string, data: {
-    contractType?: string;
-    content?: string;
-    terms?: string;
-    status?: string;
+    contractTitle?: string;
+    contractContent?: string;
+    ownershipPercentage?: number;
+    notes?: string;
+    expiresAt?: string;
   }): Promise<EContract> {
     const endpoint = `${API_ENDPOINTS.OWNERSHIP.CONTRACTS}/${contractId}`;
-    const response = await apiClient.put<EContract>(endpoint, data);
+    const response = await apiClient.put<EContract>(endpoint, {
+      contractTitle: data.contractTitle,
+      contractContent: data.contractContent,
+      ownershipPercentage: data.ownershipPercentage,
+      notes: data.notes,
+      expiresAt: data.expiresAt ? new Date(data.expiresAt).toISOString() : undefined,
+    });
     if (!response.success || !response.data) {
       throw new Error(response.message || "Failed to update contract");
     }

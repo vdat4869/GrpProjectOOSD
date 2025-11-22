@@ -44,12 +44,26 @@ const Reports: React.FC = () => {
 
   const loadGroups = async () => {
     try {
-      const data = await ownershipService.getGroups();
-      setGroups(data);
-      if (data.length > 0 && !selectedGroupId) {
-        setSelectedGroupId(data[0].id);
-        // Use group id as vehicle identifier (simplified - would need proper vehicle mapping)
-        setSelectedVehicleId(parseInt(data[0].id.replace(/-/g, "").substring(0, 8), 16) || 1);
+      const [groupsData, allBookings] = await Promise.all([
+        ownershipService.getGroups(),
+        bookingService.getBookings()
+      ]);
+      setGroups(groupsData);
+      setBookings(allBookings);
+      
+      if (groupsData.length > 0 && !selectedGroupId) {
+        const firstGroupId = groupsData[0].id;
+        setSelectedGroupId(firstGroupId);
+        
+        // Get vehicleId from bookings if available
+        if (allBookings.length > 0) {
+          // Use the first booking's vehicleId as default
+          // In a real system, you'd need proper mapping between group and vehicle
+          setSelectedVehicleId(allBookings[0].vehicleId);
+        } else {
+          setSelectedVehicleId(null);
+          console.warn("No bookings found, cannot determine vehicleId");
+        }
       }
     } catch (err) {
       console.error("Failed to load groups:", err);
@@ -71,13 +85,38 @@ const Reports: React.FC = () => {
     }
   };
 
-  const handleGroupChange = (groupId: string) => {
+  const handleGroupChange = async (groupId: string) => {
     setSelectedGroupId(groupId);
-      const group = groups.find((g) => g.id === groupId);
-      if (group?.id) {
-        // Use group id as vehicle identifier (simplified - would need proper vehicle mapping)
-        setSelectedVehicleId(parseInt(group.id.replace(/-/g, "").substring(0, 8), 16) || 1);
+    const group = groups.find((g) => g.id === groupId);
+    if (group?.id) {
+      // Load ownerships to get co-owners in this group
+      try {
+        const [ownershipsData, allBookings] = await Promise.all([
+          ownershipService.getOwnerships(groupId, undefined, true),
+          bookingService.getBookings()
+        ]);
+        
+        setOwnerships(ownershipsData);
+        setBookings(allBookings);
+        
+        // Get vehicleId from bookings
+        // Note: coOwnerId in Ownership might be GUID, but in Booking it's int
+        // So we need to find booking by matching coOwner names or use the first booking's vehicleId
+        // For now, use the first booking's vehicleId if available, or parse from group ID
+        if (allBookings.length > 0) {
+          // Use the first booking's vehicleId as default
+          // In a real system, you'd need proper mapping between group and vehicle
+          setSelectedVehicleId(allBookings[0].vehicleId);
+        } else {
+          // If no bookings exist, set to null or a default value
+          setSelectedVehicleId(null);
+          console.warn("No bookings found, cannot determine vehicleId for this group");
+        }
+      } catch (err) {
+        console.error("Failed to load group data:", err);
+        setSelectedVehicleId(null);
       }
+    }
   };
 
   const loadOwnerships = async () => {

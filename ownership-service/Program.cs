@@ -31,6 +31,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
 builder.Services.AddSingleton<IRedisService, RedisService>();
 
+// Add HttpClientFactory for calling other services
+builder.Services.AddHttpClient();
+
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JWT");
 var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured");

@@ -6,6 +6,11 @@ using AutoMapper;
 using BCrypt.Net;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Net.Http;
 
 namespace AuthService.Services;
 
@@ -31,13 +36,26 @@ public class AuthService : IAuthService
     private readonly IJwtService _jwtService;
     private readonly IMapper _mapper;
     private readonly AuthDbContext _dbContext;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<AuthService> _logger;
+    private readonly IConfiguration _configuration;
 
-    public AuthService(IUserRepository userRepository, IJwtService jwtService, IMapper mapper, AuthDbContext dbContext)
+    public AuthService(
+        IUserRepository userRepository, 
+        IJwtService jwtService, 
+        IMapper mapper, 
+        AuthDbContext dbContext,
+        IHttpClientFactory httpClientFactory,
+        ILogger<AuthService> logger,
+        IConfiguration configuration)
     {
         _userRepository = userRepository;
         _jwtService = jwtService;
         _mapper = mapper;
         _dbContext = dbContext;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -188,6 +206,21 @@ public class AuthService : IAuthService
             if (userDto.Roles == null || userDto.Roles.Count == 0)
             {
                 userDto.Roles = new List<string> { "CoOwner" };
+            }
+
+            // Tự động tạo CoOwner record trong ownership service nếu user có role CoOwner
+            if (userDto.Roles.Any(r => r.Equals("CoOwner", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    await CreateCoOwnerInOwnershipServiceAsync(createdUser);
+                }
+                catch (Exception ex)
+                {
+                    // Log lỗi nhưng không block quá trình register
+                    // CoOwner record có thể được tạo sau bằng sync endpoint
+                    _logger.LogWarning(ex, "Failed to create CoOwner record in ownership service for user {UserId}. User registration succeeded.", createdUser.Id);
+                }
             }
 
             return new ApiResponse<UserDto>
@@ -418,6 +451,68 @@ public class AuthService : IAuthService
                 Message = "Có lỗi xảy ra khi đổi mật khẩu",
                 Errors = new List<string> { ex.Message }
             };
+        }
+    }
+
+    /// <summary>
+    /// Tự động tạo CoOwner record trong ownership service khi user đăng ký với role CoOwner
+    /// </summary>
+    private async Task CreateCoOwnerInOwnershipServiceAsync(User user)
+    {
+        try
+        {
+            var gatewayUrl = _configuration["GatewayUrl"] ?? "http://localhost:8000";
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(5); // Short timeout để không block register
+
+            var fullName = $"{user.FirstName} {user.LastName}".Trim();
+            if (string.IsNullOrEmpty(fullName))
+            {
+                fullName = user.Email ?? "Unknown";
+            }
+
+            var createCoOwnerDto = new
+            {
+                userId = user.Id.ToString(),
+                fullName = fullName,
+                email = user.Email,
+                identityCardNumber = $"TEMP-{Guid.NewGuid():N}".Substring(0, 20).ToUpperInvariant(),
+                phoneNumber = user.PhoneNumber,
+                address = (string?)null
+            };
+
+            var jsonContent = JsonSerializer.Serialize(createCoOwnerDto);
+            var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+            // Use internal endpoint for service-to-service call
+            var response = await httpClient.PostAsync($"{gatewayUrl}/api/ownership/coowners/internal", content);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Successfully created CoOwner record in ownership service for user {UserId} ({Email})", user.Id, user.Email);
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogWarning("Failed to create CoOwner record in ownership service for user {UserId}. Status: {Status}, Error: {Error}", 
+                    user.Id, response.StatusCode, errorContent);
+                throw new Exception($"Ownership service returned {response.StatusCode}: {errorContent}");
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogWarning("Timeout when creating CoOwner record in ownership service for user {UserId}", user.Id);
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "Network error when creating CoOwner record in ownership service for user {UserId}", user.Id);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating CoOwner record in ownership service for user {UserId}", user.Id);
+            throw;
         }
     }
 }

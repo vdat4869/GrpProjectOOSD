@@ -76,10 +76,19 @@ public class AnalyticsController : ControllerBase
     [HttpPost("reports/usage/{vehicleId}")]
     public async Task<ActionResult<ApiResponse<AnalyticsReportDto>>> GenerateUsageReport(
         int vehicleId, 
-        [FromQuery] DateTime startDate, 
-        [FromQuery] DateTime endDate)
+        [FromQuery] DateTime? startDate = null, 
+        [FromQuery] DateTime? endDate = null)
     {
-        var result = await _analyticsService.GenerateUsageReportAsync(vehicleId, startDate, endDate);
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            return BadRequest(new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "StartDate and EndDate are required"
+            });
+        }
+        
+        var result = await _analyticsService.GenerateUsageReportAsync(vehicleId, startDate.Value, endDate.Value);
         
         if (!result.Success)
         {
@@ -99,10 +108,19 @@ public class AnalyticsController : ControllerBase
     [HttpPost("reports/cost/{vehicleId}")]
     public async Task<ActionResult<ApiResponse<AnalyticsReportDto>>> GenerateCostReport(
         int vehicleId, 
-        [FromQuery] DateTime startDate, 
-        [FromQuery] DateTime endDate)
+        [FromQuery] DateTime? startDate = null, 
+        [FromQuery] DateTime? endDate = null)
     {
-        var result = await _analyticsService.GenerateCostReportAsync(vehicleId, startDate, endDate);
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            return BadRequest(new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "StartDate and EndDate are required"
+            });
+        }
+        
+        var result = await _analyticsService.GenerateCostReportAsync(vehicleId, startDate.Value, endDate.Value);
         
         if (!result.Success)
         {
@@ -122,10 +140,19 @@ public class AnalyticsController : ControllerBase
     [HttpPost("reports/maintenance/{vehicleId}")]
     public async Task<ActionResult<ApiResponse<AnalyticsReportDto>>> GenerateMaintenanceReport(
         int vehicleId, 
-        [FromQuery] DateTime startDate, 
-        [FromQuery] DateTime endDate)
+        [FromQuery] DateTime? startDate = null, 
+        [FromQuery] DateTime? endDate = null)
     {
-        var result = await _analyticsService.GenerateMaintenanceReportAsync(vehicleId, startDate, endDate);
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            return BadRequest(new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "StartDate and EndDate are required"
+            });
+        }
+        
+        var result = await _analyticsService.GenerateMaintenanceReportAsync(vehicleId, startDate.Value, endDate.Value);
         
         if (!result.Success)
         {

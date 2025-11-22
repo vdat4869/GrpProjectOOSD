@@ -126,5 +126,11 @@ export const API_ENDPOINTS = {
     MAINTENANCE_RECORDS_BY_VEHICLE: "/api/history/maintenance/vehicle/{vehicleId}",
     MAINTENANCE_RECORDS_BY_DATE_RANGE: "/api/history/maintenance/date-range",
   },
+  // Dispute
+  DISPUTE: {
+    DISPUTES: "/api/disputes",
+    DISPUTE_BY_ID: "/api/disputes/{id}",
+    BULK_CREATE: "/api/disputes/bulk",
+  },
 } as const;
 

@@ -19,6 +19,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<FundTransaction> FundTransactions { get; set; }
     public DbSet<Proposal> Proposals { get; set; }
     public DbSet<Vote> Votes { get; set; }
+    public DbSet<Dispute> Disputes { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -148,6 +149,15 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(v => v.CoOwnerId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Dispute configuration
+        modelBuilder.Entity<Dispute>(entity =>
+        {
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Type);
+            entity.HasIndex(e => e.RelatedType);
+            entity.HasIndex(e => new { e.RelatedType, e.RelatedId });
         });
     }
 }

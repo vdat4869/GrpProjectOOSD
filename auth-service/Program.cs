@@ -39,6 +39,9 @@ builder.Services.AddScoped<IAuthService, AuthService.Services.AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 
+// Thêm HttpClientFactory để gọi ownership service
+builder.Services.AddHttpClient();
+
 // Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JWT");
 var secretKey = jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT Secret không được cấu hình");

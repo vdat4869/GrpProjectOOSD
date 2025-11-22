@@ -2,17 +2,16 @@ import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
-import { ownershipService, VehicleGroup, EContract } from "../../services/ownershipService";
+import { ownershipService, VehicleGroup, EContract, Ownership } from "../../services/ownershipService";
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
-
-const CONTRACT_TYPES = ["Co-ownership Agreement", "Amendment", "Termination", "Other"];
-const CONTRACT_STATUSES = ["Draft", "Pending", "Signed", "Cancelled", "Expired"];
+import Input from "../../components/form/input/InputField";
 
 const ManageContracts: React.FC = () => {
   const [contracts, setContracts] = useState<EContract[]>([]);
   const [vehicles, setVehicles] = useState<VehicleGroup[]>([]);
+  const [ownerships, setOwnerships] = useState<Ownership[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -21,8 +20,11 @@ const ManageContracts: React.FC = () => {
   const [_selectedContract, setSelectedContract] = useState<EContract | null>(null);
   const [formData, setFormData] = useState({
     vehicleGroupId: "",
-    contractType: "",
-    status: "Draft",
+    coOwnerId: "",
+    contractTitle: "",
+    contractContent: "",
+    ownershipPercentage: 0,
+    notes: "",
   });
 
   useEffect(() => {
@@ -32,8 +34,18 @@ const ManageContracts: React.FC = () => {
   useEffect(() => {
     if (selectedGroupId) {
       loadContracts(selectedGroupId);
+      loadOwnerships(selectedGroupId);
     }
   }, [selectedGroupId]);
+
+  const loadOwnerships = async (groupId: string) => {
+    try {
+      const data = await ownershipService.getOwnerships(groupId);
+      setOwnerships(data.filter(o => o.isActive));
+    } catch (err) {
+      console.error("Failed to load ownerships:", err);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -63,8 +75,11 @@ const ManageContracts: React.FC = () => {
   const handleCreate = () => {
     setFormData({
       vehicleGroupId: selectedGroupId || "",
-      contractType: "",
-      status: "Draft",
+      coOwnerId: ownerships.length > 0 ? ownerships[0].coOwnerId : "",
+      contractTitle: "",
+      contractContent: "",
+      ownershipPercentage: 0,
+      notes: "",
     });
     setIsCreateModalOpen(true);
   };
@@ -73,16 +88,20 @@ const ManageContracts: React.FC = () => {
     setSelectedContract(contract);
     setFormData({
       vehicleGroupId: contract.vehicleGroupId,
-      contractType: contract.contractType,
-      status: contract.status,
+      coOwnerId: contract.coOwnerId,
+      contractTitle: contract.contractTitle,
+      contractContent: contract.contractContent,
+      ownershipPercentage: contract.ownershipPercentage,
+      notes: contract.notes || "",
     });
     setIsEditModalOpen(true);
   };
 
-  const handleApprove = async (_contractId: string) => {
+  const handleApprove = async (contractId: string) => {
     if (!confirm("Approve this contract?")) return;
     try {
-      // TODO: Implement approve contract API call
+      setError(null);
+      await ownershipService.approveContract(contractId);
       if (selectedGroupId) {
         await loadContracts(selectedGroupId);
       }
@@ -91,10 +110,11 @@ const ManageContracts: React.FC = () => {
     }
   };
 
-  const handleCancel = async (_contractId: string) => {
-    if (!confirm("Cancel this contract?")) return;
+  const handleCancel = async (contractId: string) => {
+    if (!confirm("Cancel this contract? This will delete the contract permanently.")) return;
     try {
-      // TODO: Implement cancel contract API call
+      setError(null);
+      await ownershipService.deleteContract(contractId);
       if (selectedGroupId) {
         await loadContracts(selectedGroupId);
       }
@@ -105,7 +125,7 @@ const ManageContracts: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      if (!formData.vehicleGroupId || !formData.contractType) {
+      if (!formData.vehicleGroupId || !formData.coOwnerId || !formData.contractTitle || !formData.contractContent || !formData.ownershipPercentage) {
         setError("Please fill in all required fields");
         return;
       }
@@ -113,13 +133,18 @@ const ManageContracts: React.FC = () => {
       if (isCreateModalOpen) {
         await ownershipService.createContract({
           vehicleGroupId: formData.vehicleGroupId,
-          contractType: formData.contractType,
-          status: formData.status,
+          coOwnerId: formData.coOwnerId,
+          contractTitle: formData.contractTitle,
+          contractContent: formData.contractContent,
+          ownershipPercentage: formData.ownershipPercentage,
+          notes: formData.notes || undefined,
         });
       } else if (_selectedContract) {
         await ownershipService.updateContract(_selectedContract.id, {
-          contractType: formData.contractType,
-          status: formData.status,
+          contractTitle: formData.contractTitle,
+          contractContent: formData.contractContent,
+          ownershipPercentage: formData.ownershipPercentage,
+          notes: formData.notes || undefined,
         });
       }
 
@@ -210,10 +235,10 @@ const ManageContracts: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                          {contract.contractType}
+                          {contract.contractTitle}
                         </h3>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(contract.status)}`}>
-                          {contract.status}
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(contract.contractStatus)}`}>
+                          {contract.contractStatus}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -226,12 +251,12 @@ const ManageContracts: React.FC = () => {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      {contract.status.toLowerCase() === "pending" && (
+                      {contract.contractStatus.toLowerCase() === "pending" && (
                         <Button size="sm" variant="outline" onClick={() => handleApprove(contract.id)}>
                           Approve
                         </Button>
                       )}
-                      {contract.status.toLowerCase() !== "cancelled" && contract.status.toLowerCase() !== "signed" && (
+                      {contract.contractStatus.toLowerCase() !== "cancelled" && contract.contractStatus.toLowerCase() !== "signed" && (
                         <>
                           <Button size="sm" variant="outline" onClick={() => handleEdit(contract)}>
                             Edit
@@ -245,21 +270,14 @@ const ManageContracts: React.FC = () => {
                   </div>
                 </div>
 
-                {contract.signedBy && contract.signedBy.length > 0 && (
+                {contract.coOwnerName && (
                   <div className="p-4">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Signed By:
+                      Co-Owner: {contract.coOwnerName}
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {contract.signedBy.map((signer, index) => (
-                        <span
-                          key={index}
-                          className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
-                        >
-                          {signer}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Ownership: {contract.ownershipPercentage}%
+                    </p>
                   </div>
                 )}
               </div>
@@ -289,7 +307,10 @@ const ManageContracts: React.FC = () => {
               <Label>Vehicle Group <span className="text-error-500">*</span></Label>
               <Select
                 value={formData.vehicleGroupId}
-                onChange={(value) => setFormData({ ...formData, vehicleGroupId: value })}
+                onChange={(value) => {
+                  setFormData({ ...formData, vehicleGroupId: value });
+                  loadOwnerships(value);
+                }}
               >
                 <option value="">Select vehicle group</option>
                 {vehicles.map((vehicle) => (
@@ -301,32 +322,70 @@ const ManageContracts: React.FC = () => {
             </div>
 
             <div>
-              <Label>Contract Type <span className="text-error-500">*</span></Label>
+              <Label>Co-Owner <span className="text-error-500">*</span></Label>
               <Select
-                value={formData.contractType}
-                onChange={(value) => setFormData({ ...formData, contractType: value })}
+                value={formData.coOwnerId}
+                onChange={(value) => {
+                  const ownership = ownerships.find(o => o.coOwnerId === value);
+                  setFormData({ 
+                    ...formData, 
+                    coOwnerId: value,
+                    ownershipPercentage: ownership ? ownership.ownershipPercentage : formData.ownershipPercentage
+                  });
+                }}
               >
-                <option value="">Select contract type</option>
-                {CONTRACT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
+                <option value="">Select co-owner</option>
+                {ownerships.map((ownership) => (
+                  <option key={ownership.coOwnerId} value={ownership.coOwnerId}>
+                    {ownership.coOwnerName || ownership.coOwnerId} ({ownership.ownershipPercentage}%)
                   </option>
                 ))}
               </Select>
             </div>
 
             <div>
-              <Label>Status</Label>
-              <Select
-                value={formData.status}
-                onChange={(value) => setFormData({ ...formData, status: value })}
-              >
-                {CONTRACT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </Select>
+              <Label>Contract Title <span className="text-error-500">*</span></Label>
+              <Input
+                type="text"
+                value={formData.contractTitle}
+                onChange={(e) => setFormData({ ...formData, contractTitle: e.target.value })}
+                placeholder="Enter contract title"
+              />
+            </div>
+
+            <div>
+              <Label>Contract Content <span className="text-error-500">*</span></Label>
+              <textarea
+                value={formData.contractContent}
+                onChange={(e) => setFormData({ ...formData, contractContent: e.target.value })}
+                placeholder="Enter contract content"
+                rows={6}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+              />
+            </div>
+
+            <div>
+              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Input
+                type="number"
+                value={formData.ownershipPercentage || ""}
+                onChange={(e) => setFormData({ ...formData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
+                placeholder="Enter ownership percentage (0.01-100)"
+                min="0.01"
+                max="100"
+                step="0.01"
+              />
+            </div>
+
+            <div>
+              <Label>Notes</Label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Optional notes"
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+              />
             </div>
 
             <div className="flex items-center gap-3 lg:justify-end mt-6">
@@ -366,31 +425,48 @@ const ManageContracts: React.FC = () => {
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Contract Type <span className="text-error-500">*</span></Label>
-              <Select
-                value={formData.contractType}
-                onChange={(value) => setFormData({ ...formData, contractType: value })}
-              >
-                {CONTRACT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </Select>
+              <Label>Contract Title <span className="text-error-500">*</span></Label>
+              <Input
+                type="text"
+                value={formData.contractTitle}
+                onChange={(e) => setFormData({ ...formData, contractTitle: e.target.value })}
+                placeholder="Enter contract title"
+              />
             </div>
 
             <div>
-              <Label>Status</Label>
-              <Select
-                value={formData.status}
-                onChange={(value) => setFormData({ ...formData, status: value })}
-              >
-                {CONTRACT_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </Select>
+              <Label>Contract Content <span className="text-error-500">*</span></Label>
+              <textarea
+                value={formData.contractContent}
+                onChange={(e) => setFormData({ ...formData, contractContent: e.target.value })}
+                placeholder="Enter contract content"
+                rows={6}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+              />
+            </div>
+
+            <div>
+              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Input
+                type="number"
+                value={formData.ownershipPercentage || ""}
+                onChange={(e) => setFormData({ ...formData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
+                placeholder="Enter ownership percentage (0.01-100)"
+                min="0.01"
+                max="100"
+                step="0.01"
+              />
+            </div>
+
+            <div>
+              <Label>Notes</Label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Optional notes"
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
+              />
             </div>
 
             <div className="flex items-center gap-3 lg:justify-end mt-6">

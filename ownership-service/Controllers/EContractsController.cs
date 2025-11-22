@@ -94,6 +94,28 @@ public class EContractsController : ControllerBase
     }
 
     /// <summary>
+    /// Update an e-contract
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<ActionResult<EContractDto>> UpdateEContract(Guid id, [FromBody] UpdateEContractDto dto)
+    {
+        try
+        {
+            var command = new UpdateEContractCommand(id, dto);
+            var result = await _mediator.Send(command);
+            return Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Approve e-contract (Staff/Admin only) - Duyệt hợp đồng pháp lý điện tử
     /// </summary>
     [HttpPost("{id}/approve")]

@@ -121,10 +121,10 @@ const ManageContracts: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-3">
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                          {contract.contractType}
+                          {contract.contractTitle}
                         </h3>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(contract.status)}`}>
-                          {contract.status}
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(contract.contractStatus)}`}>
+                          {contract.contractStatus}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -139,21 +139,19 @@ const ManageContracts: React.FC = () => {
                   </div>
                 </div>
 
-                {contract.signedBy && contract.signedBy.length > 0 && (
+                {contract.coOwnerName && (
                   <div className="p-4">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Signed By:
+                      Co-Owner: {contract.coOwnerName}
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {contract.signedBy.map((signer, index) => (
-                        <span
-                          key={index}
-                          className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
-                        >
-                          {signer}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Ownership: {contract.ownershipPercentage}%
+                    </p>
+                    {contract.notes && (
+                      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                        Notes: {contract.notes}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

@@ -31,8 +31,7 @@ public class VehicleGroup
     [MaxLength(20)]
     public string? VehicleYear { get; set; } // Năm sản xuất
 
-    [Required]
-    public Guid CreatedByCoOwnerId { get; set; } // Người tạo nhóm
+    public Guid? CreatedByCoOwnerId { get; set; } // Người tạo nhóm (nullable for Admin)
 
     [Required]
     public GroupStatus Status { get; set; } = GroupStatus.Active;

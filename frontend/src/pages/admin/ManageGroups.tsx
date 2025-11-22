@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
-import { ownershipService, VehicleGroup, Ownership, CoOwner } from "../../services/ownershipService";
+import { ownershipService, VehicleGroup, Ownership, CoOwner, GroupMember } from "../../services/ownershipService";
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
@@ -14,6 +14,7 @@ const ManageGroups: React.FC = () => {
   const [coOwners, setCoOwners] = useState<CoOwner[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<VehicleGroup | null>(null);
   const [groupOwnerships, setGroupOwnerships] = useState<Ownership[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -44,10 +45,14 @@ const ManageGroups: React.FC = () => {
       setError(null);
       const [groupsData, coOwnersData] = await Promise.all([
         ownershipService.getGroups(),
-        ownershipService.getCoOwners(),
+        ownershipService.getCoOwners().catch((err) => {
+          console.error("Failed to load co-owners in loadData:", err);
+          return []; // Return empty array if fails, don't block groups loading
+        }),
       ]);
       setGroups(groupsData);
       setCoOwners(coOwnersData);
+      console.log("Loaded co-owners in loadData:", coOwnersData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load groups");
     } finally {
@@ -59,6 +64,9 @@ const ManageGroups: React.FC = () => {
     try {
       const ownerships = await ownershipService.getOwnerships(groupId);
       setGroupOwnerships(ownerships);
+      // Also load group members for role management
+      const members = await ownershipService.getGroupMembers(groupId);
+      setGroupMembers(members);
     } catch (err) {
       console.error("Failed to load ownerships:", err);
     }
@@ -79,6 +87,18 @@ const ManageGroups: React.FC = () => {
 
   const handleEdit = (group: VehicleGroup) => {
     setSelectedGroup(group);
+    // Map status: Backend returns "Active" (1), "Inactive" (2), "Dissolved" (3)
+    // Frontend uses: 0 = Inactive, 1 = Active
+    // If status is string, convert to number; if number, use directly
+    let statusValue = 1; // Default to Active
+    if (typeof group.status === "string") {
+      statusValue = group.status === "Active" ? 1 : 0;
+    } else {
+      // Backend enum: Active=1, Inactive=2, Dissolved=3
+      // Frontend: Active=1, Inactive=0
+      statusValue = group.status === 1 ? 1 : 0;
+    }
+    
     setFormData({
       name: group.name,
       description: group.description || "",
@@ -86,7 +106,7 @@ const ManageGroups: React.FC = () => {
       licensePlate: group.licensePlate || "",
       vehicleModel: group.vehicleModel || "",
       vehicleYear: group.vehicleYear || "",
-      status: group.status,
+      status: statusValue,
     });
     setIsEditModalOpen(true);
   };
@@ -97,12 +117,30 @@ const ManageGroups: React.FC = () => {
     setIsMembersModalOpen(true);
   };
 
-  const handleAddMember = (group: VehicleGroup) => {
+  const handleAddMember = async (group: VehicleGroup) => {
     setSelectedGroup(group);
     setMemberFormData({
       coOwnerId: "",
       ownershipPercentage: 0,
     });
+    
+    // Reload coOwners to ensure we have the latest list
+    try {
+      setError(null);
+      const coOwnersData = await ownershipService.getCoOwners();
+      console.log("Loaded co-owners in handleAddMember:", coOwnersData);
+      setCoOwners(coOwnersData);
+      
+      if (coOwnersData.length === 0) {
+        console.warn("No co-owners loaded from API");
+        setError("No co-owners found. Please ensure you have Admin role and there are co-owners in the system.");
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to load co-owners";
+      console.error("Failed to load co-owners:", err);
+      setError(`Cannot load co-owners: ${errorMessage}. Please check your permissions (Admin/Staff role required).`);
+    }
+    
     setIsAddMemberModalOpen(true);
   };
 
@@ -120,6 +158,11 @@ const ManageGroups: React.FC = () => {
         });
       } else if (isEditModalOpen && selectedGroup) {
         // Update existing group
+        // Map status: 0 -> "Inactive" (2), 1 -> "Active" (1)
+        const statusMap: Record<number, string> = {
+          0: "Inactive",  // Maps to GroupStatus.Inactive (2)
+          1: "Active",    // Maps to GroupStatus.Active (1)
+        };
         await ownershipService.updateGroup(selectedGroup.id, {
           name: formData.name,
           description: formData.description,
@@ -127,7 +170,7 @@ const ManageGroups: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
-          status: formData.status.toString(),
+          status: statusMap[formData.status] || "Active",
         });
       }
       setIsCreateModalOpen(false);
@@ -139,11 +182,14 @@ const ManageGroups: React.FC = () => {
     }
   };
 
-  const handleDelete = async (_groupId: string) => {
+  const handleDelete = async (groupId: string) => {
     if (!confirm("Are you sure you want to delete this group?")) return;
     try {
-      // TODO: Implement delete group API call
-      loadData();
+      setError(null);
+      // Call API to delete group from database
+      await ownershipService.deleteGroup(groupId);
+      // Reload groups from database
+      await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete group");
     }
@@ -151,34 +197,121 @@ const ManageGroups: React.FC = () => {
 
   const handleSaveMember = async () => {
     if (!selectedGroup) return;
+    
+    // Validate form data
+    if (!memberFormData.coOwnerId) {
+      setError("Please select a co-owner");
+      return;
+    }
+    
+    if (memberFormData.ownershipPercentage <= 0 || memberFormData.ownershipPercentage > 100) {
+      setError("Ownership percentage must be between 0.01 and 100");
+      return;
+    }
+
     try {
-      // TODO: Implement add member API call
+      setError(null);
+      
+      // Create ownership record
+      await ownershipService.createOwnership({
+        vehicleGroupId: selectedGroup.id,
+        coOwnerId: memberFormData.coOwnerId,
+        ownershipPercentage: memberFormData.ownershipPercentage,
+        startDate: new Date().toISOString(),
+      });
+
+      // Also add as group member if not already a member
+      try {
+        await ownershipService.addCoOwnerToGroup(selectedGroup.id, {
+          coOwnerId: memberFormData.coOwnerId,
+          role: "Member",
+        });
+      } catch (memberErr) {
+        // Member might already exist, ignore error
+        console.log("Group member might already exist:", memberErr);
+      }
+
+      // Reset form
+      setMemberFormData({
+        coOwnerId: "",
+        ownershipPercentage: 0,
+      });
       setIsAddMemberModalOpen(false);
+      
+      // Reload ownerships and members to show new member
       await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add member");
     }
   };
 
-  const handleRemoveMember = async (_ownershipId: string) => {
+  const handleRemoveMember = async (ownershipId: string) => {
     if (!confirm("Are you sure you want to remove this member?")) return;
+    if (!selectedGroup) return;
+    
     try {
-      // TODO: Implement remove member API call
-      if (selectedGroup) {
-        await loadGroupOwnerships(selectedGroup.id);
+      setError(null);
+      // Find ownership to get coOwnerId
+      const ownership = groupOwnerships.find(o => o.id === ownershipId);
+      if (!ownership) {
+        setError("Ownership not found");
+        return;
+      }
+      
+      // Delete ownership
+      await ownershipService.deleteOwnership(ownershipId);
+      
+      // Also remove from group members if exists
+      const member = groupMembers.find(m => m.coOwnerId === ownership.coOwnerId);
+      if (member) {
+        try {
+          await ownershipService.removeCoOwnerFromGroup(selectedGroup.id, member.id);
+        } catch (memberErr) {
+          // Ignore error if member doesn't exist
+          console.log("Group member might not exist:", memberErr);
+        }
+      }
+      
+      // Reload immediately
+      await loadGroupOwnerships(selectedGroup.id);
+      
+      // Also reload group members separately to ensure UI updates
+      try {
+        const members = await ownershipService.getGroupMembers(selectedGroup.id);
+        setGroupMembers(members);
+      } catch (err) {
+        console.error("Failed to reload group members:", err);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove member");
     }
   };
 
-  const handleSetGroupAdmin = async (_ownershipId: string) => {
+  const handleSetGroupAdmin = async (ownershipId: string) => {
     if (!confirm("Set this member as group admin?")) return;
+    if (!selectedGroup) return;
+    
     try {
-      // TODO: Implement set group admin API call
-      if (selectedGroup) {
-        await loadGroupOwnerships(selectedGroup.id);
+      setError(null);
+      // Find the ownership to get coOwnerId
+      const ownership = groupOwnerships.find(o => o.id === ownershipId);
+      if (!ownership) {
+        setError("Ownership not found");
+        return;
       }
+      
+      // Find the corresponding group member
+      const member = groupMembers.find(m => m.coOwnerId === ownership.coOwnerId);
+      if (!member) {
+        setError("Group member not found. Please add the member to the group first.");
+        return;
+      }
+      
+      // Update member role to Admin
+      await ownershipService.updateGroupMemberRole(selectedGroup.id, member.id, "Admin");
+      
+      // Reload data
+      await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to set group admin");
     }
@@ -194,13 +327,32 @@ const ManageGroups: React.FC = () => {
 
   const totalOwnership = groupOwnerships.reduce((sum, o) => sum + o.ownershipPercentage, 0);
 
+  const handleSyncCoOwners = async () => {
+    try {
+      setError(null);
+      const result = await ownershipService.syncCoOwnersFromAuth();
+      alert(`Sync completed!\nCreated: ${result.created}\nSkipped: ${result.skipped}${result.errors && result.errors.length > 0 ? `\nErrors: ${result.errors.length}` : ""}`);
+      // Reload co-owners after sync
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync co-owners");
+    }
+  };
+
   return (
     <>
       <PageMeta title="Admin | Manage Groups" />
       <PageHeader
         title="Manage Co-ownership Groups"
         description="Review onboarding requests, ownership ratios, and compliance states for every EV sharing group."
-        actions={<Button size="sm" onClick={handleCreate}>Create New Group</Button>}
+        actions={
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={handleSyncCoOwners}>
+              Sync Co-owners
+            </Button>
+            <Button size="sm" onClick={handleCreate}>Create New Group</Button>
+          </div>
+        }
       />
 
       {loading && (
@@ -235,11 +387,11 @@ const ManageGroups: React.FC = () => {
                           {group.name}
                         </h3>
                         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          group.status === 1
+                          (typeof group.status === "string" ? group.status === "Active" : group.status === 1)
                             ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
                             : "bg-gray-50 text-gray-600 dark:bg-gray-500/10 dark:text-gray-300"
                         }`}>
-                          {group.status === 1 ? "Active" : "Inactive"}
+                          {typeof group.status === "string" ? group.status : (group.status === 1 ? "Active" : "Inactive")}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">

@@ -96,6 +96,9 @@ const ManageVehicles: React.FC = () => {
 
   const handleEdit = (vehicle: VehicleGroup) => {
     setSelectedVehicle(vehicle);
+    const statusNumber = typeof vehicle.status === 'string' 
+      ? (parseInt(vehicle.status) || 0) 
+      : vehicle.status;
     setFormData({
       name: vehicle.name,
       description: vehicle.description || "",
@@ -103,7 +106,7 @@ const ManageVehicles: React.FC = () => {
       licensePlate: vehicle.licensePlate || "",
       vehicleModel: vehicle.vehicleModel || "",
       vehicleYear: vehicle.vehicleYear || "",
-      status: vehicle.status,
+      status: statusNumber,
     });
     setIsEditModalOpen(true);
   };
@@ -180,7 +183,10 @@ const ManageVehicles: React.FC = () => {
             </div>
           ) : (
             vehicles.map((vehicle) => {
-              const status = getVehicleStatus(vehicle.status);
+              const statusNumber = typeof vehicle.status === 'string' 
+                ? (parseInt(vehicle.status) || 0) 
+                : vehicle.status;
+              const status = getVehicleStatus(statusNumber);
               const activeBookings = getActiveBookings(vehicle.id);
               const allBookings = getVehicleBookings(vehicle.id);
 

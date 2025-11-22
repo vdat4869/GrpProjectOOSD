@@ -2,13 +2,23 @@ import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
-import { bookingService, Booking } from "../../services/bookingService";
-import CreateBookingModal from "../../components/modals/CreateBookingModal";
+import { bookingService, Booking, CreateBookingRequest } from "../../services/bookingService";
+import { ownershipService, VehicleGroup, Ownership } from "../../services/ownershipService";
+import { aiService } from "../../services/aiService";
+import { BookingSuggestionResponse } from "../../services/aiService";
 import UpdateBookingModal from "../../components/modals/UpdateBookingModal";
 import CheckInModal from "../../components/modals/CheckInModal";
 import CheckOutModal from "../../components/modals/CheckOutModal";
-import BookingNeedModal, { BookingNeedType } from "../../components/modals/BookingNeedModal";
-import VehicleSelection from "./VehicleSelection";
+import { Modal } from "../../components/ui/modal";
+import Input from "../../components/form/input/InputField";
+import Label from "../../components/form/Label";
+import Select from "../../components/form/Select";
+
+interface VehicleWithOwners extends VehicleGroup {
+  ownerships: Ownership[];
+  currentUserOwnership?: Ownership;
+  vehicleId?: number; // Booking service vehicle ID
+}
 
 const MyBookings: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -18,11 +28,19 @@ const MyBookings: React.FC = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showCheckInModal, setShowCheckInModal] = useState(false);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
-  const [showNeedModal, setShowNeedModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [selectedNeedType, setSelectedNeedType] = useState<BookingNeedType | null>(null);
-  const [selectedDuration, setSelectedDuration] = useState<number>(0);
-  const [showVehicleSelection, setShowVehicleSelection] = useState(false);
+  
+  // Create booking form state
+  const [availableVehicles, setAvailableVehicles] = useState<VehicleWithOwners[]>([]);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [note, setNote] = useState("");
+  const [aiSuggestion, setAiSuggestion] = useState<BookingSuggestionResponse | null>(null);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [creatingBooking, setCreatingBooking] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
 
   const loadBookings = async () => {
     try {
@@ -40,12 +58,216 @@ const MyBookings: React.FC = () => {
 
   useEffect(() => {
     loadBookings();
-    // Show need selection modal on first visit
-    const hasSeenModal = sessionStorage.getItem("booking-need-selected");
-    if (!hasSeenModal && bookings.length === 0) {
-      setShowNeedModal(true);
-    }
   }, []);
+
+  const loadAvailableVehicles = async () => {
+    try {
+      setLoadingVehicles(true);
+      setBookingError(null);
+      
+      // Get current user ID
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        throw new Error("User not found. Please login again.");
+      }
+
+      // Get co-owner by userId
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        throw new Error("Co-owner not found. Please ensure you have completed KYC.");
+      }
+
+      // Get all ownerships for this co-owner
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Get unique group IDs from ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Get groups for these IDs
+      const allGroups = await ownershipService.getGroups();
+      const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+
+      // Also load vehicles from booking service for vehicleId mapping
+      const vehiclesFromBooking = await bookingService.getVehicles();
+      
+      // Load ownerships for each group and build vehicle list
+      const vehiclesWithOwnersPromises = userGroups.map(async (group) => {
+        try {
+          const ownerships = await ownershipService.getOwnerships(group.id);
+          
+          // Find current user's ownership
+          const currentUserOwnership = ownerships.find(o => o.coOwnerId === coOwner.id);
+          
+          // Find matching vehicle ID from booking service by name
+          const matchingVehicle = vehiclesFromBooking.find(v => 
+            v.name.toLowerCase() === group.vehicleName.toLowerCase()
+          );
+          
+          return {
+            ...group,
+            ownerships,
+            currentUserOwnership,
+            vehicleId: matchingVehicle?.id,
+          } as VehicleWithOwners;
+        } catch (err) {
+          console.error(`Failed to load ownerships for group ${group.id}:`, err);
+          return null;
+        }
+      });
+
+      const vehiclesWithOwnersResults = await Promise.all(vehiclesWithOwnersPromises);
+      const validVehicles = vehiclesWithOwnersResults.filter((v): v is VehicleWithOwners => v !== null && v.vehicleId !== undefined);
+      setAvailableVehicles(validVehicles);
+      
+      // Auto-select first vehicle if available
+      if (validVehicles.length > 0 && !selectedVehicleId) {
+        setSelectedVehicleId(validVehicles[0].id);
+      }
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Failed to load vehicles");
+    } finally {
+      setLoadingVehicles(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showCreateModal) {
+      loadAvailableVehicles();
+      // Reset form
+      setSelectedVehicleId("");
+      setStartTime("");
+      setEndTime("");
+      setNote("");
+      setAiSuggestion(null);
+      setBookingError(null);
+    }
+  }, [showCreateModal]);
+
+  const getCurrentDateTime = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const handleGetAISuggestion = async () => {
+    if (!selectedVehicleId || !startTime || !endTime) {
+      setBookingError("Vui lòng chọn xe và thời gian trước");
+      return;
+    }
+
+    try {
+      setLoadingAI(true);
+      setBookingError(null);
+      setAiSuggestion(null);
+
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        throw new Error("User not found. Please login again.");
+      }
+
+      const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
+      if (!selectedVehicle || !selectedVehicle.vehicleId) {
+        throw new Error("Selected vehicle not found");
+      }
+
+      // Get ownership percentage for current user
+      const ownershipPercentage = selectedVehicle.currentUserOwnership?.ownershipPercentage || 0;
+
+      const suggestion = await aiService.getBookingSuggestion({
+        vehicle_group_id: selectedVehicle.id,
+        requested_start: new Date(startTime).toISOString(),
+        requested_end: new Date(endTime).toISOString(),
+        co_owner_id: userId,
+        ownership_percentage: ownershipPercentage / 100,
+      });
+
+      if (suggestion) {
+        setAiSuggestion(suggestion);
+        // Auto-apply suggestion if fairness score is good
+        if (suggestion.fairness_score >= 0.7) {
+          setStartTime(new Date(suggestion.suggested_start).toISOString().slice(0, 16));
+          setEndTime(new Date(suggestion.suggested_end).toISOString().slice(0, 16));
+        }
+      }
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Failed to get AI suggestion");
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  const handleCreateBooking = async () => {
+    if (!selectedVehicleId || !startTime || !endTime) {
+      setBookingError("Vui lòng điền đầy đủ thông tin");
+      return;
+    }
+
+    try {
+      setCreatingBooking(true);
+      setBookingError(null);
+
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        throw new Error("User not found. Please login again.");
+      }
+
+      const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
+      if (!selectedVehicle || !selectedVehicle.vehicleId) {
+        throw new Error("Selected vehicle not found");
+      }
+
+      const start = new Date(startTime);
+      const end = new Date(endTime);
+
+      if (end <= start) {
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
+      }
+
+      // Check AI suggestion first if not checked yet
+      if (!aiSuggestion) {
+        setBookingError("Vui lòng kiểm tra AI trước khi đặt xe");
+        return;
+      }
+
+      // Check if AI approves (fairness score >= 0.5 as threshold)
+      if (aiSuggestion.fairness_score < 0.5) {
+        setBookingError(`Đặt xe không được AI chấp nhận. Lý do: ${aiSuggestion.reason}. Điểm công bằng: ${(aiSuggestion.fairness_score * 100).toFixed(1)}%`);
+        return;
+      }
+
+      const coOwnerIdNum = parseInt(userId);
+      if (isNaN(coOwnerIdNum)) {
+        throw new Error("Invalid user ID");
+      }
+
+      const data: CreateBookingRequest = {
+        vehicleId: selectedVehicle.vehicleId,
+        coOwnerId: coOwnerIdNum,
+        startTime: start.toISOString(),
+        endTime: end.toISOString(),
+        note: note || undefined,
+      };
+
+      await bookingService.createBooking(data);
+      
+      // Reset form and close modal
+      setSelectedVehicleId("");
+      setStartTime("");
+      setEndTime("");
+      setNote("");
+      setAiSuggestion(null);
+      setShowCreateModal(false);
+      await loadBookings();
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Failed to create booking");
+    } finally {
+      setCreatingBooking(false);
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -136,21 +358,6 @@ const MyBookings: React.FC = () => {
     );
   };
 
-  // Show vehicle selection if need type is selected
-  if (showVehicleSelection && selectedNeedType) {
-    return (
-      <VehicleSelection
-        needType={selectedNeedType}
-        duration={selectedDuration}
-        onBack={() => {
-          setShowVehicleSelection(false);
-          setSelectedNeedType(null);
-          setSelectedDuration(0);
-        }}
-      />
-    );
-  }
-
   return (
     <>
       <PageMeta title="Co-owner | My Bookings" />
@@ -161,7 +368,7 @@ const MyBookings: React.FC = () => {
           <Button 
             size="sm" 
             type="button"
-            onClick={() => setShowNeedModal(true)}
+            onClick={() => setShowCreateModal(true)}
           >
             Đặt Xe Mới
           </Button>
@@ -283,36 +490,220 @@ const MyBookings: React.FC = () => {
         </div>
       )}
 
-      <BookingNeedModal
-        isOpen={showNeedModal}
-        onClose={() => setShowNeedModal(false)}
-        onSelect={(needType, duration) => {
-          setSelectedNeedType(needType);
-          setSelectedDuration(duration);
-          setShowNeedModal(false);
-          setShowVehicleSelection(true);
-          sessionStorage.setItem("booking-need-selected", "true");
-        }}
-      />
-
-      <CreateBookingModal
+      {/* Create Booking Modal */}
+      <Modal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={loadBookings}
-      />
+        onClose={() => {
+          setShowCreateModal(false);
+          setSelectedVehicleId("");
+          setStartTime("");
+          setEndTime("");
+          setNote("");
+          setAiSuggestion(null);
+          setBookingError(null);
+        }}
+        className="max-w-[600px] m-4"
+      >
+        <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-8">
+          <div className="px-2 pr-14">
+            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+              Đặt Xe Mới
+            </h4>
+            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
+              Chọn xe và thời gian, AI sẽ kiểm tra và phê duyệt đặt xe của bạn
+            </p>
+          </div>
+
+          <div className="px-2 space-y-4">
+            {loadingVehicles ? (
+              <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách xe...</p>
+            ) : availableVehicles.length === 0 ? (
+              <div className="rounded-lg border border-warning-200 bg-warning-50 p-3 dark:border-warning-500/40 dark:bg-warning-500/10">
+                <p className="text-sm text-warning-600 dark:text-warning-200">
+                  Bạn chưa có quyền sở hữu xe nào. Vui lòng liên hệ admin để được thêm vào nhóm sở hữu.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label>Chọn Xe <span className="text-error-500">*</span></Label>
+                  <Select
+                    value={selectedVehicleId}
+                    onChange={(value) => {
+                      setSelectedVehicleId(value);
+                      setAiSuggestion(null);
+                    }}
+                  >
+                    <option value="">Chọn xe</option>
+                    {availableVehicles.map((vehicle) => (
+                      <option key={vehicle.id} value={vehicle.id}>
+                        {vehicle.vehicleName}
+                        {vehicle.currentUserOwnership && (
+                          ` (Sở hữu: ${vehicle.currentUserOwnership.ownershipPercentage}%)`
+                        )}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div>
+                  <Label>Thời gian bắt đầu <span className="text-error-500">*</span></Label>
+                  <Input
+                    type="datetime-local"
+                    value={startTime}
+                    onChange={(e) => {
+                      setStartTime(e.target.value);
+                      setAiSuggestion(null);
+                    }}
+                    min={getCurrentDateTime()}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label>Thời gian kết thúc <span className="text-error-500">*</span></Label>
+                  <Input
+                    type="datetime-local"
+                    value={endTime}
+                    onChange={(e) => {
+                      setEndTime(e.target.value);
+                      setAiSuggestion(null);
+                    }}
+                    min={startTime || getCurrentDateTime()}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label>Ghi chú (Tùy chọn)</Label>
+                  <textarea
+                    className="h-24 w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:border-brand-400 focus:outline-hidden focus:ring-2 focus:ring-brand-300/40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Thêm ghi chú..."
+                  />
+                </div>
+
+                {selectedVehicleId && startTime && endTime && (
+                  <div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleGetAISuggestion}
+                      disabled={loadingAI}
+                      className="w-full"
+                    >
+                      {loadingAI ? "Đang kiểm tra AI..." : "Kiểm tra AI Fairness"}
+                    </Button>
+                  </div>
+                )}
+
+                {aiSuggestion && (
+                  <div className={`rounded-lg border p-4 ${
+                    aiSuggestion.fairness_score >= 0.5
+                      ? "border-green-200 bg-green-50 dark:border-green-500/40 dark:bg-green-500/10"
+                      : "border-red-200 bg-red-50 dark:border-red-500/40 dark:bg-red-500/10"
+                  }`}>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className={`text-sm font-semibold ${
+                          aiSuggestion.fairness_score >= 0.5
+                            ? "text-green-900 dark:text-green-200"
+                            : "text-red-900 dark:text-red-200"
+                        }`}>
+                          Kết quả kiểm tra AI
+                        </h4>
+                        <p className={`mt-1 text-xs ${
+                          aiSuggestion.fairness_score >= 0.5
+                            ? "text-green-700 dark:text-green-300"
+                            : "text-red-700 dark:text-red-300"
+                        }`}>
+                          {aiSuggestion.reason}
+                        </p>
+                        <p className={`mt-2 text-xs font-medium ${
+                          aiSuggestion.fairness_score >= 0.5
+                            ? "text-green-600 dark:text-green-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}>
+                          Điểm công bằng: {(aiSuggestion.fairness_score * 100).toFixed(1)}%
+                        </p>
+                        {aiSuggestion.fairness_score >= 0.5 && aiSuggestion.fairness_score < 0.7 && (
+                          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                            ⚠️ Điểm công bằng ở mức trung bình. Nếu có thể, hãy cân nhắc thời gian khác.
+                          </p>
+                        )}
+                        {aiSuggestion.fairness_score < 0.5 && (
+                          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+                            ❌ Đặt xe này không được phép vì không công bằng với các đồng sở hữu khác.
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAiSuggestion(null)}
+                        className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {bookingError && (
+                  <div className="rounded-lg border border-error-200 bg-error-50 p-3 dark:border-error-500/40 dark:bg-error-500/10">
+                    <p className="text-sm text-error-600 dark:text-error-200">{bookingError}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 lg:justify-end mt-6">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    type="button"
+                    onClick={() => {
+                      setShowCreateModal(false);
+                      setSelectedVehicleId("");
+                      setStartTime("");
+                      setEndTime("");
+                      setNote("");
+                      setAiSuggestion(null);
+                      setBookingError(null);
+                    }}
+                  >
+                    Hủy
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    onClick={handleCreateBooking}
+                    disabled={!selectedVehicleId || !startTime || !endTime || !aiSuggestion || creatingBooking || loadingAI || (aiSuggestion && aiSuggestion.fairness_score < 0.5)}
+                  >
+                    {creatingBooking ? "Đang đặt..." : "Đặt Xe"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      {selectedBooking && (
+        <UpdateBookingModal
+          isOpen={showUpdateModal}
+          onClose={() => {
+            setShowUpdateModal(false);
+            setSelectedBooking(null);
+          }}
+          onSuccess={loadBookings}
+          booking={selectedBooking}
+        />
+      )}
 
       {selectedBooking && (
         <>
-          <UpdateBookingModal
-            isOpen={showUpdateModal}
-            onClose={() => {
-              setShowUpdateModal(false);
-              setSelectedBooking(null);
-            }}
-            onSuccess={loadBookings}
-            booking={selectedBooking}
-          />
-
           <CheckInModal
             isOpen={showCheckInModal}
             onClose={() => {

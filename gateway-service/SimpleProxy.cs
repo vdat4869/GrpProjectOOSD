@@ -31,6 +31,8 @@ public class SimpleProxyMiddleware
         { "/api/Ownerships", ("ownership-service", "/api/Ownerships") },
         { "/api/EContracts", ("ownership-service", "/api/EContracts") },
         { "/api/GroupFunds", ("ownership-service", "/api/GroupFunds") },
+        { "/api/disputes", ("ownership-service", "/api/Disputes") },
+        { "/api/Disputes", ("ownership-service", "/api/Disputes") },
         { "/api/report", ("report-service", "/api/Report") },
         { "/api/analytics", ("report-service", "/api/Analytics") },
         { "/api/history", ("report-service", "/api/History") },
@@ -216,6 +218,37 @@ public class SimpleProxyMiddleware
                     {
                         remainder = "/";
                     }
+                    // Map /api/ownership/coowners -> /api/CoOwners (case sensitive mapping)
+                    if (remainder.StartsWith("/coowners", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/CoOwners" + remainder.Substring("/coowners".Length);
+                    }
+                    // Map /api/ownership/vehiclegroups -> /api/VehicleGroups
+                    else if (remainder.StartsWith("/vehiclegroups", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/VehicleGroups" + remainder.Substring("/vehiclegroups".Length);
+                    }
+                    // Map /api/ownership/ownerships -> /api/Ownerships
+                    else if (remainder.StartsWith("/ownerships", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/Ownerships" + remainder.Substring("/ownerships".Length);
+                    }
+                    // Map /api/ownership/econtracts -> /api/EContracts
+                    else if (remainder.StartsWith("/econtracts", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/EContracts" + remainder.Substring("/econtracts".Length);
+                    }
+                    // Map /api/voting -> /api/Voting
+                    else if (remainder.StartsWith("/voting", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/Voting" + remainder.Substring("/voting".Length);
+                    }
+                    // Map /api/groupfunds -> /api/GroupFunds
+                    else if (remainder.StartsWith("/groupfunds", StringComparison.OrdinalIgnoreCase))
+                    {
+                        remainder = "/GroupFunds" + remainder.Substring("/groupfunds".Length);
+                    }
+                    
                     var targetPath = targetPrefix + remainder;
                     if (await ProxyRequestAsync(context, serviceName, targetPath))
                         return;

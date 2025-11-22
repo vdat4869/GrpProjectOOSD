@@ -5,6 +5,7 @@ import Button from "../../components/ui/button/Button";
 import { bookingService } from "../../services/bookingService";
 import { paymentService, PaymentStatus } from "../../services/paymentService";
 import { ownershipService } from "../../services/ownershipService";
+import { disputeService, Dispute as DisputeType, CreateDisputeDto } from "../../services/disputeService";
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 
@@ -23,6 +24,22 @@ interface PotentialDispute {
   resolvedAt?: string;
 }
 
+// Convert Dispute from API to PotentialDispute for compatibility
+const convertDisputeToPotential = (dispute: DisputeType): PotentialDispute => ({
+  id: dispute.id,
+  type: dispute.type as PotentialDispute["type"],
+  title: dispute.title,
+  description: dispute.description,
+  severity: dispute.severity as PotentialDispute["severity"],
+  relatedId: dispute.relatedId,
+  relatedType: dispute.relatedType as PotentialDispute["relatedType"],
+  createdAt: dispute.createdAt,
+  status: dispute.status as PotentialDispute["status"],
+  notes: dispute.notes,
+  resolvedBy: dispute.resolvedBy,
+  resolvedAt: dispute.resolvedAt,
+});
+
 const DisputeTracking: React.FC = () => {
   const [disputes, setDisputes] = useState<PotentialDispute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,57 +52,35 @@ const DisputeTracking: React.FC = () => {
 
   useEffect(() => {
     loadDisputes();
-    // Load saved dispute statuses from localStorage
-    loadSavedDisputeStatuses();
   }, []);
-
-  const loadSavedDisputeStatuses = () => {
-    try {
-      const saved = localStorage.getItem("dispute_statuses");
-      if (saved) {
-        const savedStatuses: Record<string, { status: string; notes?: string; resolvedBy?: string; resolvedAt?: string }> = JSON.parse(saved);
-        setDisputes((prev) =>
-          prev.map((d) => {
-            const saved = savedStatuses[d.id];
-            if (saved) {
-              return {
-                ...d,
-                status: saved.status as "pending" | "in_review" | "resolved",
-                notes: saved.notes,
-                resolvedBy: saved.resolvedBy,
-                resolvedAt: saved.resolvedAt,
-              };
-            }
-            return d;
-          })
-        );
-      }
-    } catch (err) {
-      console.error("Failed to load saved dispute statuses:", err);
-    }
-  };
-
-  const saveDisputeStatus = (disputeId: string, updates: Partial<PotentialDispute>) => {
-    try {
-      const saved = localStorage.getItem("dispute_statuses");
-      const savedStatuses: Record<string, any> = saved ? JSON.parse(saved) : {};
-      savedStatuses[disputeId] = {
-        status: updates.status,
-        notes: updates.notes,
-        resolvedBy: updates.resolvedBy,
-        resolvedAt: updates.resolvedAt,
-      };
-      localStorage.setItem("dispute_statuses", JSON.stringify(savedStatuses));
-    } catch (err) {
-      console.error("Failed to save dispute status:", err);
-    }
-  };
 
   const loadDisputes = async () => {
     try {
       setLoading(true);
       setError(null);
 
+      // First, try to load existing disputes from database
+      const existingDisputes = await disputeService.getDisputes();
+      if (existingDisputes.length > 0) {
+        // Convert and set disputes from database
+        setDisputes(existingDisputes.map(convertDisputeToPotential));
+      }
+
+      // Then, detect new potential disputes and save to database
+      await detectAndSaveNewDisputes();
+
+      // Reload from database after saving new ones
+      const allDisputes = await disputeService.getDisputes();
+      setDisputes(allDisputes.map(convertDisputeToPotential));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load disputes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const detectAndSaveNewDisputes = async () => {
+    try {
       // Load bookings, cost shares, and vehicle groups
       const [bookings, vehicleGroups] = await Promise.all([
         bookingService.getBookings(),
@@ -99,21 +94,18 @@ const DisputeTracking: React.FC = () => {
       const costSharesArrays = await Promise.all(costSharesPromises);
       const allCostShares = costSharesArrays.flat();
 
-      const potentialDisputes: PotentialDispute[] = [];
+      const potentialDisputes: CreateDisputeDto[] = [];
 
       // Check for booking conflicts (overlapping bookings, multiple cancellations)
       const cancelledBookings = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
       cancelledBookings.forEach((booking) => {
         potentialDisputes.push({
-          id: `booking-${booking.id}`,
           type: "cancellation",
           title: `Booking #${booking.id} Cancelled`,
           description: `Booking for vehicle #${booking.vehicleId} was cancelled. Check for conflicts or issues.`,
           severity: "medium",
-          relatedId: booking.id,
+          relatedId: booking.id.toString(),
           relatedType: "booking",
-          createdAt: booking.createdAt || new Date().toISOString(),
-          status: "pending",
         });
       });
 
@@ -134,15 +126,12 @@ const DisputeTracking: React.FC = () => {
             // Check for overlap
             if (start1 <= end2 && start2 <= end1) {
               potentialDisputes.push({
-                id: `conflict-${b1.id}-${b2.id}`,
                 type: "booking_conflict",
                 title: `Booking Conflict: #${b1.id} and #${b2.id}`,
                 description: `Two bookings for vehicle #${b1.vehicleId} have overlapping time slots.`,
                 severity: "high",
-                relatedId: b1.id,
+                relatedId: b1.id.toString(),
                 relatedType: "booking",
-                createdAt: b1.createdAt || new Date().toISOString(),
-                status: "pending",
               });
             }
           }
@@ -161,15 +150,12 @@ const DisputeTracking: React.FC = () => {
           const hoursPast = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60 * 60));
           if (hoursPast > 1) {
             potentialDisputes.push({
-              id: `no-show-${booking.id}`,
               type: "booking_conflict",
               title: `No Show: Booking #${booking.id}`,
               description: `Booking for vehicle #${booking.vehicleId} was confirmed but no check-in occurred. ${hoursPast} hours past scheduled time.`,
               severity: "medium",
-              relatedId: booking.id,
+              relatedId: booking.id.toString(),
               relatedType: "booking",
-              createdAt: booking.createdAt || new Date().toISOString(),
-              status: "pending",
             });
           }
         }
@@ -179,15 +165,12 @@ const DisputeTracking: React.FC = () => {
           const hoursPast = Math.floor((now.getTime() - endTime.getTime()) / (1000 * 60 * 60));
           if (hoursPast > 2) {
             potentialDisputes.push({
-              id: `overdue-${booking.id}`,
               type: "booking_conflict",
               title: `Overdue Check-out: Booking #${booking.id}`,
               description: `Booking for vehicle #${booking.vehicleId} is overdue by ${hoursPast} hours. Check-out required.`,
               severity: "high",
-              relatedId: booking.id,
+              relatedId: booking.id.toString(),
               relatedType: "booking",
-              createdAt: booking.createdAt || new Date().toISOString(),
-              status: "pending",
             });
           }
         }
@@ -202,15 +185,12 @@ const DisputeTracking: React.FC = () => {
         // Overdue cost share
         if (costShare.status === PaymentStatus.Pending && now > dueDate && daysPastDue > 7) {
           potentialDisputes.push({
-            id: `overdue-payment-${costShare.id}`,
             type: "overdue_payment",
             title: `Overdue Payment: ${costShare.title}`,
             description: `Cost share for ${costShare.title} is ${daysPastDue} days overdue. Amount: ${costShare.currency} ${costShare.totalAmount.toLocaleString()}`,
             severity: daysPastDue > 30 ? "high" : "medium",
-            relatedId: costShare.id,
+            relatedId: costShare.id.toString(),
             relatedType: "cost_share",
-            createdAt: costShare.createdAt,
-            status: "pending",
           });
         }
 
@@ -219,27 +199,28 @@ const DisputeTracking: React.FC = () => {
           costShare.costShareDetails.forEach((detail) => {
             if (detail.status === PaymentStatus.Failed) {
               potentialDisputes.push({
-                id: `payment-failed-${detail.id}`,
                 type: "payment_issue",
                 title: `Failed Payment: ${costShare.title}`,
                 description: `Payment failed for cost share detail #${detail.id}. Amount: ${detail.currency} ${detail.amount.toLocaleString()}`,
                 severity: "high",
-                relatedId: detail.id,
+                relatedId: detail.id.toString(),
                 relatedType: "payment",
-                createdAt: detail.createdAt,
-                status: "pending",
               });
             }
           });
         }
       });
 
-      setDisputes(potentialDisputes);
-      loadSavedDisputeStatuses();
+      // Bulk save detected disputes to database
+      if (potentialDisputes.length > 0) {
+        try {
+          await disputeService.bulkCreateDisputes(potentialDisputes);
+        } catch (err) {
+          console.error("Failed to save detected disputes:", err);
+        }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load disputes");
-    } finally {
-      setLoading(false);
+      console.error("Failed to detect disputes:", err);
     }
   };
 
@@ -255,60 +236,59 @@ const DisputeTracking: React.FC = () => {
     setShowResolveModal(true);
   };
 
-  const saveReview = () => {
+  const saveReview = async () => {
     if (!selectedDispute) return;
 
-    const updatedDispute: PotentialDispute = {
-      ...selectedDispute,
-      status: "in_review",
-      notes: reviewNotes,
-    };
+    try {
+      setError(null);
+      // Update dispute in database via API
+      await disputeService.updateDispute(selectedDispute.id, {
+        status: "in_review",
+        notes: reviewNotes,
+      });
 
-    setDisputes((prev) =>
-      prev.map((d) => (d.id === selectedDispute.id ? updatedDispute : d))
-    );
+      // Reload disputes from database
+      await loadDisputes();
 
-    saveDisputeStatus(selectedDispute.id, {
-      status: "in_review",
-      notes: reviewNotes,
-    });
-
-    setShowReviewModal(false);
-    setSelectedDispute(null);
-    setReviewNotes("");
+      setShowReviewModal(false);
+      setSelectedDispute(null);
+      setReviewNotes("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update dispute");
+    }
   };
 
-  const saveResolve = () => {
+  const saveResolve = async () => {
     if (!selectedDispute) return;
 
-    const userEmail = localStorage.getItem("email") || "Staff";
-    const updatedDispute: PotentialDispute = {
-      ...selectedDispute,
-      status: "resolved",
-      notes: reviewNotes,
-      resolvedBy: userEmail,
-      resolvedAt: new Date().toISOString(),
-    };
+    try {
+      setError(null);
+      const userEmail = localStorage.getItem("email") || "Staff";
+      
+      // Update dispute in database via API
+      await disputeService.updateDispute(selectedDispute.id, {
+        status: "resolved",
+        notes: reviewNotes,
+        resolvedBy: userEmail,
+      });
 
-    setDisputes((prev) =>
-      prev.map((d) => (d.id === selectedDispute.id ? updatedDispute : d))
-    );
+      // Reload disputes from database
+      await loadDisputes();
 
-    saveDisputeStatus(selectedDispute.id, {
-      status: "resolved",
-      notes: reviewNotes,
-      resolvedBy: userEmail,
-      resolvedAt: new Date().toISOString(),
-    });
-
-    setShowResolveModal(false);
-    setSelectedDispute(null);
-    setReviewNotes("");
+      setShowResolveModal(false);
+      setSelectedDispute(null);
+      setReviewNotes("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resolve dispute");
+    }
   };
 
   const filteredDisputes = disputes.filter((dispute) => {
     if (filter === "all") return true;
-    return dispute.status === filter;
+    // Match status regardless of case and format (Pending/pending, InReview/in_review, Resolved/resolved)
+    const disputeStatusLower = dispute.status.toLowerCase().replace("_", "");
+    const filterLower = filter.toLowerCase().replace("_", "");
+    return disputeStatusLower === filterLower;
   });
 
   const getSeverityColor = (severity: string) => {
@@ -444,13 +424,13 @@ const DisputeTracking: React.FC = () => {
                       {getTypeLabel(dispute.type)}
                     </span>
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                      dispute.status === "resolved"
+                      dispute.status.toLowerCase().replace("_", "") === "resolved"
                         ? "bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-300"
-                        : dispute.status === "in_review"
+                        : dispute.status.toLowerCase().replace("_", "") === "inreview"
                         ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
                         : "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"
                     }`}>
-                      {dispute.status.replace("_", " ").toUpperCase()}
+                      {dispute.status.replace("_", " ").replace(/([A-Z])/g, " $1").trim().toUpperCase()}
                     </span>
                   </div>
                   <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{dispute.description}</p>
@@ -471,7 +451,7 @@ const DisputeTracking: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
-                  {dispute.status === "pending" && (
+                  {dispute.status.toLowerCase().replace("_", "") === "pending" && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => handleReview(dispute)}>
                         Review
@@ -481,7 +461,7 @@ const DisputeTracking: React.FC = () => {
                       </Button>
                     </>
                   )}
-                  {dispute.status === "in_review" && (
+                  {dispute.status.toLowerCase().replace("_", "") === "inreview" && (
                     <Button size="sm" variant="outline" onClick={() => handleResolve(dispute)}>
                       Resolve
                     </Button>
