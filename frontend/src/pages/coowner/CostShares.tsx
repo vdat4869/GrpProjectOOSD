@@ -8,6 +8,7 @@ import {
   CostType,
   PaymentStatus,
 } from "../../services/paymentService";
+import { ownershipService } from "../../services/ownershipService";
 import CreateCostShareModal from "../../components/modals/CreateCostShareModal";
 import CreatePaymentModal from "../../components/modals/CreatePaymentModal";
 import PaymentTypeModal from "../../components/modals/PaymentTypeModal";
@@ -41,11 +42,39 @@ const CostShares: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await paymentService.getCostShares();
+      
+      // Get user's groups first
+      let userGroupIds: string[] = [];
+      if (userId) {
+        try {
+          const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+          if (coOwner) {
+            const ownerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+            userGroupIds = [...new Set(ownerships.map(o => o.vehicleGroupId))];
+          }
+        } catch (err) {
+          console.error("Failed to load user groups:", err);
+        }
+      }
+      
+      // Load cost shares for user's groups
+      let allCostShares: CostShare[] = [];
+      if (userGroupIds.length > 0) {
+        // Load cost shares for each group
+        const costSharesPromises = userGroupIds.map(groupId => 
+          paymentService.getCostShares(groupId).catch(() => [])
+        );
+        const costSharesArrays = await Promise.all(costSharesPromises);
+        allCostShares = costSharesArrays.flat();
+      } else {
+        // If no groups, try loading all (for admin/staff)
+        const data = await paymentService.getCostShares();
+        allCostShares = data;
+      }
       
       // Load details for each cost share
       const costSharesWithDetails = await Promise.all(
-        data.map(async (costShare) => {
+        allCostShares.map(async (costShare) => {
           try {
             const details = await paymentService.getCostShareDetails(costShare.id);
             return { ...costShare, costShareDetails: details };

@@ -120,15 +120,52 @@ class ApiClient {
         headers,
       });
 
+      // Handle 204 No Content (empty response body) - don't try to read body
+      if (response.status === 204) {
+        return {
+          success: true,
+          message: "Operation completed successfully",
+        };
+      }
+
+      // Check content-type before reading body
+      const contentType = response.headers.get("content-type");
+      const hasBody = contentType && (contentType.includes("application/json") || contentType.includes("text/"));
+      
+      // If no content-type or empty body, return success for 2xx status codes
+      if (!hasBody && response.ok) {
+        return {
+          success: true,
+          message: "Operation completed successfully",
+        };
+      }
+
       let data;
       try {
-        data = await response.json();
-      } catch (jsonError) {
-        // If response is not JSON, return text
         const text = await response.text();
+        // If text is empty, return success for 2xx status codes
+        if (!text || text.trim() === "") {
+          return {
+            success: response.ok,
+            message: response.ok ? "Operation completed successfully" : `HTTP ${response.status}: ${response.statusText}`,
+          };
+        }
+        // Try to parse as JSON
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          // Not JSON, return as text (cast to T for type safety)
+          return {
+            success: response.ok,
+            message: text || `HTTP ${response.status}: ${response.statusText}`,
+            data: text as T,
+          };
+        }
+      } catch (readError) {
+        // Can't read body, return based on status
         return {
-          success: false,
-          message: text || `HTTP ${response.status}: ${response.statusText}`,
+          success: response.ok,
+          message: response.ok ? "Operation completed successfully" : `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 

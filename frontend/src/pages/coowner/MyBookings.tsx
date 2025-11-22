@@ -74,18 +74,33 @@ const MyBookings: React.FC = () => {
       // Get co-owner by userId
       const coOwner = await ownershipService.getCoOwnerByUserId(userId);
       if (!coOwner) {
-        throw new Error("Co-owner not found. Please ensure you have completed KYC.");
+        setBookingError("Tài khoản chưa được đăng ký làm co-owner. Vui lòng hoàn thành KYC trước.");
+        return;
       }
+      console.log("Co-owner found:", coOwner);
 
       // Get all ownerships for this co-owner
       const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      console.log("All ownerships for co-owner:", allOwnerships);
+      
+      if (allOwnerships.length === 0) {
+        setBookingError("Bạn chưa có quyền sở hữu xe nào. Vui lòng liên hệ admin để được thêm vào nhóm sở hữu.");
+        return;
+      }
       
       // Get unique group IDs from ownerships
       const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      console.log("Group IDs from ownerships:", groupIds);
       
       // Get groups for these IDs
       const allGroups = await ownershipService.getGroups();
       const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+      console.log("User groups:", userGroups.map(g => ({ id: g.id, name: g.name, vehicleName: g.vehicleName })));
+      
+      if (userGroups.length === 0) {
+        setBookingError("Không tìm thấy nhóm xe tương ứng với quyền sở hữu của bạn. Vui lòng liên hệ admin.");
+        return;
+      }
 
       // Also load vehicles from booking service for vehicleId mapping
       const vehiclesFromBooking = await bookingService.getVehicles();
@@ -99,15 +114,46 @@ const MyBookings: React.FC = () => {
           const currentUserOwnership = ownerships.find(o => o.coOwnerId === coOwner.id);
           
           // Find matching vehicle ID from booking service by name
-          const matchingVehicle = vehiclesFromBooking.find(v => 
+          // Try multiple matching strategies
+          let matchingVehicle = vehiclesFromBooking.find(v => 
             v.name.toLowerCase() === group.vehicleName.toLowerCase()
           );
+          
+          // If not found, try matching by license plate if available
+          if (!matchingVehicle && group.licensePlate) {
+            matchingVehicle = vehiclesFromBooking.find(v => 
+              v.name.toLowerCase().includes(group.licensePlate!.toLowerCase()) ||
+              group.licensePlate!.toLowerCase().includes(v.name.toLowerCase())
+            );
+          }
+          
+          // If still not found, try partial name matching
+          if (!matchingVehicle) {
+            matchingVehicle = vehiclesFromBooking.find(v => 
+              v.name.toLowerCase().includes(group.vehicleName.toLowerCase()) ||
+              group.vehicleName.toLowerCase().includes(v.name.toLowerCase())
+            );
+          }
+          
+          // If still not found, automatically create vehicle in booking service
+          let vehicleId = matchingVehicle?.id;
+          if (!vehicleId && group.vehicleName) {
+            try {
+              console.log(`Creating vehicle "${group.vehicleName}" in booking service...`);
+              const newVehicle = await bookingService.createVehicle(group.vehicleName);
+              vehicleId = newVehicle.id;
+              console.log(`Vehicle created successfully with ID: ${vehicleId}`);
+            } catch (err) {
+              console.error(`Failed to create vehicle "${group.vehicleName}":`, err);
+              // Continue without vehicleId - will show error when user tries to book
+            }
+          }
           
           return {
             ...group,
             ownerships,
             currentUserOwnership,
-            vehicleId: matchingVehicle?.id,
+            vehicleId,
           } as VehicleWithOwners;
         } catch (err) {
           console.error(`Failed to load ownerships for group ${group.id}:`, err);
@@ -116,12 +162,24 @@ const MyBookings: React.FC = () => {
       });
 
       const vehiclesWithOwnersResults = await Promise.all(vehiclesWithOwnersPromises);
-      const validVehicles = vehiclesWithOwnersResults.filter((v): v is VehicleWithOwners => v !== null && v.vehicleId !== undefined);
+      // Show all vehicles with ownership, even if vehicleId is not found
+      // This allows users to see their groups and we'll show a warning if vehicleId is missing
+      const validVehicles = vehiclesWithOwnersResults.filter((v): v is VehicleWithOwners => v !== null);
       setAvailableVehicles(validVehicles);
       
       // Auto-select first vehicle if available
       if (validVehicles.length > 0 && !selectedVehicleId) {
         setSelectedVehicleId(validVehicles[0].id);
+      }
+      
+      // Log for debugging
+      if (validVehicles.length > 0) {
+        console.log("Available vehicles:", validVehicles.map(v => ({
+          groupId: v.id,
+          vehicleName: v.vehicleName,
+          vehicleId: v.vehicleId,
+          hasVehicleId: v.vehicleId !== undefined
+        })));
       }
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : "Failed to load vehicles");
@@ -170,8 +228,11 @@ const MyBookings: React.FC = () => {
       }
 
       const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
-      if (!selectedVehicle || !selectedVehicle.vehicleId) {
-        throw new Error("Selected vehicle not found");
+      if (!selectedVehicle) {
+        throw new Error("Xe đã chọn không tồn tại. Vui lòng chọn lại.");
+      }
+      if (!selectedVehicle.vehicleId) {
+        throw new Error(`Xe "${selectedVehicle.vehicleName}" chưa được đồng bộ với hệ thống đặt xe. Vui lòng liên hệ admin để đồng bộ xe này.`);
       }
 
       // Get ownership percentage for current user
@@ -216,8 +277,11 @@ const MyBookings: React.FC = () => {
       }
 
       const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
-      if (!selectedVehicle || !selectedVehicle.vehicleId) {
-        throw new Error("Selected vehicle not found");
+      if (!selectedVehicle) {
+        throw new Error("Xe đã chọn không tồn tại. Vui lòng chọn lại.");
+      }
+      if (!selectedVehicle.vehicleId) {
+        throw new Error(`Xe "${selectedVehicle.vehicleName}" chưa được đồng bộ với hệ thống đặt xe. Vui lòng liên hệ admin để đồng bộ xe này.`);
       }
 
       const start = new Date(startTime);

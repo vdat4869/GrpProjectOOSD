@@ -104,6 +104,17 @@ export const bookingService = {
     return Array.isArray(response.data) ? response.data : [];
   },
 
+  async createVehicle(name: string): Promise<Vehicle> {
+    const response = await apiClient.post<Vehicle>(
+      API_ENDPOINTS.BOOKING.VEHICLES,
+      { name, isActive: true }
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create vehicle");
+    }
+    return response.data;
+  },
+
   async createBooking(data: CreateBookingRequest): Promise<Booking> {
     const response = await apiClient.post<Booking>(
       API_ENDPOINTS.BOOKING.CREATE,

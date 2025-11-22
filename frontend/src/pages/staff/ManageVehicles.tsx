@@ -38,24 +38,55 @@ const ManageVehicles: React.FC = () => {
     try {
       setError(null);
       // Map frontend status (0-3) to backend GroupStatus
-      // 0=Available, 1=In Use -> Active
-      // 2=Maintenance, 3=Technical Issue -> Inactive
-      const statusMap: Record<number, string> = {
-        0: "Active",   // Available
-        1: "Active",   // In Use
-        2: "Inactive", // Maintenance
-        3: "Inactive", // Technical Issue
-      };
-      const backendStatus = statusMap[newStatus] || "Active";
+      const backendStatus = mapFrontendStatusToBackend(newStatus);
       
       // Call API to update status in database
       await ownershipService.updateGroupStatus(vehicleId, backendStatus);
+      
+      // Update local state immediately for better UX
+      setVehicles(prevVehicles => 
+        prevVehicles.map(v => 
+          v.id === vehicleId 
+            ? { ...v, status: newStatus } 
+            : v
+        )
+      );
       
       // Reload vehicles from database to get updated data
       await loadVehicles();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update vehicle status");
+      // Reload on error to revert UI
+      await loadVehicles();
     }
+  };
+
+  // Map backend status string to frontend status number
+  const mapBackendStatusToFrontend = (backendStatus: string | number): number => {
+    if (typeof backendStatus === 'number') {
+      return backendStatus;
+    }
+    // Backend returns: "Active", "Inactive", "Dissolved"
+    // Frontend needs: 0=Available, 1=In Use, 2=Maintenance, 3=Technical Issue
+    // We'll map: Active -> 0 (Available), Inactive -> 2 (Maintenance)
+    // For now, we'll use a simple mapping. You may want to extend backend to support more statuses
+    const statusMap: Record<string, number> = {
+      'Active': 0,      // Available
+      'Inactive': 2,    // Maintenance
+      'Dissolved': 3,   // Technical Issue
+    };
+    return statusMap[backendStatus] ?? 0;
+  };
+
+  // Map frontend status number to backend status string
+  const mapFrontendStatusToBackend = (frontendStatus: number): string => {
+    const statusMap: Record<number, string> = {
+      0: "Active",   // Available -> Active
+      1: "Active",   // In Use -> Active
+      2: "Inactive", // Maintenance -> Inactive
+      3: "Inactive", // Technical Issue -> Inactive
+    };
+    return statusMap[frontendStatus] || "Active";
   };
 
   const getStatus = (status: number) => {
@@ -91,9 +122,8 @@ const ManageVehicles: React.FC = () => {
             </div>
           ) : (
             vehicles.map((vehicle) => {
-              const statusNumber = typeof vehicle.status === 'string' 
-                ? (parseInt(vehicle.status) || 0) 
-                : vehicle.status;
+              // Map backend status string to frontend status number
+              const statusNumber = mapBackendStatusToFrontend(vehicle.status);
               const status = getStatus(statusNumber);
               return (
                 <div
@@ -130,7 +160,7 @@ const ManageVehicles: React.FC = () => {
                           Update Status
                         </p>
                         <Select
-                          value={vehicle.status.toString()}
+                          value={statusNumber.toString()}
                           onChange={(value) => handleStatusChange(vehicle.id, parseInt(value))}
                         >
                           {VEHICLE_STATUSES.map((s) => (

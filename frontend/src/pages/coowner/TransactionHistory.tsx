@@ -21,8 +21,8 @@ const TransactionHistory: React.FC = () => {
 
   useEffect(() => {
     const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
-    // Temporary: using userId as walletId (should get from user profile or wallet service)
     if (userId) {
+      // Use userId to get transactions (backend will find wallets automatically)
       setWalletId(userId);
       loadTransactions(userId);
     } else {

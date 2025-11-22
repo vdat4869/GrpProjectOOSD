@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
-import { ownershipService, Proposal, VehicleGroup } from "../../services/ownershipService";
+import { ownershipService, Proposal, VehicleGroup, Vote } from "../../services/ownershipService";
 import CreateProposalModal from "../../components/modals/CreateProposalModal";
 import VoteModal from "../../components/modals/VoteModal";
 import ProposalDetailModal from "../../components/modals/ProposalDetailModal";
@@ -19,9 +19,12 @@ const GroupVoting: React.FC = () => {
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+  const [userVotes, setUserVotes] = useState<Map<string, Vote>>(new Map()); // proposalId -> user's vote
+  const [currentCoOwnerId, setCurrentCoOwnerId] = useState<string | null>(null);
 
   useEffect(() => {
     loadGroups();
+    loadCurrentCoOwner();
   }, []);
 
   useEffect(() => {
@@ -32,6 +35,21 @@ const GroupVoting: React.FC = () => {
       }
     }
   }, [selectedGroupId, groups]);
+
+  const loadCurrentCoOwner = async () => {
+    try {
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) return;
+
+      const coOwners = await ownershipService.getCoOwners();
+      const currentCoOwner = coOwners.find(co => co.userId === userId);
+      if (currentCoOwner) {
+        setCurrentCoOwnerId(currentCoOwner.id);
+      }
+    } catch (err) {
+      console.error("Failed to load current co-owner:", err);
+    }
+  };
 
   const loadGroups = async () => {
     try {
@@ -50,12 +68,68 @@ const GroupVoting: React.FC = () => {
       setLoading(true);
       setError(null);
       const data = await ownershipService.getProposals(groupId);
-      setProposals(data);
+      setProposals(data || []);
+      
+      // Ensure currentCoOwnerId is loaded before loading votes
+      if (!currentCoOwnerId) {
+        await loadCurrentCoOwner();
+      }
+      
+      // Load votes for all proposals to check if user has voted
+      if (currentCoOwnerId && data && data.length > 0) {
+        await loadUserVotes(data);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load proposals");
+      const errorMessage = err instanceof Error ? err.message : "Failed to load proposals";
+      setError(errorMessage);
+      console.error("Error loading proposals:", err);
+      // Don't clear proposals on error, keep existing data
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadUserVotes = async (proposals: Proposal[]) => {
+    // Get currentCoOwnerId from state or load it
+    let coOwnerId = currentCoOwnerId;
+    if (!coOwnerId) {
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (userId) {
+        try {
+          const coOwners = await ownershipService.getCoOwners();
+          const currentCoOwner = coOwners.find(co => co.userId === userId);
+          if (currentCoOwner) {
+            coOwnerId = currentCoOwner.id;
+            setCurrentCoOwnerId(coOwnerId);
+          }
+        } catch (err) {
+          console.error("Failed to load co-owner for votes:", err);
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
+    if (!coOwnerId) return;
+
+    const votesMap = new Map<string, Vote>();
+    
+    // Load votes for each proposal in parallel
+    const votePromises = proposals.map(async (proposal) => {
+      try {
+        const votes = await ownershipService.getVotes(proposal.id);
+        const userVote = votes.find(v => v.coOwnerId === coOwnerId);
+        if (userVote) {
+          votesMap.set(proposal.id, userVote);
+        }
+      } catch (err) {
+        console.error(`Failed to load votes for proposal ${proposal.id}:`, err);
+      }
+    });
+
+    await Promise.all(votePromises);
+    setUserVotes(votesMap);
   };
 
   const formatDate = (dateString?: string) => {
@@ -90,9 +164,33 @@ const GroupVoting: React.FC = () => {
     return proposal.status.toLowerCase() === "voting";
   };
 
-  // const _canStartVoting = (proposal: Proposal) => {
-  //   return proposal.status.toLowerCase() === "pending";
-  // }; // Reserved for future use
+  const hasUserVoted = (proposal: Proposal): boolean => {
+    return userVotes.has(proposal.id);
+  };
+
+  const getUserVote = (proposal: Proposal): Vote | undefined => {
+    return userVotes.get(proposal.id);
+  };
+
+  const canStartVoting = (proposal: Proposal) => {
+    return proposal.status.toLowerCase() === "pending";
+  };
+
+  const handleStartVoting = async (proposal: Proposal) => {
+    try {
+      setLoading(true);
+      setError(null);
+      await ownershipService.startVoting(proposal.id);
+      // Reload proposals after starting voting
+      if (selectedGroupId) {
+        await loadProposals(selectedGroupId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start voting");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleVote = (proposal: Proposal) => {
     setSelectedProposal(proposal);
@@ -204,14 +302,34 @@ const GroupVoting: React.FC = () => {
                     )}
                   </div>
                   <div className="flex flex-wrap gap-2 sm:flex-col">
-                    {canVote(proposal) && (
+                    {canStartVoting(proposal) && (
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => handleVote(proposal)}
+                        onClick={() => handleStartVoting(proposal)}
+                        disabled={loading}
                       >
-                        Vote
+                        Start Voting
                       </Button>
+                    )}
+                    {canVote(proposal) && (
+                      <>
+                        {hasUserVoted(proposal) ? (
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">You voted:</p>
+                            <p className="font-medium text-gray-700 dark:text-gray-300">
+                              {getUserVote(proposal)?.choice || "Unknown"}
+                            </p>
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleVote(proposal)}
+                          >
+                            Vote
+                          </Button>
+                        )}
+                      </>
                     )}
                     <Button
                       size="sm"
@@ -247,9 +365,12 @@ const GroupVoting: React.FC = () => {
               setShowVoteModal(false);
               setSelectedProposal(null);
             }}
-            onSuccess={() => {
+            onSuccess={async () => {
+              setShowVoteModal(false);
+              setSelectedProposal(null);
+              // Reload proposals after voting
               if (selectedGroupId) {
-                loadProposals(selectedGroupId);
+                await loadProposals(selectedGroupId);
               }
             }}
             proposal={selectedProposal}

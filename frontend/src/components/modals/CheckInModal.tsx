@@ -63,14 +63,15 @@ export default function CheckInModal({
       setLoadingQr(true);
       setQrCodeError(null);
       const qrResponse = await bookingService.getQrCode(booking.id);
-      setQrCode(qrResponse.qrCode);
+      if (qrResponse.qrCode) {
+        setQrCode(qrResponse.qrCode);
+      } else {
+        setQrCodeError("QR code không có trong response");
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load QR code";
       setQrCodeError(errorMessage);
-      // Don't log to console if it's expected (booking not confirmed)
-      if (!errorMessage.includes("xác nhận") && !errorMessage.includes("confirmed")) {
-        console.error("Failed to load QR code:", err);
-      }
+      console.error("Failed to load QR code:", err);
     } finally {
       setLoadingQr(false);
     }
@@ -160,9 +161,21 @@ export default function CheckInModal({
               </Button>
             </div>
             {qrCode && (
-              <p className="mt-1 text-xs text-green-600 dark:text-green-400">
-                QR Code loaded successfully
-              </p>
+              <div className="mt-2">
+                <p className="mb-2 text-xs text-green-600 dark:text-green-400">
+                  QR Code loaded successfully
+                </p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
+                  <p className="break-all text-xs font-mono text-gray-700 dark:text-gray-300">
+                    {qrCode}
+                  </p>
+                </div>
+                {booking.qrCode && booking.qrCode === qrCode && (
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    QR code đã được tạo trước đó
+                  </p>
+                )}
+              </div>
             )}
             {qrCodeError && (
               <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">

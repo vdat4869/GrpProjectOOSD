@@ -6,6 +6,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import AdminRoutes from "./routes/AdminRoutes";
 import StaffRoutes from "./routes/StaffRoutes";
 import CoownerRoutes from "./routes/CoownerRoutes";
+import VNPayReturn from "./pages/VNPayReturn";
 import { getDashboardPath } from "./utils/roles";
 
 const RootRedirect: React.FC = () => {
@@ -27,6 +28,7 @@ const App: React.FC = () => {
         <Route path="/" element={<RootRedirect />} />
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/vnpay-return" element={<VNPayReturn />} />
 
         <Route
           path="/admin/*"

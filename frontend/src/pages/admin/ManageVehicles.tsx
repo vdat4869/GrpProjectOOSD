@@ -62,6 +62,32 @@ const ManageVehicles: React.FC = () => {
     }
   };
 
+  // Map backend status string to frontend status number
+  const mapBackendStatusToFrontend = (backendStatus: string | number): number => {
+    if (typeof backendStatus === 'number') {
+      return backendStatus;
+    }
+    // Backend returns: "Active", "Inactive", "Dissolved"
+    // Frontend needs: 0=Available, 1=In Use, 2=Maintenance, 3=Technical Issue
+    const statusMap: Record<string, number> = {
+      'Active': 0,      // Available
+      'Inactive': 2,    // Maintenance
+      'Dissolved': 3,   // Technical Issue
+    };
+    return statusMap[backendStatus] ?? 0;
+  };
+
+  // Map frontend status number to backend status string
+  const mapFrontendStatusToBackend = (frontendStatus: number): string => {
+    const statusMap: Record<number, string> = {
+      0: "Active",   // Available -> Active
+      1: "Active",   // In Use -> Active
+      2: "Inactive", // Maintenance -> Inactive
+      3: "Inactive", // Technical Issue -> Inactive
+    };
+    return statusMap[frontendStatus] || "Active";
+  };
+
   const getVehicleStatus = (status: number) => {
     return VEHICLE_STATUSES.find((s) => s.id === status) || VEHICLE_STATUSES[0];
   };
@@ -96,9 +122,8 @@ const ManageVehicles: React.FC = () => {
 
   const handleEdit = (vehicle: VehicleGroup) => {
     setSelectedVehicle(vehicle);
-    const statusNumber = typeof vehicle.status === 'string' 
-      ? (parseInt(vehicle.status) || 0) 
-      : vehicle.status;
+    // Map backend status string to frontend status number
+    const statusNumber = mapBackendStatusToFrontend(vehicle.status);
     setFormData({
       name: vehicle.name,
       description: vehicle.description || "",
@@ -125,6 +150,8 @@ const ManageVehicles: React.FC = () => {
         });
       } else if (isEditModalOpen && _selectedVehicle) {
         // Update existing vehicle group
+        // Map frontend status number to backend status string
+        const backendStatus = mapFrontendStatusToBackend(formData.status);
         await ownershipService.updateGroup(_selectedVehicle.id, {
           name: formData.name,
           description: formData.description,
@@ -132,7 +159,7 @@ const ManageVehicles: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
-          status: formData.status.toString(),
+          status: backendStatus,
         });
       }
       setIsCreateModalOpen(false);
@@ -183,9 +210,8 @@ const ManageVehicles: React.FC = () => {
             </div>
           ) : (
             vehicles.map((vehicle) => {
-              const statusNumber = typeof vehicle.status === 'string' 
-                ? (parseInt(vehicle.status) || 0) 
-                : vehicle.status;
+              // Map backend status string to frontend status number
+              const statusNumber = mapBackendStatusToFrontend(vehicle.status);
               const status = getVehicleStatus(statusNumber);
               const activeBookings = getActiveBookings(vehicle.id);
               const allBookings = getVehicleBookings(vehicle.id);

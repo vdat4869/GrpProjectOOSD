@@ -288,8 +288,13 @@ export const paymentService = {
   },
 
   // Transaction methods
-  async getTransactions(walletId: string, page: number = 1, pageSize: number = 20): Promise<Transaction[]> {
-    const endpoint = `${API_ENDPOINTS.PAYMENT.TRANSACTIONS}?walletId=${walletId}&page=${page}&pageSize=${pageSize}`;
+  async getTransactions(walletIdOrUserId: string, page: number = 1, pageSize: number = 20): Promise<Transaction[]> {
+    // Try to determine if it's a GUID (walletId) or not (userId)
+    // If it's a valid GUID, use walletId parameter, otherwise use userId parameter
+    const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(walletIdOrUserId);
+    const endpoint = isGuid 
+      ? `${API_ENDPOINTS.PAYMENT.TRANSACTIONS}?walletId=${walletIdOrUserId}&page=${page}&pageSize=${pageSize}`
+      : `${API_ENDPOINTS.PAYMENT.TRANSACTIONS}?userId=${walletIdOrUserId}&page=${page}&pageSize=${pageSize}`;
     const response = await apiClient.get<Transaction[]>(endpoint);
     if (!response.success || !response.data) {
       return [];
@@ -307,12 +312,32 @@ export const paymentService = {
 
   // VNPay methods
   async createVNPayPayment(request: VNPayCreatePaymentRequest): Promise<VNPayCreatePaymentResponse> {
-    const endpoint = "/api/vnpay/create-payment";
-    const response = await apiClient.post<VNPayCreatePaymentResponse>(endpoint, request);
-    if (!response.success || !response.data) {
-      throw new Error(response.message || "Failed to create VNPay payment");
+    // Call VNPay service directly (port 3001) - same as payment-service frontend
+    const vnpayApiBase = import.meta.env.VITE_VNPAY_API_BASE_URL || 'http://localhost:3001';
+    
+    const response = await fetch(`${vnpayApiBase}/api/vnpay/create-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    });
+    
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
     }
-    return response.data;
+    
+    const data = await response.json();
+    
+    // VNPay service returns: { success: true, data: { paymentUrl, orderId } }
+    if (!data.success || !data.data?.paymentUrl) {
+      throw new Error(data.message || "Failed to create VNPay payment");
+    }
+    
+    // Return in the format expected by frontend: { paymentUrl, orderId }
+    return {
+      paymentUrl: data.data.paymentUrl,
+      orderId: data.data.orderId,
+    };
   },
 
   // Company Payment Request methods
