@@ -172,5 +172,17 @@ public class BookingCreatedEvent
     public int VehicleId { get; set; }
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
+    public string Status { get; set; } = string.Empty;
+}
+
+public class BookingApprovedEvent
+{
+    public int BookingId { get; set; }
+    public int CoOwnerId { get; set; }
+    public int VehicleId { get; set; }
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime ApprovedAt { get; set; }
 }
 

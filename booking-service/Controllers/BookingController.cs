@@ -59,6 +59,48 @@ public class BookingsController : ControllerBase
         return Ok(vehicles);
     }
 
+    [HttpPost("vehicles")]
+    public async Task<ActionResult<VehicleDto>> CreateVehicle([FromBody] CreateVehicleDto dto)
+    {
+        try
+        {
+            // Check if vehicle with same name already exists
+            var existingVehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.Name.ToLower() == dto.Name.ToLower());
+            
+            if (existingVehicle != null)
+            {
+                return Ok(new VehicleDto
+                {
+                    Id = existingVehicle.Id,
+                    Name = existingVehicle.Name,
+                    IsActive = existingVehicle.IsActive
+                });
+            }
+
+            var vehicle = new BookingService.Models.Vehicle
+            {
+                Name = dto.Name,
+                IsActive = dto.IsActive
+            };
+            
+            _context.Vehicles.Add(vehicle);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetVehicles), new { id = vehicle.Id }, new VehicleDto
+            {
+                Id = vehicle.Id,
+                Name = vehicle.Name,
+                IsActive = vehicle.IsActive
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating vehicle: {Message}", ex.Message);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     [HttpPost("createBooking")]
     public async Task<ActionResult<BookingResponse>> Create(CreateBookingRequest request)
     {
@@ -112,9 +154,31 @@ public class BookingsController : ControllerBase
     [HttpPut("edit/{id}")]
     public async Task<ActionResult<BookingResponse>> Update(int id, UpdateBookingRequest request)
     {
-        var result = await _service.UpdateBookingAsync(id, request);
-        if (result == null) return BadRequest("Cannot update booking.");
-        return Ok(result);
+        try
+        {
+            _logger.LogInformation("Updating booking: BookingId={BookingId}, StartTime={StartTime}, EndTime={EndTime}",
+                id, request.StartTime, request.EndTime);
+
+            var result = await _service.UpdateBookingAsync(id, request);
+            if (result == null)
+            {
+                _logger.LogWarning("UpdateBookingAsync returned null for booking {BookingId}", id);
+                return BadRequest(new { error = "Cannot update booking.", message = "Booking not found or cannot be updated." });
+            }
+            
+            _logger.LogInformation("Booking updated successfully: BookingId={BookingId}", result.Id);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating booking {BookingId}: {Message}. StackTrace: {StackTrace}", 
+                id, ex.Message, ex.StackTrace);
+            return StatusCode(500, new { 
+                error = ex.Message, 
+                details = ex.InnerException?.Message,
+                stackTrace = _env.IsDevelopment() ? ex.StackTrace : null
+            });
+        }
     }
 
     [HttpPatch("{id}/status")]
@@ -130,14 +194,35 @@ public class BookingsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating booking status {BookingId}: {Message}", id, ex.Message);
+            return StatusCode(500, new { 
+                error = ex.Message, 
+                details = ex.InnerException?.Message,
+                stackTrace = _env.IsDevelopment() ? ex.StackTrace : null
+            });
+        }
     }
 
     [HttpDelete("editStatus{id}")]
     public async Task<IActionResult> Cancel(int id)
     {
-        var success = await _service.CancelBookingAsync(id);
-        if (!success) return NotFound();
-        return NoContent();
+        try
+        {
+            var success = await _service.CancelBookingAsync(id);
+            if (!success) return NotFound();
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error cancelling booking {BookingId}: {Message}", id, ex.Message);
+            return StatusCode(500, new { 
+                error = ex.Message, 
+                details = ex.InnerException?.Message,
+                stackTrace = _env.IsDevelopment() ? ex.StackTrace : null
+            });
+        }
     }
     [HttpDelete("remove/{id}")]
     public async Task<IActionResult> Delete(int id)

@@ -113,8 +113,32 @@ namespace BookingService.Services
         public async Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request)
         {
             // === 1. VALIDATION CƠ BẢN ===
+            // Convert request times to VN timezone if they are in UTC
+            // Frontend sends UTC time, but we need to compare with VN time
+            var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            
+            // If StartTime is UTC (Kind == Utc), convert to VN time
+            // Otherwise, assume it's already in local/VN time
             var startTime = request.StartTime;
+            if (startTime.Kind == DateTimeKind.Utc)
+            {
+                startTime = TimeZoneInfo.ConvertTimeFromUtc(startTime, vnTimeZone);
+            }
+            else if (startTime.Kind == DateTimeKind.Unspecified)
+            {
+                // Assume it's UTC if unspecified (common when deserializing from JSON)
+                startTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(startTime, DateTimeKind.Utc), vnTimeZone);
+            }
+            
             var endTime = request.EndTime;
+            if (endTime.Kind == DateTimeKind.Utc)
+            {
+                endTime = TimeZoneInfo.ConvertTimeFromUtc(endTime, vnTimeZone);
+            }
+            else if (endTime.Kind == DateTimeKind.Unspecified)
+            {
+                endTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(endTime, DateTimeKind.Utc), vnTimeZone);
+            }
 
             // Lấy giờ VN chính xác
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
@@ -275,6 +299,28 @@ namespace BookingService.Services
             if (saved == null)
                 throw new Exception("Không thể lấy booking sau khi lưu.");
 
+            // Publish BookingCreated event
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    _rabbitMQService.PublishEvent("booking.created", new BookingCreatedEvent
+                    {
+                        BookingId = saved.Id,
+                        CoOwnerId = saved.CoOwnerId,
+                        VehicleId = saved.VehicleId,
+                        StartTime = saved.StartTime,
+                        EndTime = saved.EndTime,
+                        Status = saved.Status ?? "Pending"
+                    });
+                    _logger?.LogInformation("Published BookingCreated event for booking {BookingId}", saved.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to publish BookingCreated event for booking {BookingId}", saved.Id);
+                }
+            }
+
             // === 8. TRẢ RESPONSE ===
             return new BookingResponse
             {
@@ -299,13 +345,32 @@ namespace BookingService.Services
             if (booking.Status != "Pending")
                 throw new Exception("Chỉ có thể cập nhật booking đang Pending .");
 
-            // Normalize thời gian về UTC nếu cần  
-            var startTime = request.StartTime.Kind == DateTimeKind.Unspecified
-                ? TimeZoneHelper.FromVietnamTime(request.StartTime)
-                : request.StartTime.ToUniversalTime();
-            var endTime = request.EndTime.Kind == DateTimeKind.Unspecified
-                ? TimeZoneHelper.FromVietnamTime(request.EndTime)
-                : request.EndTime.ToUniversalTime();
+            // Convert request times to VN timezone if they are in UTC
+            // Frontend sends UTC time, but we need to compare with VN time
+            var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            
+            // If StartTime is UTC (Kind == Utc), convert to VN time
+            // Otherwise, assume it's already in local/VN time
+            var startTime = request.StartTime;
+            if (startTime.Kind == DateTimeKind.Utc)
+            {
+                startTime = TimeZoneInfo.ConvertTimeFromUtc(startTime, vnTimeZone);
+            }
+            else if (startTime.Kind == DateTimeKind.Unspecified)
+            {
+                // Assume it's UTC if unspecified (common when deserializing from JSON)
+                startTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(startTime, DateTimeKind.Utc), vnTimeZone);
+            }
+            
+            var endTime = request.EndTime;
+            if (endTime.Kind == DateTimeKind.Utc)
+            {
+                endTime = TimeZoneInfo.ConvertTimeFromUtc(endTime, vnTimeZone);
+            }
+            else if (endTime.Kind == DateTimeKind.Unspecified)
+            {
+                endTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(endTime, DateTimeKind.Utc), vnTimeZone);
+            }
 
             // Lấy giờ VN hiện tại  
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
@@ -321,6 +386,7 @@ namespace BookingService.Services
             var maxTime = new TimeSpan(23, 59, 0);    // 23:59  
 
             if (startTime.TimeOfDay < minTime || endTime.TimeOfDay > maxTime)
+                throw new Exception("Chỉ được đặt xe trong khoảng 04:00 – 23:59");
                 throw new Exception("Chỉ được đặt xe trong khoảng 04:00 – 23:59");
 
             // === 2. LẤY DỮ LIỆU LIÊN QUAN ===  
@@ -410,25 +476,34 @@ namespace BookingService.Services
             }
 
             // === 6. CẬP NHẬT BOOKING ===  
-            booking.StartTime = startTime;
-            booking.EndTime = endTime;
+            // Convert VN time back to UTC for database storage
+            var startTimeUtc = TimeZoneInfo.ConvertTimeToUtc(startTime, vnTimeZone);
+            var endTimeUtc = TimeZoneInfo.ConvertTimeToUtc(endTime, vnTimeZone);
+            
+            booking.StartTime = startTimeUtc;
+            booking.EndTime = endTimeUtc;
             booking.Note = request.Note;
             booking.Status = (hoursBeforeStart <= 4) ? "Confirmed" : "Pending";
 
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
 
+            // Reload booking to get updated data
+            var updatedBooking = await _bookingRepository.GetByIdAsync(bookingId);
+            if (updatedBooking == null)
+                throw new Exception("Không thể lấy booking sau khi cập nhật.");
+
             return new BookingResponse
             {
-                Id = booking.Id,
-                VehicleId = booking.VehicleId,
+                Id = updatedBooking.Id,
+                VehicleId = updatedBooking.VehicleId,
                 VehicleName = vehicle.Name,
-                CoOwnerId = booking.CoOwnerId,
+                CoOwnerId = updatedBooking.CoOwnerId,
                 CoOwnerName = coOwner.Name,
-                StartTime = booking.StartTime,
-                EndTime = booking.EndTime,
-                Status = (hoursBeforeStart <= 4) ? "Confirmed" : "Pending",
-                Note = booking.Note
+                StartTime = updatedBooking.StartTime,
+                EndTime = updatedBooking.EndTime,
+                Status = updatedBooking.Status,
+                Note = updatedBooking.Note
             };
 
         }
@@ -442,13 +517,37 @@ namespace BookingService.Services
 
 
             // Validate status values
-            var validStatuses = new[] { "Pending", "Confirmed", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow" };
+            var validStatuses = new[] { "Pending", "Confirmed", "Approved", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow" };
             if (!validStatuses.Contains(status))
                 throw new ArgumentException($"Invalid status: {status}. Valid statuses are: {string.Join(", ", validStatuses)}");
 
+            var oldStatus = booking.Status;
             booking.Status = status;
             await _bookingRepository.UpdateAsync(booking);
             await _bookingRepository.SaveChangesAsync();
+
+            // Publish BookingApproved event if status changed to Approved or Confirmed
+            if (_rabbitMQService != null && (status == "Approved" || status == "Confirmed") && oldStatus != status)
+            {
+                try
+                {
+                    _rabbitMQService.PublishEvent("booking.approved", new BookingApprovedEvent
+                    {
+                        BookingId = booking.Id,
+                        CoOwnerId = booking.CoOwnerId,
+                        VehicleId = booking.VehicleId,
+                        StartTime = booking.StartTime,
+                        EndTime = booking.EndTime,
+                        Status = status,
+                        ApprovedAt = DateTime.UtcNow
+                    });
+                    _logger?.LogInformation("Published BookingApproved event for booking {BookingId}", booking.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to publish BookingApproved event for booking {BookingId}", booking.Id);
+                }
+            }
 
             return new BookingResponse
             {
