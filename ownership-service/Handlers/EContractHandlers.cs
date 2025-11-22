@@ -119,7 +119,21 @@ public class GetEContractsByVehicleGroupHandler : IRequestHandler<GetEContractsB
         }
 
         var contracts = await query.ToListAsync(cancellationToken);
-        return _mapper.Map<List<EContractDto>>(contracts);
+        
+        // Map contracts, handling null CoOwner
+        var dtos = new List<EContractDto>();
+        foreach (var contract in contracts)
+        {
+            var dto = _mapper.Map<EContractDto>(contract);
+            // Ensure CoOwnerName is set even if CoOwner is null
+            if (contract.CoOwner == null && string.IsNullOrEmpty(dto.CoOwnerName))
+            {
+                dto.CoOwnerName = "Unknown";
+            }
+            dtos.Add(dto);
+        }
+        
+        return dtos;
     }
 }
 

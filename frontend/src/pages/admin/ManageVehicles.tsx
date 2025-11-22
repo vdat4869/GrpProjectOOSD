@@ -99,11 +99,16 @@ const ManageVehicles: React.FC = () => {
   const getActiveBookings = (vehicleId: string) => {
     const vehicleBookings = getVehicleBookings(vehicleId);
     const now = new Date();
+    // Backend statuses: "Pending", "Confirmed", "Approved", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow"
+    // Active statuses: Confirmed, Approved, InProgress, và các booking đang trong khoảng thời gian
+    const activeStatuses = ["confirmed", "approved", "inprogress", "in-progress", "đã đặt"];
     return vehicleBookings.filter(
-      (b) =>
-        new Date(b.startTime) <= now &&
-        new Date(b.endTime) >= now &&
-        (b.status.toLowerCase() === "confirmed" || b.status.toLowerCase() === "in-progress")
+      (b) => {
+        const statusLower = b.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+        const isActiveStatus = activeStatuses.some(s => statusLower.includes(s));
+        const isInTimeRange = new Date(b.startTime) <= now && new Date(b.endTime) >= now;
+        return isActiveStatus && isInTimeRange;
+      }
     );
   };
 

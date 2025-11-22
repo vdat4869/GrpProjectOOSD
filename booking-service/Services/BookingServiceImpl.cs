@@ -65,11 +65,11 @@ namespace BookingService.Services
 
                 // Xác định xe đang trống hay đang dùng
                 // Xe đang dùng nếu có booking đang trong thời gian sử dụng (StartTime <= now <= EndTime)
-                // và status là Confirmed, InProgress, hoặc Đã đặt
+                // và status là Confirmed, InProgress, Đã đặt, hoặc Pending (đã đặt nhưng chưa được approve)
                 var isCurrentlyInUse = vehicleBookings.Any(b =>
                     b.StartTime <= now &&
                     b.EndTime >= now &&
-                    (b.Status == "Confirmed" || b.Status == "Đã đặt" || b.Status == "InProgress"));
+                    (b.Status == "Confirmed" || b.Status == "Đã đặt" || b.Status == "InProgress" || b.Status == "Pending"));
 
                 return new VehicleScheduleResponse
                 {
@@ -278,6 +278,55 @@ namespace BookingService.Services
                     }
 
                     await _bookingRepository.SaveChangesAsync();
+                }
+            }
+
+            // === 6.5. GỌI AI SERVICE ĐỂ KIỂM TRA FAIRNESS (OPTIONAL) ===
+            if (_aiService != null)
+            {
+                try
+                {
+                    // Lấy usage history từ database
+                    var usageHistory = allBookings
+                        .Where(b => b.CoOwnerId == request.CoOwnerId && 
+                                   b.VehicleId == request.VehicleId &&
+                                   b.Status != "Cancelled" &&
+                                   b.StartTime >= DateTime.UtcNow.AddDays(-30))
+                        .Select(b => new Dictionary<string, object>
+                        {
+                            { "start_time", b.StartTime },
+                            { "end_time", b.EndTime },
+                            { "hours", (b.EndTime - b.StartTime).TotalHours }
+                        })
+                        .ToList<Dictionary<string, object>>();
+
+                    var aiRequest = new BookingSuggestionRequest
+                    {
+                        VehicleGroupId = request.VehicleId.ToString(), // Using VehicleId as group identifier
+                        RequestedStart = startTime,
+                        RequestedEnd = endTime,
+                        CoOwnerId = request.CoOwnerId.ToString(),
+                        OwnershipPercentage = (double)coOwner.OwnershipRatio / 100.0,
+                        UsageHistory = usageHistory
+                    };
+
+                    var aiSuggestion = await _aiService.GetBookingSuggestionAsync(aiRequest);
+                    if (aiSuggestion != null)
+                    {
+                        _logger?.LogInformation("AI suggestion: FairnessScore={Score}, Reason={Reason}", 
+                            aiSuggestion.FairnessScore, aiSuggestion.Reason);
+                        
+                        // Nếu fairness score quá thấp và có alternative slots, có thể cảnh báo
+                        if (aiSuggestion.FairnessScore < 0.3 && aiSuggestion.AlternativeSlots != null && aiSuggestion.AlternativeSlots.Any())
+                        {
+                            _logger?.LogWarning("Low fairness score ({Score}) for booking. Consider alternative slots.", 
+                                aiSuggestion.FairnessScore);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to get AI suggestion for booking. Continuing without AI input.");
                 }
             }
 

@@ -238,6 +238,57 @@ public class CreateMaintenanceRecordRequest
 }
 
 /// <summary>
+/// DTO cho cập nhật bản ghi bảo dưỡng
+/// </summary>
+public class UpdateMaintenanceRecordRequest
+{
+    /// <summary>
+    /// Loại bảo dưỡng
+    /// </summary>
+    public string? MaintenanceType { get; set; }
+    
+    /// <summary>
+    /// Mô tả chi tiết
+    /// </summary>
+    public string? Description { get; set; }
+    
+    /// <summary>
+    /// Nhà cung cấp dịch vụ
+    /// </summary>
+    public string? ServiceProvider { get; set; }
+    
+    /// <summary>
+    /// Chi phí bảo dưỡng
+    /// </summary>
+    public decimal? Cost { get; set; }
+    
+    /// <summary>
+    /// Số km tại thời điểm bảo dưỡng
+    /// </summary>
+    public decimal? MileageAtService { get; set; }
+    
+    /// <summary>
+    /// Ngày bảo dưỡng
+    /// </summary>
+    public DateTime? ServiceDate { get; set; }
+    
+    /// <summary>
+    /// Ngày bảo dưỡng tiếp theo
+    /// </summary>
+    public DateTime? NextServiceDue { get; set; }
+    
+    /// <summary>
+    /// Ghi chú
+    /// </summary>
+    public string? Notes { get; set; }
+    
+    /// <summary>
+    /// Trạng thái bảo dưỡng
+    /// </summary>
+    public MaintenanceStatus? Status { get; set; }
+}
+
+/// <summary>
 /// DTO cho thông tin bản ghi bảo dưỡng
 /// </summary>
 public class MaintenanceRecordDto

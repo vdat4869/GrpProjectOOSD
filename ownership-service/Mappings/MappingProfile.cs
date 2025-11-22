@@ -23,7 +23,7 @@ public class MappingProfile : Profile
 
         // EContract mappings
         CreateMap<EContract, EContractDto>()
-            .ForMember(dest => dest.CoOwnerName, opt => opt.MapFrom(src => src.CoOwner.FullName));
+            .ForMember(dest => dest.CoOwnerName, opt => opt.MapFrom(src => src.CoOwner != null ? src.CoOwner.FullName : string.Empty));
 
         CreateMap<CreateEContractDto, EContract>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())

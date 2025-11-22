@@ -59,6 +59,7 @@ public class User
 
     // Navigation properties
     public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
+    public virtual ICollection<UserSession> UserSessions { get; set; } = new List<UserSession>();
 }
 
 /// <summary>

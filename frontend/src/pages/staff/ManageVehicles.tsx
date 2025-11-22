@@ -16,6 +16,8 @@ const ManageVehicles: React.FC = () => {
   const [vehicles, setVehicles] = useState<VehicleGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Store frontend status for each vehicle to preserve user selection
+  const [vehicleStatusMap, setVehicleStatusMap] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     loadVehicles();
@@ -27,6 +29,17 @@ const ManageVehicles: React.FC = () => {
       setError(null);
       const data = await ownershipService.getGroups();
       setVehicles(data);
+      // Initialize status map from backend data, but preserve existing selections
+      setVehicleStatusMap(prev => {
+        const newMap = new Map(prev);
+        data.forEach(v => {
+          if (!newMap.has(v.id)) {
+            const statusNumber = mapBackendStatusToFrontend(v.status);
+            newMap.set(v.id, statusNumber);
+          }
+        });
+        return newMap;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load vehicles");
     } finally {
@@ -40,36 +53,44 @@ const ManageVehicles: React.FC = () => {
       // Map frontend status (0-3) to backend GroupStatus
       const backendStatus = mapFrontendStatusToBackend(newStatus);
       
+      // Update local status map immediately for better UX
+      setVehicleStatusMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(vehicleId, newStatus);
+        return newMap;
+      });
+      
       // Call API to update status in database
       await ownershipService.updateGroupStatus(vehicleId, backendStatus);
       
-      // Update local state immediately for better UX
-      setVehicles(prevVehicles => 
-        prevVehicles.map(v => 
-          v.id === vehicleId 
-            ? { ...v, status: newStatus } 
-            : v
-        )
-      );
-      
-      // Reload vehicles from database to get updated data
-      await loadVehicles();
+      // Don't reload immediately - keep the selected status visible
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update vehicle status");
-      // Reload on error to revert UI
-      await loadVehicles();
+      // Revert status on error
+      setVehicleStatusMap(prev => {
+        const newMap = new Map(prev);
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (vehicle) {
+          newMap.set(vehicleId, mapBackendStatusToFrontend(vehicle.status));
+        }
+        return newMap;
+      });
     }
   };
 
   // Map backend status string to frontend status number
-  const mapBackendStatusToFrontend = (backendStatus: string | number): number => {
+  const mapBackendStatusToFrontend = (backendStatus: string | number, currentFrontendStatus?: number): number => {
+    // If we have a current frontend status (from local state), prefer it
+    if (currentFrontendStatus !== undefined) {
+      return currentFrontendStatus;
+    }
+    
     if (typeof backendStatus === 'number') {
       return backendStatus;
     }
     // Backend returns: "Active", "Inactive", "Dissolved"
     // Frontend needs: 0=Available, 1=In Use, 2=Maintenance, 3=Technical Issue
     // We'll map: Active -> 0 (Available), Inactive -> 2 (Maintenance)
-    // For now, we'll use a simple mapping. You may want to extend backend to support more statuses
     const statusMap: Record<string, number> = {
       'Active': 0,      // Available
       'Inactive': 2,    // Maintenance
@@ -122,8 +143,8 @@ const ManageVehicles: React.FC = () => {
             </div>
           ) : (
             vehicles.map((vehicle) => {
-              // Map backend status string to frontend status number
-              const statusNumber = mapBackendStatusToFrontend(vehicle.status);
+              // Get status from map (preserves user selection) or map from backend
+              const statusNumber = vehicleStatusMap.get(vehicle.id) ?? mapBackendStatusToFrontend(vehicle.status);
               const status = getStatus(statusNumber);
               return (
                 <div

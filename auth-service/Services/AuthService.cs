@@ -19,12 +19,15 @@ namespace AuthService.Services;
 /// </summary>
 public interface IAuthService
 {
-    Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request);
+    Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress = null, string? userAgent = null);
     Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request);
     Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request);
     Task<ApiResponse<UserDto>> GetUserProfileAsync(int userId);
     Task<ApiResponse<bool>> LogoutAsync(int userId);
     Task<ApiResponse<bool>> ChangePasswordAsync(int userId, ChangePasswordRequest request);
+    Task<List<Models.UserSession>> GetActiveSessionsAsync(int userId);
+    Task<ApiResponse<bool>> RevokeSessionAsync(int sessionId, int userId);
+    Task<ApiResponse<bool>> RevokeAllSessionsAsync(int userId);
 }
 
 /// <summary>
@@ -40,6 +43,7 @@ public class AuthService : IAuthService
     private readonly ILogger<AuthService> _logger;
     private readonly IConfiguration _configuration;
     private readonly Infrastructure.IRabbitMQService? _rabbitMQService;
+    private readonly ISessionService? _sessionService;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -49,7 +53,8 @@ public class AuthService : IAuthService
         IHttpClientFactory httpClientFactory,
         ILogger<AuthService> logger,
         IConfiguration configuration,
-        Infrastructure.IRabbitMQService? rabbitMQService = null)
+        Infrastructure.IRabbitMQService? rabbitMQService = null,
+        ISessionService? sessionService = null)
     {
         _userRepository = userRepository;
         _jwtService = jwtService;
@@ -59,12 +64,13 @@ public class AuthService : IAuthService
         _logger = logger;
         _configuration = configuration;
         _rabbitMQService = rabbitMQService;
+        _sessionService = sessionService;
     }
 
     /// <summary>
     /// Đăng nhập user
     /// </summary>
-    public async Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request)
+    public async Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress = null, string? userAgent = null)
     {
         try
         {
@@ -110,6 +116,19 @@ public class AuthService : IAuthService
             user.RefreshToken = refreshToken;
             user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7); // Refresh token hết hạn sau 7 ngày
             await _userRepository.UpdateAsync(user);
+
+            // Tạo session nếu SessionService có sẵn
+            if (_sessionService != null)
+            {
+                try
+                {
+                    await _sessionService.CreateSessionAsync(user.Id, refreshToken, ipAddress, userAgent);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to create session for user {UserId}", user.Id);
+                }
+            }
 
             // Tạo response
             var userDto = _mapper.Map<UserDto>(user);
@@ -377,7 +396,7 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Đăng xuất user (xóa refresh token)
+    /// Đăng xuất user (xóa refresh token và revoke session)
     /// </summary>
     public async Task<ApiResponse<bool>> LogoutAsync(int userId)
     {
@@ -392,6 +411,23 @@ public class AuthService : IAuthService
                     Message = "Không tìm thấy user",
                     Errors = new List<string> { "UserNotFound" }
                 };
+            }
+
+            // Revoke current session if SessionService available
+            if (_sessionService != null && !string.IsNullOrEmpty(user.RefreshToken))
+            {
+                try
+                {
+                    var session = await _sessionService.GetSessionByRefreshTokenAsync(user.RefreshToken);
+                    if (session != null)
+                    {
+                        await _sessionService.RevokeSessionAsync(session.Id);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to revoke session during logout for user {UserId}", userId);
+                }
             }
 
             // Xóa refresh token
@@ -542,5 +578,82 @@ public class AuthService : IAuthService
             _logger.LogError(ex, "Error creating CoOwner record in ownership service for user {UserId}", user.Id);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Lấy danh sách session đang hoạt động
+    /// </summary>
+    public async Task<List<Models.UserSession>> GetActiveSessionsAsync(int userId)
+    {
+        if (_sessionService == null)
+            return new List<Models.UserSession>();
+
+        return await _sessionService.GetActiveSessionsAsync(userId);
+    }
+
+    /// <summary>
+    /// Thu hồi một session
+    /// </summary>
+    public async Task<ApiResponse<bool>> RevokeSessionAsync(int sessionId, int userId)
+    {
+        if (_sessionService == null)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Session service not available"
+            };
+        }
+
+        var session = await _sessionService.GetActiveSessionsAsync(userId);
+        if (!session.Any(s => s.Id == sessionId))
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Session not found or not owned by user"
+            };
+        }
+
+        await _sessionService.RevokeSessionAsync(sessionId);
+        return new ApiResponse<bool>
+        {
+            Success = true,
+            Message = "Session revoked successfully",
+            Data = true
+        };
+    }
+
+    /// <summary>
+    /// Thu hồi tất cả sessions
+    /// </summary>
+    public async Task<ApiResponse<bool>> RevokeAllSessionsAsync(int userId)
+    {
+        if (_sessionService == null)
+        {
+            return new ApiResponse<bool>
+            {
+                Success = false,
+                Message = "Session service not available"
+            };
+        }
+
+        await _sessionService.RevokeAllSessionsAsync(userId);
+        
+        // Also clear refresh token
+        var user = await _userRepository.GetByIdAsync(userId);
+        if (user != null)
+        {
+            user.RefreshToken = null;
+            user.RefreshTokenExpiryTime = null;
+            await _userRepository.UpdateAsync(user);
+        }
+
+        return new ApiResponse<bool>
+        {
+            Success = true,
+            Message = "All sessions revoked successfully",
+            Data = true
+        };
     }
 }

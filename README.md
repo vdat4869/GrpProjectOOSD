@@ -197,13 +197,25 @@ MONGO_PASSWORD=mongopass123
 ### Local Development
 
 ```bash
+# 1. Clone và setup
+git clone <repository-url>
+cd GrpProjectOOSD
+
+# 2. Tạo file .env (xem SETUP.md để biết các biến cần thiết)
+# 3. Restore dependencies
+dotnet restore GrpProjectOOSD.sln
+cd frontend && npm install --legacy-peer-deps && cd ..
+
+# 4. Start với Docker Compose (khuyến nghị)
+docker-compose up -d
+
+# Hoặc chạy từng service riêng:
 # Backend services
 cd auth-service
 dotnet run
 
 # Frontend
 cd frontend
-npm install
 npm run dev
 
 # AI Service
@@ -211,6 +223,8 @@ cd ai-service
 pip install -r requirements.txt
 python main.py
 ```
+
+**Lưu ý**: Xem file `SETUP.md` để biết chi tiết về setup và troubleshooting.
 
 ### Testing
 

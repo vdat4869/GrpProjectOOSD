@@ -31,8 +31,215 @@
       "priority": 0
     }
   ],
-  "queues": [],
-  "exchanges": [],
-  "bindings": []
+  "queues": [
+    {
+      "name": "user.created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "vehicle.group.updated",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "ownership.updated",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "booking.created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "booking.approved",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "booking.completed",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "booking.checked-in",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.completed",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.processed",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "costshare.created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "costshare.updated",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "voting.status.changed",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "ev_events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "user.created",
+      "destination_type": "queue",
+      "routing_key": "user.created",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "vehicle.group.updated",
+      "destination_type": "queue",
+      "routing_key": "vehicle.group.updated",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "ownership.updated",
+      "destination_type": "queue",
+      "routing_key": "ownership.updated",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "booking.created",
+      "destination_type": "queue",
+      "routing_key": "booking.created",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "booking.approved",
+      "destination_type": "queue",
+      "routing_key": "booking.approved",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "booking.completed",
+      "destination_type": "queue",
+      "routing_key": "booking.completed",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "booking.checked-in",
+      "destination_type": "queue",
+      "routing_key": "booking.checked-in",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "payment.created",
+      "destination_type": "queue",
+      "routing_key": "payment.created",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "payment.completed",
+      "destination_type": "queue",
+      "routing_key": "payment.completed",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "payment.processed",
+      "destination_type": "queue",
+      "routing_key": "payment.processed",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "costshare.created",
+      "destination_type": "queue",
+      "routing_key": "costshare.created",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "costshare.updated",
+      "destination_type": "queue",
+      "routing_key": "costshare.updated",
+      "arguments": {}
+    },
+    {
+      "source": "ev_events",
+      "vhost": "/",
+      "destination": "voting.status.changed",
+      "destination_type": "queue",
+      "routing_key": "voting.status.changed",
+      "arguments": {}
+    }
+  ]
 }
 

@@ -87,6 +87,10 @@ CREATE TABLE [dbo].[EContracts] (
     [SignedAt] DATETIME2 NULL,
     [DigitalSignature] NVARCHAR(500) NULL,
     [Notes] NVARCHAR(1000) NULL,
+    [FilePath] NVARCHAR(500) NULL,
+    [FileName] NVARCHAR(100) NULL,
+    [FileType] NVARCHAR(50) NULL,
+    [FileSize] BIGINT NULL,
     [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
     [UpdatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
     [ExpiresAt] DATETIME2 NULL

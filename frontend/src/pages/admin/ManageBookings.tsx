@@ -40,9 +40,12 @@ const ManageBookings: React.FC = () => {
 
   const detectConflicts = (): Booking[] => {
     const conflicts: Booking[] = [];
-    const activeBookings = bookings.filter(
-      (b) => b.status.toLowerCase() === "confirmed" || b.status.toLowerCase() === "in-progress"
-    );
+    // Backend statuses: "Pending", "Confirmed", "Approved", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow"
+    const activeStatuses = ["confirmed", "approved", "inprogress", "in-progress", "đã đặt"];
+    const activeBookings = bookings.filter((b) => {
+      const statusLower = b.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+      return activeStatuses.some(s => statusLower.includes(s));
+    });
 
     for (let i = 0; i < activeBookings.length; i++) {
       for (let j = i + 1; j < activeBookings.length; j++) {
@@ -66,15 +69,23 @@ const ManageBookings: React.FC = () => {
 
   const filteredBookings = () => {
     switch (filter) {
-      case "active":
-        return bookings.filter(
-          (b) =>
-            b.status.toLowerCase() === "confirmed" || b.status.toLowerCase() === "in-progress"
-        );
+      case "active": {
+        // Active statuses: Confirmed, Approved, InProgress, Đã đặt
+        const activeStatuses = ["confirmed", "approved", "inprogress", "in-progress", "đã đặt"];
+        return bookings.filter((b) => {
+          const statusLower = b.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+          return activeStatuses.some(s => statusLower.includes(s));
+        });
+      }
       case "conflicts":
         return detectConflicts();
-      case "pending":
-        return bookings.filter((b) => b.status.toLowerCase() === "pending");
+      case "pending": {
+        // Pending status: Pending
+        return bookings.filter((b) => {
+          const statusLower = b.status.toLowerCase().trim();
+          return statusLower === "pending";
+        });
+      }
       default:
         return bookings;
     }
@@ -134,7 +145,10 @@ const ManageBookings: React.FC = () => {
           variant={filter === "active" ? "primary" : "outline"}
           onClick={() => setFilter("active")}
         >
-          Active ({bookings.filter((b) => b.status.toLowerCase() === "confirmed" || b.status.toLowerCase() === "in-progress").length})
+          Active ({bookings.filter((b) => {
+            const statusLower = b.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+            return ["confirmed", "approved", "inprogress", "in-progress", "đã đặt"].some(s => statusLower.includes(s));
+          }).length})
         </Button>
         <Button
           size="sm"
@@ -148,7 +162,7 @@ const ManageBookings: React.FC = () => {
           variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
-          Pending ({bookings.filter((b) => b.status.toLowerCase() === "pending").length})
+          Pending ({bookings.filter((b) => b.status.toLowerCase().trim() === "pending").length})
         </Button>
       </div>
 

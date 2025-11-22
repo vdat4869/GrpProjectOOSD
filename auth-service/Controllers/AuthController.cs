@@ -160,7 +160,9 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login([FromBody] LoginRequest request)
     {
-        var result = await _authService.LoginAsync(request);
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var userAgent = Request.Headers["User-Agent"].ToString();
+        var result = await _authService.LoginAsync(request, ipAddress, userAgent);
         
         if (!result.Success)
         {
@@ -486,4 +488,81 @@ public class AuthController : ControllerBase
 
         return Ok(result);
     }
+
+    /// <summary>
+    /// Lấy danh sách session đang hoạt động của user
+    /// </summary>
+    [HttpGet("sessions")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<List<SessionDto>>>> GetSessions()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            return Unauthorized();
+        }
+
+        var sessions = await _authService.GetActiveSessionsAsync(userId);
+        var sessionDtos = sessions.Select(s => new SessionDto
+        {
+            Id = s.Id,
+            IpAddress = s.IpAddress,
+            UserAgent = s.UserAgent,
+            LoginAt = s.LoginAt,
+            LastActivityAt = s.LastActivityAt,
+            ExpiresAt = s.ExpiresAt,
+            Status = s.Status.ToString()
+        }).ToList();
+
+        return Ok(new ApiResponse<List<SessionDto>>
+        {
+            Success = true,
+            Data = sessionDtos
+        });
+    }
+
+    /// <summary>
+    /// Thu hồi một session cụ thể
+    /// </summary>
+    [HttpPost("sessions/{sessionId}/revoke")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<bool>>> RevokeSession(int sessionId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.RevokeSessionAsync(sessionId, userId);
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Thu hồi tất cả sessions (trừ session hiện tại)
+    /// </summary>
+    [HttpPost("sessions/revoke-all")]
+    [Authorize]
+    public async Task<ActionResult<ApiResponse<bool>>> RevokeAllSessions()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+        {
+            return Unauthorized();
+        }
+
+        var result = await _authService.RevokeAllSessionsAsync(userId);
+        return Ok(result);
+    }
+}
+
+public class SessionDto
+{
+    public int Id { get; set; }
+    public string? IpAddress { get; set; }
+    public string? UserAgent { get; set; }
+    public DateTime LoginAt { get; set; }
+    public DateTime LastActivityAt { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public string Status { get; set; } = string.Empty;
 }

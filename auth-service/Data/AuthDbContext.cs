@@ -18,6 +18,7 @@ public class AuthDbContext : DbContext
     public DbSet<UserRole> UserRoles { get; set; }
     public DbSet<IdentityDocument> IdentityDocuments { get; set; }
     public DbSet<DrivingLicense> DrivingLicenses { get; set; }
+    public DbSet<UserSession> UserSessions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +107,32 @@ public class AuthDbContext : DbContext
 
             entity.HasIndex(e => e.UserId);
             entity.HasIndex(e => e.LicenseNumber);
+        });
+
+        // Cấu hình UserSession entity
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired();
+            entity.Property(e => e.SessionToken).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.RefreshToken).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.IpAddress).HasMaxLength(50);
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.LoginAt).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
+            entity.Property(e => e.LastActivityAt).IsRequired();
+            entity.Property(e => e.Status).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.UpdatedAt).IsRequired();
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.SessionToken).IsUnique();
+            entity.HasIndex(e => e.RefreshToken);
         });
 
         // Seed data cho Roles

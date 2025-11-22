@@ -314,10 +314,65 @@ public class HistoryController : ControllerBase
     /// <returns>Danh sách bảo dưỡng</returns>
     [HttpGet("maintenance/date-range")]
     public async Task<ActionResult<ApiResponse<List<MaintenanceRecordDto>>>> GetMaintenanceRecordsByDateRange(
-        [FromQuery] DateTime startDate, 
-        [FromQuery] DateTime endDate)
+        [FromQuery] DateTime? startDate = null, 
+        [FromQuery] DateTime? endDate = null)
     {
-        var result = await _historyService.GetMaintenanceRecordsByDateRangeAsync(startDate, endDate);
+        if (!startDate.HasValue || !endDate.HasValue)
+        {
+            return BadRequest(new ApiResponse<List<MaintenanceRecordDto>>
+            {
+                Success = false,
+                Message = "StartDate and EndDate are required"
+            });
+        }
+
+        if (startDate.Value > endDate.Value)
+        {
+            return BadRequest(new ApiResponse<List<MaintenanceRecordDto>>
+            {
+                Success = false,
+                Message = "StartDate must be before EndDate"
+            });
+        }
+
+        var result = await _historyService.GetMaintenanceRecordsByDateRangeAsync(startDate.Value, endDate.Value);
+        
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Cập nhật bản ghi bảo dưỡng
+    /// </summary>
+    /// <param name="id">ID bản ghi bảo dưỡng</param>
+    /// <param name="request">Thông tin cập nhật</param>
+    /// <returns>Thông tin bảo dưỡng đã cập nhật</returns>
+    [HttpPut("maintenance/{id}")]
+    public async Task<ActionResult<ApiResponse<MaintenanceRecordDto>>> UpdateMaintenanceRecord(int id, [FromBody] UpdateMaintenanceRecordRequest request)
+    {
+        var result = await _historyService.UpdateMaintenanceRecordAsync(id, request);
+        
+        if (!result.Success)
+        {
+            return BadRequest(result);
+        }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Đánh dấu bảo dưỡng hoàn thành và tạo cost share
+    /// </summary>
+    /// <param name="id">ID bản ghi bảo dưỡng</param>
+    /// <returns>Thông tin bảo dưỡng đã cập nhật</returns>
+    [HttpPost("maintenance/{id}/complete")]
+    public async Task<ActionResult<ApiResponse<MaintenanceRecordDto>>> MarkMaintenanceAsCompleted(int id)
+    {
+        var result = await _historyService.MarkMaintenanceAsCompletedAsync(id);
         
         if (!result.Success)
         {

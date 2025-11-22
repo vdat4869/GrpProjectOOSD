@@ -1,0 +1,89 @@
+{
+  "templateName": "EV Co-ownership Event Ingestion Pipeline",
+  "description": "Consume events from RabbitMQ and route to MongoDB",
+  "processors": [
+    {
+      "id": "consume-amqp-1",
+      "type": "ConsumeAMQP",
+      "name": "Consume RabbitMQ Events",
+      "config": {
+        "brokerUri": "amqp://rabbitmq:5672",
+        "queueName": "ev_events",
+        "username": "rabbitmq",
+        "password": "rabbitmq123",
+        "vhost": "/"
+      }
+    },
+    {
+      "id": "route-on-attribute-1",
+      "type": "RouteOnAttribute",
+      "name": "Route by Event Type",
+      "config": {
+        "routingStrategy": "Route to Property name",
+        "routes": {
+          "user.created": "${event.type:equals('user.created')}",
+          "vehicle.group.updated": "${event.type:equals('vehicle.group.updated')}",
+          "ownership.updated": "${event.type:equals('ownership.updated')}",
+          "booking.created": "${event.type:equals('booking.created')}",
+          "booking.approved": "${event.type:equals('booking.approved')}",
+          "booking.completed": "${event.type:equals('booking.completed')}",
+          "payment.created": "${event.type:equals('payment.created')}",
+          "payment.completed": "${event.type:equals('payment.completed')}",
+          "voting.status.changed": "${event.type:equals('voting.status.changed')}"
+        }
+      }
+    },
+    {
+      "id": "put-mongo-user",
+      "type": "PutMongo",
+      "name": "Store User Events",
+      "config": {
+        "mongoUri": "mongodb://mongoadmin:mongopass123@mongodb:27017/nifi_data?authSource=admin",
+        "database": "nifi_data",
+        "collection": "user_events"
+      }
+    },
+    {
+      "id": "put-mongo-booking",
+      "type": "PutMongo",
+      "name": "Store Booking Events",
+      "config": {
+        "mongoUri": "mongodb://mongoadmin:mongopass123@mongodb:27017/nifi_data?authSource=admin",
+        "database": "nifi_data",
+        "collection": "booking_events"
+      }
+    },
+    {
+      "id": "put-mongo-payment",
+      "type": "PutMongo",
+      "name": "Store Payment Events",
+      "config": {
+        "mongoUri": "mongodb://mongoadmin:mongopass123@mongodb:27017/nifi_data?authSource=admin",
+        "database": "nifi_data",
+        "collection": "payment_events"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "source": "consume-amqp-1",
+      "destination": "route-on-attribute-1"
+    },
+    {
+      "source": "route-on-attribute-1",
+      "destination": "put-mongo-user",
+      "relationship": "user.created"
+    },
+    {
+      "source": "route-on-attribute-1",
+      "destination": "put-mongo-booking",
+      "relationship": "booking.created"
+    },
+    {
+      "source": "route-on-attribute-1",
+      "destination": "put-mongo-payment",
+      "relationship": "payment.created"
+    }
+  ]
+}
+

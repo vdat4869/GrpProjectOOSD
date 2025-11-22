@@ -32,19 +32,24 @@ const MonitorBookings: React.FC = () => {
 
   const filteredBookings = bookings.filter((booking) => {
     if (filter === "all") return true;
-    const status = booking.status.toLowerCase();
+    const statusLower = booking.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
     const now = new Date();
     const startTime = new Date(booking.startTime);
     const endTime = new Date(booking.endTime);
 
     if (filter === "active") {
-      return (status === "in-progress" || status === "checked-in") && startTime <= now && endTime >= now;
+      // Active: InProgress, Confirmed (đang trong khoảng thời gian), Approved
+      const isActiveStatus = ["inprogress", "confirmed", "approved", "đãđặt"].some(s => statusLower.includes(s));
+      return isActiveStatus && startTime <= now && endTime >= now;
     }
     if (filter === "upcoming") {
-      return (status === "confirmed" || status === "pending") && startTime > now;
+      // Upcoming: Pending, Confirmed, Approved (chưa bắt đầu)
+      const isUpcomingStatus = ["pending", "confirmed", "approved"].some(s => statusLower.includes(s));
+      return isUpcomingStatus && startTime > now;
     }
     if (filter === "completed") {
-      return status === "completed" || status === "checked-out";
+      // Completed: Completed, Checked-out
+      return statusLower.includes("completed") || statusLower.includes("checkedout");
     }
     return true;
   });

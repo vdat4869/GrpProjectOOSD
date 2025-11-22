@@ -17,6 +17,7 @@ public interface IAnalyticsService
     Task<ApiResponse<AnalyticsReportDto>> GenerateMaintenanceReportAsync(int vehicleId, DateTime startDate, DateTime endDate);
     Task<ApiResponse<List<AnalyticsReportDto>>> GetAnalyticsReportsByVehicleIdAsync(int vehicleId);
     Task<ApiResponse<List<AnalyticsReportDto>>> GetAnalyticsReportsByTypeAsync(string reportType);
+    Task<ApiResponse<AnalyticsReportDto>> GetAnalyticsReportByIdAsync(int reportId);
 }
 
 /// <summary>
@@ -448,6 +449,55 @@ public class AnalyticsService : IAnalyticsService
             {
                 Success = false,
                 Message = "Có lỗi xảy ra khi lấy danh sách báo cáo theo loại",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Lấy báo cáo theo ID
+    /// </summary>
+    public async Task<ApiResponse<AnalyticsReportDto>> GetAnalyticsReportByIdAsync(int reportId)
+    {
+        try
+        {
+            var report = await _historyRepository.GetAnalyticsReportByIdAsync(reportId);
+            if (report == null)
+            {
+                return new ApiResponse<AnalyticsReportDto>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy báo cáo",
+                    Errors = new List<string> { "ReportNotFound" }
+                };
+            }
+
+            var reportDto = new AnalyticsReportDto
+            {
+                Id = report.Id,
+                VehicleId = report.VehicleId,
+                ReportType = report.ReportType,
+                PeriodStart = report.PeriodStart,
+                PeriodEnd = report.PeriodEnd,
+                ReportData = report.ReportData,
+                GeneratedAt = report.GeneratedAt,
+                CreatedAt = report.CreatedAt,
+                IsActive = report.IsActive
+            };
+
+            return new ApiResponse<AnalyticsReportDto>
+            {
+                Success = true,
+                Message = "Lấy báo cáo thành công",
+                Data = reportDto
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi lấy báo cáo",
                 Errors = new List<string> { ex.Message }
             };
         }

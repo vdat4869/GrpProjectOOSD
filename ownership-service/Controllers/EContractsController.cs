@@ -44,9 +44,24 @@ public class EContractsController : ControllerBase
         Guid vehicleGroupId,
         [FromQuery] string? status)
     {
-        var query = new GetEContractsByVehicleGroupQuery(vehicleGroupId, status);
-        var result = await _mediator.Send(query);
-        return Ok(result);
+        try
+        {
+            _logger.LogInformation("Getting e-contracts for VehicleGroupId: {VehicleGroupId}, Status: {Status}", 
+                vehicleGroupId, status ?? "all");
+            
+            var query = new GetEContractsByVehicleGroupQuery(vehicleGroupId, status);
+            var result = await _mediator.Send(query);
+            
+            _logger.LogInformation("Found {Count} e-contracts for VehicleGroupId: {VehicleGroupId}", 
+                result.Count, vehicleGroupId);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting e-contracts for VehicleGroupId: {VehicleGroupId}", vehicleGroupId);
+            return StatusCode(500, new { message = "An error occurred while retrieving e-contracts.", details = ex.Message });
+        }
     }
 
     /// <summary>

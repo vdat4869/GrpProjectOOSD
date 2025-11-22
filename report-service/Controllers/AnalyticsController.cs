@@ -113,12 +113,31 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
+        // Validate vehicleId
+        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        {
+            return BadRequest(new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "Invalid vehicleId. Please use a valid vehicle ID."
+            });
+        }
+
         if (!startDate.HasValue || !endDate.HasValue)
         {
             return BadRequest(new ApiResponse<AnalyticsReportDto>
             {
                 Success = false,
                 Message = "StartDate and EndDate are required"
+            });
+        }
+
+        if (startDate.Value > endDate.Value)
+        {
+            return BadRequest(new ApiResponse<AnalyticsReportDto>
+            {
+                Success = false,
+                Message = "StartDate must be before EndDate"
             });
         }
         
@@ -204,11 +223,28 @@ public class AnalyticsController : ControllerBase
     [HttpGet("reports/vehicle/{vehicleId}")]
     public async Task<ActionResult<ApiResponse<List<AnalyticsReportDto>>>> GetAnalyticsReportsByVehicleId(int vehicleId)
     {
+        // Validate vehicleId is reasonable (not a parsed GUID)
+        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        {
+            return Ok(new ApiResponse<List<AnalyticsReportDto>>
+            {
+                Success = true,
+                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Data = new List<AnalyticsReportDto>()
+            });
+        }
+
         var result = await _analyticsService.GetAnalyticsReportsByVehicleIdAsync(vehicleId);
         
         if (!result.Success)
         {
-            return BadRequest(result);
+            // Return empty list instead of BadRequest for better UX
+            return Ok(new ApiResponse<List<AnalyticsReportDto>>
+            {
+                Success = true,
+                Message = result.Message ?? "No reports found for this vehicle",
+                Data = new List<AnalyticsReportDto>()
+            });
         }
 
         return Ok(result);
@@ -230,5 +266,43 @@ public class AnalyticsController : ControllerBase
         }
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Export báo cáo sang Excel
+    /// </summary>
+    [HttpGet("reports/{reportId}/export/excel")]
+    public async Task<IActionResult> ExportReportToExcel(int reportId)
+    {
+        var result = await _analyticsService.GetAnalyticsReportByIdAsync(reportId);
+        if (!result.Success || result.Data == null)
+        {
+            return NotFound();
+        }
+
+        var exportService = HttpContext.RequestServices.GetRequiredService<IExportService>();
+        var excelBytes = await exportService.ExportToExcelAsync(result.Data);
+        
+        return File(excelBytes, 
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+            $"{result.Data.ReportType}-{result.Data.Id}.xlsx");
+    }
+
+    /// <summary>
+    /// Export báo cáo sang PDF
+    /// </summary>
+    [HttpGet("reports/{reportId}/export/pdf")]
+    public async Task<IActionResult> ExportReportToPdf(int reportId)
+    {
+        var result = await _analyticsService.GetAnalyticsReportByIdAsync(reportId);
+        if (!result.Success || result.Data == null)
+        {
+            return NotFound();
+        }
+
+        var exportService = HttpContext.RequestServices.GetRequiredService<IExportService>();
+        var pdfBytes = await exportService.ExportToPdfAsync(result.Data);
+        
+        return File(pdfBytes, "application/pdf", $"{result.Data.ReportType}-{result.Data.Id}.pdf");
     }
 }

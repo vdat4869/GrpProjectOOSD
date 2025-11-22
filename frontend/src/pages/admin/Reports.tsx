@@ -27,6 +27,7 @@ const Reports: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadGroups();
@@ -178,12 +179,14 @@ const Reports: React.FC = () => {
   const handleGenerateReport = async () => {
     if (!selectedVehicleId) {
       setError("Please select a vehicle");
+      setSuccessMessage(null);
       return;
     }
 
     try {
       setGenerating(true);
       setError(null);
+      setSuccessMessage(null);
       let report: AnalyticsReport | null = null;
 
       switch (reportType) {
@@ -211,10 +214,16 @@ const Reports: React.FC = () => {
       }
 
       if (report) {
+        setSuccessMessage(`${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report generated successfully!`);
         await loadReports();
+        // Clear success message after 5 seconds
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setError("Failed to generate report. Please try again.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate report");
+      setSuccessMessage(null);
     } finally {
       setGenerating(false);
     }
@@ -446,6 +455,12 @@ const Reports: React.FC = () => {
       {error && (
         <div className="mb-6 rounded-2xl border border-error-200 bg-error-50 p-6 shadow-theme-xs dark:border-error-500/40 dark:bg-error-500/10">
           <p className="text-error-600 dark:text-error-200">{error}</p>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-6 rounded-2xl border border-green-200 bg-green-50 p-6 shadow-theme-xs dark:border-green-500/40 dark:bg-green-500/10">
+          <p className="text-green-600 dark:text-green-200">{successMessage}</p>
         </div>
       )}
 

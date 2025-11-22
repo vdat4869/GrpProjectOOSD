@@ -1,0 +1,60 @@
+{
+  "templateName": "EV Co-ownership Data Aggregation Pipeline",
+  "description": "Aggregate data from MongoDB and send to Report Service",
+  "processors": [
+    {
+      "id": "generate-flowfile-1",
+      "type": "GenerateFlowFile",
+      "name": "Trigger Daily Aggregation",
+      "config": {
+        "scheduleStrategy": "CRON_DRIVEN",
+        "cronExpression": "0 0 * * * ?"
+      }
+    },
+    {
+      "id": "query-mongo-usage",
+      "type": "QueryMongo",
+      "name": "Query Usage Data",
+      "config": {
+        "mongoUri": "mongodb://mongoadmin:mongopass123@mongodb:27017/nifi_data?authSource=admin",
+        "database": "nifi_data",
+        "collection": "booking_events",
+        "query": "{\"event.type\": \"booking.completed\", \"timestamp\": {\"$gte\": \"${now:minus(1, DAY)}\"}}"
+      }
+    },
+    {
+      "id": "aggregate-content-1",
+      "type": "AggregateContent",
+      "name": "Aggregate Usage by Day",
+      "config": {
+        "aggregationStrategy": "Group by date and vehicle",
+        "correlationAttributeName": "date"
+      }
+    },
+    {
+      "id": "invoke-http-report",
+      "type": "InvokeHTTP",
+      "name": "Send to Report Service",
+      "config": {
+        "httpMethod": "POST",
+        "url": "http://report-service:80/api/reports/usage",
+        "contentType": "application/json"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "source": "generate-flowfile-1",
+      "destination": "query-mongo-usage"
+    },
+    {
+      "source": "query-mongo-usage",
+      "destination": "aggregate-content-1"
+    },
+    {
+      "source": "aggregate-content-1",
+      "destination": "invoke-http-report"
+    }
+  ]
+}
+

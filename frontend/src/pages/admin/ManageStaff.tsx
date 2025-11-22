@@ -50,19 +50,34 @@ const ManageStaff: React.FC = () => {
 
   const handleEdit = (staffMember: UserSummary) => {
     setSelectedStaff(staffMember);
-    // TODO: Get current permission from user metadata
-    setPermission("full");
+    // Get current permission from localStorage or default to "full"
+    const savedPermission = localStorage.getItem(`staff_permission_${staffMember.id}`);
+    setPermission(savedPermission || "full");
     setIsEditModalOpen(true);
   };
 
   const handleSavePermission = async () => {
     if (!selectedStaff) return;
     try {
-      // TODO: Implement update staff permission API call
-      // await authService.updateUserPermission(selectedStaff.id, permission);
+      setError(null);
+      // Save permission to localStorage (temporary solution)
+      // TODO: Implement backend API to store permission in database
+      localStorage.setItem(`staff_permission_${selectedStaff.id}`, permission);
+      
+      // Update local state immediately for better UX
+      setStaff(prevStaff => 
+        prevStaff.map(s => 
+          s.id === selectedStaff.id 
+            ? { ...s, permission } 
+            : s
+        )
+      );
+      
       setIsEditModalOpen(false);
       setSelectedStaff(null);
-      loadStaff();
+      
+      // Show success message
+      alert(`Permission updated successfully for ${selectedStaff.firstName} ${selectedStaff.lastName}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update permission");
     }
@@ -108,7 +123,10 @@ const ManageStaff: React.FC = () => {
                 <p className="text-gray-600 dark:text-gray-400">No staff members found.</p>
               </div>
             ) : (
-              staff.map((staffMember) => (
+              staff.map((staffMember) => {
+                const savedPermission = localStorage.getItem(`staff_permission_${staffMember.id}`) || "full";
+                const permissionInfo = PERMISSIONS.find(p => p.id === savedPermission) || PERMISSIONS[0];
+                return (
                 <div
                   key={staffMember.id}
                   className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
@@ -127,13 +145,16 @@ const ManageStaff: React.FC = () => {
                           }`}>
                             {staffMember.isActive ? "Active" : "Inactive"}
                           </span>
+                          <span className="rounded-full px-3 py-1 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
+                            {permissionInfo.name}
+                          </span>
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                           {staffMember.email}
                         </p>
                         {staffMember.roles && staffMember.roles.length > 0 && (
                           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            Roles: {staffMember.roles.join(", ")}
+                            Roles: {staffMember.roles.join(", ")} • Permission: {permissionInfo.name}
                           </p>
                         )}
                       </div>
@@ -150,7 +171,8 @@ const ManageStaff: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))
+              );
+              })
             )}
           </div>
 

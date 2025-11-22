@@ -4,6 +4,9 @@ import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
 import { paymentService, CostShare, PaymentStatus } from "../../services/paymentService";
 import { ownershipService, VehicleGroup } from "../../services/ownershipService";
+import ViewCostShareDetailsModal from "../../components/modals/ViewCostShareDetailsModal";
+import EditCostShareModal from "../../components/modals/EditCostShareModal";
+import DeleteCostShareModal from "../../components/modals/DeleteCostShareModal";
 
 const ManageCosts: React.FC = () => {
   const [costShares, setCostShares] = useState<CostShare[]>([]);
@@ -12,9 +15,23 @@ const ManageCosts: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "completed" | "overdue">("all");
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [selectedCostShare, setSelectedCostShare] = useState<CostShare | null>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
+
+    // Listen for cost share updates from modals
+    const handleCostShareUpdated = () => {
+      loadData();
+    };
+    window.addEventListener("costShareUpdated", handleCostShareUpdated);
+
+    return () => {
+      window.removeEventListener("costShareUpdated", handleCostShareUpdated);
+    };
   }, []);
 
   const loadData = async () => {
@@ -124,6 +141,25 @@ const ManageCosts: React.FC = () => {
       month: "2-digit",
       year: "numeric",
     });
+  };
+
+  const handleViewDetails = (costShare: CostShare) => {
+    setSelectedCostShare(costShare);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEdit = (costShare: CostShare) => {
+    setSelectedCostShare(costShare);
+    setIsEditModalOpen(true);
+  };
+
+  const handleDelete = (costShare: CostShare) => {
+    setSelectedCostShare(costShare);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleModalSuccess = () => {
+    loadData();
   };
 
   const totals = calculateTotals();
@@ -266,12 +302,71 @@ const ManageCosts: React.FC = () => {
                       <p className="text-sm text-gray-600 dark:text-gray-400">{costShare.description}</p>
                     </div>
                   )}
+
+                  {/* Action Buttons */}
+                  <div className="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleViewDetails(costShare)}
+                      >
+                        View Details
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleEdit(costShare)}
+                        disabled={costShare.status === PaymentStatus.Completed}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() => handleDelete(costShare)}
+                        className="text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               );
             })
           )}
         </div>
       )}
+
+      {/* Modals */}
+      <ViewCostShareDetailsModal
+        isOpen={isViewModalOpen}
+        onClose={() => {
+          setIsViewModalOpen(false);
+          setSelectedCostShare(null);
+        }}
+        costShare={selectedCostShare}
+      />
+
+      <EditCostShareModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setSelectedCostShare(null);
+        }}
+        costShare={selectedCostShare}
+        onSuccess={handleModalSuccess}
+      />
+
+      <DeleteCostShareModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setSelectedCostShare(null);
+        }}
+        costShare={selectedCostShare}
+        onSuccess={handleModalSuccess}
+      />
     </>
   );
 };

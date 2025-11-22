@@ -44,6 +44,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddScoped<IAuthService, AuthService.Services.AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ISessionService, SessionService>();
 
 // Thêm HttpClientFactory để gọi ownership service
 builder.Services.AddHttpClient();

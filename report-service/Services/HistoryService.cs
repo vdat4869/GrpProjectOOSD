@@ -2,6 +2,9 @@ using ReportService.DTOs;
 using ReportService.Models;
 using ReportService.Repositories;
 using AutoMapper;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 
 namespace ReportService.Services;
 
@@ -28,6 +31,8 @@ public interface IHistoryService
     Task<ApiResponse<MaintenanceRecordDto>> GetMaintenanceRecordByIdAsync(int id);
     Task<ApiResponse<List<MaintenanceRecordDto>>> GetMaintenanceRecordsByVehicleIdAsync(int vehicleId);
     Task<ApiResponse<List<MaintenanceRecordDto>>> GetMaintenanceRecordsByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<ApiResponse<MaintenanceRecordDto>> UpdateMaintenanceRecordAsync(int id, UpdateMaintenanceRecordRequest request);
+    Task<ApiResponse<MaintenanceRecordDto>> MarkMaintenanceAsCompletedAsync(int id);
     Task<ApiResponse<bool>> DeleteMaintenanceRecordAsync(int id);
 
     Task<ApiResponse<CostRecordDto>> CreateCostRecordAsync(CreateCostRecordRequest request);
@@ -45,11 +50,25 @@ public class HistoryService : IHistoryService
 {
     private readonly IHistoryRepository _historyRepository;
     private readonly IMapper _mapper;
+    private readonly HttpClient _httpClient;
+    private readonly IConfiguration _configuration;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<HistoryService>? _logger;
 
-    public HistoryService(IHistoryRepository historyRepository, IMapper mapper)
+    public HistoryService(
+        IHistoryRepository historyRepository, 
+        IMapper mapper,
+        HttpClient httpClient,
+        IConfiguration configuration,
+        IHttpContextAccessor httpContextAccessor,
+        ILogger<HistoryService>? logger = null)
     {
         _historyRepository = historyRepository;
         _mapper = mapper;
+        _httpClient = httpClient;
+        _configuration = configuration;
+        _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
     }
 
     #region UsageHistory Operations
@@ -554,6 +573,328 @@ public class HistoryService : IHistoryService
                 Errors = new List<string> { ex.Message }
             };
         }
+    }
+
+    /// <summary>
+    /// Cập nhật bản ghi bảo dưỡng
+    /// </summary>
+    public async Task<ApiResponse<MaintenanceRecordDto>> UpdateMaintenanceRecordAsync(int id, UpdateMaintenanceRecordRequest request)
+    {
+        try
+        {
+            var maintenanceRecord = await _historyRepository.GetMaintenanceRecordByIdAsync(id);
+            if (maintenanceRecord == null)
+            {
+                return new ApiResponse<MaintenanceRecordDto>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy bản ghi bảo dưỡng",
+                    Errors = new List<string> { "MaintenanceRecordNotFound" }
+                };
+            }
+
+            // Update only provided fields
+            if (!string.IsNullOrEmpty(request.MaintenanceType))
+                maintenanceRecord.MaintenanceType = request.MaintenanceType;
+            if (request.Description != null)
+                maintenanceRecord.Description = request.Description;
+            if (request.ServiceProvider != null)
+                maintenanceRecord.ServiceProvider = request.ServiceProvider;
+            if (request.Cost.HasValue)
+                maintenanceRecord.Cost = request.Cost.Value;
+            if (request.MileageAtService.HasValue)
+                maintenanceRecord.MileageAtService = request.MileageAtService.Value;
+            if (request.ServiceDate.HasValue)
+                maintenanceRecord.ServiceDate = request.ServiceDate.Value;
+            if (request.NextServiceDue.HasValue)
+                maintenanceRecord.NextServiceDue = request.NextServiceDue.Value;
+            if (request.Notes != null)
+                maintenanceRecord.Notes = request.Notes;
+            if (request.Status.HasValue)
+                maintenanceRecord.Status = request.Status.Value;
+
+            var updatedRecord = await _historyRepository.UpdateMaintenanceRecordAsync(maintenanceRecord);
+            var maintenanceRecordDto = _mapper.Map<MaintenanceRecordDto>(updatedRecord);
+
+            return new ApiResponse<MaintenanceRecordDto>
+            {
+                Success = true,
+                Message = "Cập nhật bản ghi bảo dưỡng thành công",
+                Data = maintenanceRecordDto
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<MaintenanceRecordDto>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi cập nhật bản ghi bảo dưỡng",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Đánh dấu bảo dưỡng hoàn thành và tạo cost share
+    /// </summary>
+    public async Task<ApiResponse<MaintenanceRecordDto>> MarkMaintenanceAsCompletedAsync(int id)
+    {
+        try
+        {
+            var maintenanceRecord = await _historyRepository.GetMaintenanceRecordByIdAsync(id);
+            if (maintenanceRecord == null)
+            {
+                return new ApiResponse<MaintenanceRecordDto>
+                {
+                    Success = false,
+                    Message = "Không tìm thấy bản ghi bảo dưỡng",
+                    Errors = new List<string> { "MaintenanceRecordNotFound" }
+                };
+            }
+
+            if (maintenanceRecord.Status == MaintenanceStatus.Completed)
+            {
+                return new ApiResponse<MaintenanceRecordDto>
+                {
+                    Success = false,
+                    Message = "Bản ghi bảo dưỡng đã được đánh dấu hoàn thành",
+                    Errors = new List<string> { "AlreadyCompleted" }
+                };
+            }
+
+            // Update status to Completed
+            maintenanceRecord.Status = MaintenanceStatus.Completed;
+            var updatedRecord = await _historyRepository.UpdateMaintenanceRecordAsync(maintenanceRecord);
+
+            // Create cost share in payment service if cost > 0
+            string? costShareError = null;
+            if (maintenanceRecord.Cost > 0)
+            {
+                try
+                {
+                    await CreateCostShareForMaintenanceAsync(maintenanceRecord);
+                    _logger?.LogInformation("Successfully created cost share for maintenance {MaintenanceId}", id);
+                }
+                catch (Exception ex)
+                {
+                    costShareError = ex.Message;
+                    _logger?.LogError(ex, "Failed to create cost share for maintenance {MaintenanceId}: {ErrorMessage}", id, ex.Message);
+                    // Continue even if cost share creation fails - maintenance is still marked as completed
+                    // The error is logged but doesn't prevent the maintenance from being marked as completed
+                }
+            }
+
+            // Update vehicle status if needed
+            try
+            {
+                await UpdateVehicleStatusIfNeededAsync(maintenanceRecord.VehicleId);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to update vehicle status for vehicle {VehicleId}", maintenanceRecord.VehicleId);
+                // Continue even if vehicle status update fails
+            }
+
+            var maintenanceRecordDto = _mapper.Map<MaintenanceRecordDto>(updatedRecord);
+            var responseMessage = "Đánh dấu bảo dưỡng hoàn thành thành công";
+            if (!string.IsNullOrEmpty(costShareError))
+            {
+                responseMessage += $". Lưu ý: Không thể tạo cost share tự động: {costShareError}";
+            }
+            
+            return new ApiResponse<MaintenanceRecordDto>
+            {
+                Success = true,
+                Message = responseMessage,
+                Data = maintenanceRecordDto
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResponse<MaintenanceRecordDto>
+            {
+                Success = false,
+                Message = "Có lỗi xảy ra khi đánh dấu bảo dưỡng hoàn thành",
+                Errors = new List<string> { ex.Message }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Helper method to forward Authorization header from current request
+    /// </summary>
+    private void AddAuthorizationHeader(HttpRequestMessage request)
+    {
+        var authHeader = _httpContextAccessor.HttpContext?.Request.Headers["Authorization"].ToString();
+        if (!string.IsNullOrEmpty(authHeader))
+        {
+            request.Headers.Add("Authorization", authHeader);
+        }
+    }
+
+    /// <summary>
+    /// Tạo cost share trong payment service
+    /// </summary>
+    private async Task CreateCostShareForMaintenanceAsync(MaintenanceRecord maintenanceRecord)
+    {
+        var ownershipServiceUrl = _configuration["OwnershipServiceUrl"] ?? "http://ownership-service:80";
+        var paymentServiceUrl = _configuration["PaymentServiceUrl"] ?? "http://payment-service:80";
+
+        try
+        {
+            // Step 1: Get all vehicle groups from ownership service
+            var groupsRequest = new HttpRequestMessage(HttpMethod.Get, $"{ownershipServiceUrl}/api/vehiclegroups");
+            AddAuthorizationHeader(groupsRequest);
+            var groupsResponse = await _httpClient.SendAsync(groupsRequest);
+            if (!groupsResponse.IsSuccessStatusCode)
+            {
+                _logger?.LogWarning("Failed to get vehicle groups: {StatusCode}", groupsResponse.StatusCode);
+                throw new Exception($"Failed to get vehicle groups: {groupsResponse.StatusCode}");
+            }
+
+            var groupsJson = await groupsResponse.Content.ReadAsStringAsync();
+            var groups = JsonSerializer.Deserialize<List<VehicleGroupResponse>>(groupsJson, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            }) ?? new List<VehicleGroupResponse>();
+
+            // Step 2: Find vehicle group that matches vehicleId
+            // Convert Guid to int the same way frontend does: parse first 8 hex chars
+            Guid? matchedGroupId = null;
+            foreach (var group in groups)
+            {
+                if (Guid.TryParse(group.Id, out var groupGuid))
+                {
+                    var groupIdAsInt = Convert.ToInt32(groupGuid.ToString().Replace("-", "").Substring(0, 8), 16);
+                    if (groupIdAsInt == maintenanceRecord.VehicleId)
+                    {
+                        matchedGroupId = groupGuid;
+                        break;
+                    }
+                }
+            }
+
+            if (!matchedGroupId.HasValue)
+            {
+                _logger?.LogError("Could not find vehicle group for vehicleId {VehicleId}. Cannot create cost share.", maintenanceRecord.VehicleId);
+                throw new Exception($"Could not find vehicle group for vehicleId {maintenanceRecord.VehicleId}. Cannot create cost share.");
+            }
+
+            // Step 3: Get ownerships for the matched group
+            List<OwnershipResponse> ownerships = new List<OwnershipResponse>();
+            var ownershipsRequest = new HttpRequestMessage(HttpMethod.Get,
+                $"{ownershipServiceUrl}/api/ownerships/vehicle-group/{matchedGroupId.Value}?isActive=true");
+            AddAuthorizationHeader(ownershipsRequest);
+            var ownershipsResponse = await _httpClient.SendAsync(ownershipsRequest);
+            
+            if (!ownershipsResponse.IsSuccessStatusCode)
+            {
+                _logger?.LogError("Failed to get ownerships for group {GroupId}: {StatusCode}", matchedGroupId.Value, ownershipsResponse.StatusCode);
+                throw new Exception($"Failed to get ownerships for group {matchedGroupId.Value}: {ownershipsResponse.StatusCode}");
+            }
+
+            var ownershipsJson = await ownershipsResponse.Content.ReadAsStringAsync();
+            ownerships = JsonSerializer.Deserialize<List<OwnershipResponse>>(ownershipsJson, new JsonSerializerOptions 
+            { 
+                PropertyNameCaseInsensitive = true 
+            }) ?? new List<OwnershipResponse>();
+
+            if (!ownerships.Any())
+            {
+                _logger?.LogError("No active ownerships found for group {GroupId}. Cannot create cost share.", matchedGroupId.Value);
+                throw new Exception($"No active ownerships found for group {matchedGroupId.Value}. Cannot create cost share.");
+            }
+
+            // Step 4: Create cost share details based on ownership percentages
+            var costShareDetails = new List<object>();
+            foreach (var ownership in ownerships.Where(o => o.IsActive))
+            {
+                var amount = (double)(maintenanceRecord.Cost * ownership.OwnershipPercentage / 100m);
+                costShareDetails.Add(new
+                {
+                    userId = ownership.CoOwnerId.ToString(),
+                    ownershipPercentage = ownership.OwnershipPercentage,
+                    amount = amount
+                });
+            }
+
+            // Step 5: Create cost share request
+            var costShareRequest = new
+            {
+                groupId = matchedGroupId?.ToString() ?? Guid.Empty.ToString(),
+                vehicleId = maintenanceRecord.VehicleId.ToString(),
+                costType = 2, // Maintenance
+                title = $"Bảo dưỡng: {maintenanceRecord.MaintenanceType}",
+                description = maintenanceRecord.Description ?? $"Bảo dưỡng xe - {maintenanceRecord.MaintenanceType}",
+                totalAmount = (double)maintenanceRecord.Cost,
+                currency = "VND",
+                dueDate = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                receiptUrl = (string?)null,
+                costShareDetails = costShareDetails
+            };
+
+            var json = JsonSerializer.Serialize(costShareRequest);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            // Forward Authorization header from current request
+            var paymentRequest = new HttpRequestMessage(HttpMethod.Post, $"{paymentServiceUrl}/api/costshares")
+            {
+                Content = content
+            };
+            AddAuthorizationHeader(paymentRequest);
+
+            _logger?.LogInformation("Calling payment service to create cost share: {Url}", $"{paymentServiceUrl}/api/costshares");
+            var response = await _httpClient.SendAsync(paymentRequest);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger?.LogError("Failed to create cost share: {StatusCode} - {Error}", response.StatusCode, errorContent);
+                throw new Exception($"Failed to create cost share: {response.StatusCode} - {errorContent}");
+            }
+            
+            var responseContent = await response.Content.ReadAsStringAsync();
+            _logger?.LogInformation("Cost share created successfully for maintenance {MaintenanceId} with {DetailCount} details: {Response}", 
+                maintenanceRecord.Id, costShareDetails.Count, responseContent);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error creating cost share for maintenance {MaintenanceId}", maintenanceRecord.Id);
+            throw;
+        }
+    }
+
+    // Helper classes for deserializing API responses
+    private class VehicleGroupResponse
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string VehicleName { get; set; } = string.Empty;
+    }
+
+    private class OwnershipResponse
+    {
+        public string CoOwnerId { get; set; } = string.Empty;
+        public decimal OwnershipPercentage { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    /// <summary>
+    /// Cập nhật trạng thái xe nếu cần
+    /// </summary>
+    private async Task UpdateVehicleStatusIfNeededAsync(int vehicleId)
+    {
+        // Check if there are any active maintenance records
+        var activeMaintenances = await _historyRepository.GetMaintenanceRecordsByVehicleIdAsync(vehicleId);
+        var hasActiveMaintenance = activeMaintenances.Any(m => 
+            m.IsActive && 
+            m.Status != MaintenanceStatus.Completed && 
+            m.ServiceDate <= DateTime.UtcNow);
+
+        var ownershipServiceUrl = _configuration["OwnershipServiceUrl"] ?? "http://ownership-service:80";
+        
+        // Map vehicleId to VehicleGroupId (simplified - might need proper mapping)
+        // For now, we'll skip this as it requires proper vehicleId to groupId mapping
+        _logger?.LogInformation("Vehicle status update skipped - requires vehicleId to groupId mapping");
     }
 
     /// <summary>

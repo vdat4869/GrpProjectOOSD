@@ -297,10 +297,21 @@ const MyBookings: React.FC = () => {
         return;
       }
 
-      // Check if AI approves (fairness score >= 0.5 as threshold)
-      if (aiSuggestion.fairness_score < 0.5) {
-        setBookingError(`Đặt xe không được AI chấp nhận. Lý do: ${aiSuggestion.reason}. Điểm công bằng: ${(aiSuggestion.fairness_score * 100).toFixed(1)}%`);
-        return;
+      // Check if AI approves
+      // Calculate booking duration in hours
+      const bookingDurationHours = (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
+      // Use lower threshold (0.3) for short bookings (< 1 hour), higher threshold (0.5) for longer bookings
+      const threshold = bookingDurationHours < 1.0 ? 0.3 : 0.5;
+      
+      if (aiSuggestion.fairness_score < threshold) {
+        // For very short bookings (< 15 minutes), allow with warning
+        if (bookingDurationHours < 0.25) {
+          // Allow but show warning
+          setBookingError(`Cảnh báo: Điểm công bằng thấp (${(aiSuggestion.fairness_score * 100).toFixed(1)}%). ${aiSuggestion.reason}`);
+        } else {
+          setBookingError(`Đặt xe không được AI chấp nhận. Lý do: ${aiSuggestion.reason}. Điểm công bằng: ${(aiSuggestion.fairness_score * 100).toFixed(1)}%`);
+          return;
+        }
       }
 
       const coOwnerIdNum = parseInt(userId);
@@ -665,39 +676,63 @@ const MyBookings: React.FC = () => {
 
                 {aiSuggestion && (
                   <div className={`rounded-lg border p-4 ${
-                    aiSuggestion.fairness_score >= 0.5
+                    (() => {
+                      const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                      const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                      return aiSuggestion.fairness_score >= threshold;
+                    })()
                       ? "border-green-200 bg-green-50 dark:border-green-500/40 dark:bg-green-500/10"
                       : "border-red-200 bg-red-50 dark:border-red-500/40 dark:bg-red-500/10"
                   }`}>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h4 className={`text-sm font-semibold ${
-                          aiSuggestion.fairness_score >= 0.5
+                          (() => {
+                      const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                      const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                      return aiSuggestion.fairness_score >= threshold;
+                    })()
                             ? "text-green-900 dark:text-green-200"
                             : "text-red-900 dark:text-red-200"
                         }`}>
                           Kết quả kiểm tra AI
                         </h4>
                         <p className={`mt-1 text-xs ${
-                          aiSuggestion.fairness_score >= 0.5
+                          (() => {
+                      const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                      const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                      return aiSuggestion.fairness_score >= threshold;
+                    })()
                             ? "text-green-700 dark:text-green-300"
                             : "text-red-700 dark:text-red-300"
                         }`}>
                           {aiSuggestion.reason}
                         </p>
                         <p className={`mt-2 text-xs font-medium ${
-                          aiSuggestion.fairness_score >= 0.5
+                          (() => {
+                      const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                      const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                      return aiSuggestion.fairness_score >= threshold;
+                    })()
                             ? "text-green-600 dark:text-green-400"
                             : "text-red-600 dark:text-red-400"
                         }`}>
                           Điểm công bằng: {(aiSuggestion.fairness_score * 100).toFixed(1)}%
                         </p>
-                        {aiSuggestion.fairness_score >= 0.5 && aiSuggestion.fairness_score < 0.7 && (
+                        {(() => {
+                          const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                          const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                          return aiSuggestion.fairness_score >= threshold && aiSuggestion.fairness_score < 0.7;
+                        })() && (
                           <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
                             ⚠️ Điểm công bằng ở mức trung bình. Nếu có thể, hãy cân nhắc thời gian khác.
                           </p>
                         )}
-                        {aiSuggestion.fairness_score < 0.5 && (
+                        {(() => {
+                          const durationHours = startTime && endTime ? (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60) : 1.0;
+                          const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                          return aiSuggestion.fairness_score < threshold && durationHours >= 0.25;
+                        })() && (
                           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
                             ❌ Đặt xe này không được phép vì không công bằng với các đồng sở hữu khác.
                           </p>
@@ -743,7 +778,11 @@ const MyBookings: React.FC = () => {
                     size="sm"
                     type="button"
                     onClick={handleCreateBooking}
-                    disabled={!selectedVehicleId || !startTime || !endTime || !aiSuggestion || creatingBooking || loadingAI || (aiSuggestion && aiSuggestion.fairness_score < 0.5)}
+                    disabled={!selectedVehicleId || !startTime || !endTime || !aiSuggestion || creatingBooking || loadingAI || (aiSuggestion && (() => {
+                      const durationHours = (new Date(endTime).getTime() - new Date(startTime).getTime()) / (1000 * 60 * 60);
+                      const threshold = durationHours < 1.0 ? 0.3 : 0.5;
+                      return aiSuggestion.fairness_score < threshold && durationHours >= 0.25;
+                    })())}
                   >
                     {creatingBooking ? "Đang đặt..." : "Đặt Xe"}
                   </Button>

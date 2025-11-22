@@ -34,11 +34,23 @@ const CheckInOut: React.FC = () => {
 
   const filteredBookings = bookings.filter((booking) => {
     if (filter === "all") return true;
-    const status = booking.status.toLowerCase();
-    if (filter === "pending") return status === "pending" || status === "confirmed";
-    if (filter === "confirmed") return status === "confirmed";
-    if (filter === "in-progress") return status === "in-progress" || status === "checked-in";
-    if (filter === "completed") return status === "completed" || status === "checked-out";
+    const statusLower = booking.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+    if (filter === "pending") {
+      // Pending: Pending, Confirmed (chưa check-in)
+      return statusLower.includes("pending") || (statusLower.includes("confirmed") && !booking.checkInTime);
+    }
+    if (filter === "confirmed") {
+      // Confirmed: Confirmed, Approved
+      return statusLower.includes("confirmed") || statusLower.includes("approved");
+    }
+    if (filter === "in-progress") {
+      // In-progress: InProgress, Checked-in
+      return statusLower.includes("inprogress") || statusLower.includes("checkedin");
+    }
+    if (filter === "completed") {
+      // Completed: Completed, Checked-out
+      return statusLower.includes("completed") || statusLower.includes("checkedout");
+    }
     return true;
   });
 

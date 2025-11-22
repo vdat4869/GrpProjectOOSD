@@ -296,12 +296,36 @@ async def suggest_booking_fairness(req: BookingSuggestionRequest):
         expected_hours = ownership_weight * 24 * 30
         over_ratio = (recent_usage_hours / expected_hours) if expected_hours > 0 else 0.0
         usage_penalty = max(0.0, (over_ratio - 1.0) * 0.3)  # penalty tăng khi dùng > kỳ vọng
-        fairness_score = max(0.0, min(1.0, ownership_weight - usage_penalty))
+        
+        # Tính duration của booking request (giờ)
+        booking_duration_hours = (req_end - req_start).total_seconds() / 3600.0
+        
+        # Điều chỉnh fairness score dựa trên duration:
+        # - Booking ngắn (< 1 giờ) nên có penalty thấp hơn
+        # - Booking rất ngắn (< 15 phút) gần như không bị penalty
+        duration_factor = 1.0
+        if booking_duration_hours < 0.25:  # < 15 phút
+            duration_factor = 0.1  # Giảm penalty xuống 10%
+        elif booking_duration_hours < 1.0:  # < 1 giờ
+            duration_factor = 0.3  # Giảm penalty xuống 30%
+        elif booking_duration_hours < 2.0:  # < 2 giờ
+            duration_factor = 0.6  # Giảm penalty xuống 60%
+        
+        # Áp dụng duration factor vào usage_penalty
+        adjusted_usage_penalty = usage_penalty * duration_factor
+        
+        # Tính fairness score với penalty đã điều chỉnh
+        # Đảm bảo score tối thiểu là ownership_weight * 0.5 (cho phép booking ngắn)
+        base_score = ownership_weight - adjusted_usage_penalty
+        min_score_for_short_booking = ownership_weight * 0.5 if booking_duration_hours < 1.0 else 0.0
+        fairness_score = max(min_score_for_short_booking, min(1.0, base_score))
 
         suggested_start, suggested_end = req_start, req_end
 
         alternative_slots: Optional[List[AlternativeSlot]] = None
-        if fairness_score < 0.5:
+        # Giảm threshold xuống 0.3 cho booking ngắn, 0.5 cho booking dài
+        threshold = 0.3 if booking_duration_hours < 1.0 else 0.5
+        if fairness_score < threshold:
             req_dur = (req_end - req_start)
             min_dur = max(timedelta(minutes=30), req_dur * 0.5)
             candidates = [
@@ -313,7 +337,10 @@ async def suggest_booking_fairness(req: BookingSuggestionRequest):
             alternative_slots = [
                 AlternativeSlot(start=s, end=e) for s, e in candidates if e > s
             ]
-            reason = "Lower priority due to usage history. Suggested shorter/off-peak duration."
+            if booking_duration_hours < 0.25:
+                reason = f"Short booking ({booking_duration_hours*60:.0f} minutes) is acceptable despite lower fairness score."
+            else:
+                reason = "Lower priority due to usage history. Suggested shorter/off-peak duration."
         else:
             reason = f"Fair booking slot based on {ownership_weight*100:.1f}% ownership"
 
