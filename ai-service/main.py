@@ -4,6 +4,7 @@ from __future__ import annotations
 import json, os, logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Literal
+import threading
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from motor.motor_asyncio import AsyncIOMotorClient
 import redis.asyncio as redis
 from prometheus_fastapi_instrumentator import Instrumentator
+from rabbitmq_consumer import RabbitMQConsumer
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("ai-service")
@@ -55,6 +57,8 @@ app.add_middleware(
 mongodb_client: Optional[AsyncIOMotorClient] = None
 mongodb_db = None
 redis_client: Optional[redis.Redis] = None
+rabbitmq_consumer: Optional[RabbitMQConsumer] = None
+rabbitmq_thread: Optional[threading.Thread] = None
 
 
 # ---- Helpers
@@ -117,7 +121,7 @@ class CostSharingSuggestionResponse(BaseModel):
     total_suggested: float
     method: str  # "ownership_based", "usage_based", "hybrid"
 
-ProposalType = Literal["upgrade_battery", "repair", "sell_vehicle", "insurance_change"]
+ProposalType = Literal["upgrade_battery", "repair", "sell_vehicle", "insurance_change", "maintenance", "other"]
 
 class VotingSuggestionRequest(BaseModel):
     vehicle_group_id: str
@@ -193,10 +197,35 @@ async def startup_event():
         logger.info(f"Connected to Redis (ping={pong})")
     except Exception:
         logger.exception("Failed to connect to Redis")
+    
+    # RabbitMQ Consumer (in background thread)
+    global rabbitmq_consumer, rabbitmq_thread
+    try:
+        rabbitmq_consumer = RabbitMQConsumer(mongodb_client, redis_client, mongodb_db)
+        if rabbitmq_consumer.connect():
+            rabbitmq_thread = threading.Thread(
+                target=rabbitmq_consumer.start_consuming,
+                daemon=True,
+                name="RabbitMQConsumer"
+            )
+            rabbitmq_thread.start()
+            logger.info("RabbitMQ consumer started in background thread")
+        else:
+            logger.warning("Failed to connect to RabbitMQ. Consumer not started.")
+    except Exception:
+        logger.exception("Failed to start RabbitMQ consumer")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global rabbitmq_consumer
+    if rabbitmq_consumer:
+        try:
+            rabbitmq_consumer.close()
+            logger.info("RabbitMQ consumer stopped")
+        except Exception:
+            logger.exception("Error closing RabbitMQ consumer")
+    
     if mongodb_client:
         mongodb_client.close()
     if redis_client:
@@ -435,7 +464,20 @@ async def suggest_voting_decision(req: VotingSuggestionRequest):
             else:
                 reasoning = f"Reasonable insurance change. Cost impact: {cost_change}%"
                 risk_assessment.update({"financial_risk": "low"})
-        else:
+        
+        elif proposal_type == "maintenance":
+            cost = float(details.get("cost", 0))
+            if cost > 30_000_000:
+                recommendation = "modify"
+                reasoning = "High maintenance cost. Verify necessity and compare with alternatives."
+                suggested_modifications = {"verify_necessity": True, "compare_alternatives": True}
+                risk_assessment.update({"financial_risk": "medium", "operational_risk": "low"})
+            else:
+                recommendation = "approve"
+                reasoning = "Standard maintenance cost. Essential for vehicle longevity."
+                risk_assessment.update({"financial_risk": "low", "operational_risk": "low"})
+        
+        else:  # "other" or unknown types
             recommendation = "approve"
             reasoning = "Proposal appears reasonable. Review details with co-owners."
             risk_assessment.update({"residual_risk": "low"})
