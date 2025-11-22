@@ -17,6 +17,7 @@ public class SimpleProxyMiddleware
         { "/api/role", ("auth-service", "/api/Role") },
         { "/api/booking", ("booking-service", "/api/Bookings") },
         { "/api/payment", ("payment-service", "/api/Payment") },
+        { "/api/paymentmethods", ("payment-service", "/api/PaymentMethods") },
         { "/api/shared-fund", ("payment-service", "/api/SharedFund") },
         { "/api/ownership", ("ownership-service", "/api") },
         { "/api/coowners", ("ownership-service", "/api/CoOwners") },
@@ -277,7 +278,7 @@ public class SimpleProxyMiddleware
                 }
                 else if (prefix == "/api/payment")
                 {
-                    // Payment service routing - handle costshares and other sub-routes
+                    // Payment service routing - handle costshares, transactions, payments, and other sub-routes
                     var remainder = path.Substring(prefix.Length);
                     if (remainder.StartsWith("/costshares", StringComparison.OrdinalIgnoreCase))
                     {
@@ -292,6 +293,22 @@ public class SimpleProxyMiddleware
                         // Map /api/payment/transactions -> /api/Transactions
                         var transactionsPath = remainder.Substring("/transactions".Length);
                         var targetPath = "/api/Transactions" + transactionsPath;
+                        if (await ProxyRequestAsync(context, "payment-service", targetPath))
+                            return;
+                    }
+                    else if (remainder.StartsWith("/payments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Map /api/payment/payments -> /api/Payments
+                        var paymentsPath = remainder.Substring("/payments".Length);
+                        var targetPath = "/api/Payments" + paymentsPath;
+                        if (await ProxyRequestAsync(context, "payment-service", targetPath))
+                            return;
+                    }
+                    else if (remainder.StartsWith("/companypaymentrequests", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Map /api/payment/companypaymentrequests -> /api/CompanyPaymentRequests
+                        var companyPaymentRequestsPath = remainder.Substring("/companypaymentrequests".Length);
+                        var targetPath = "/api/CompanyPaymentRequests" + companyPaymentRequestsPath;
                         if (await ProxyRequestAsync(context, "payment-service", targetPath))
                             return;
                     }
