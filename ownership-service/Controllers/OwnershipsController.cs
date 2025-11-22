@@ -22,6 +22,20 @@ public class OwnershipsController : ControllerBase
     }
 
     /// <summary>
+    /// Get all ownerships
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<List<OwnershipDto>>> GetAllOwnerships(
+        [FromQuery] bool? isActive = null,
+        [FromQuery] Guid? vehicleGroupId = null,
+        [FromQuery] Guid? coOwnerId = null)
+    {
+        var query = new GetAllOwnershipsQuery(isActive, vehicleGroupId, coOwnerId);
+        var result = await _mediator.Send(query);
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Get ownerships by vehicle group
     /// </summary>
     [HttpGet("vehicle-group/{vehicleGroupId}")]
@@ -54,6 +68,11 @@ public class OwnershipsController : ControllerBase
     [Authorize]
     public async Task<ActionResult<OwnershipDto>> CreateOwnership([FromBody] CreateOwnershipDto dto)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
         try
         {
             var command = new CreateOwnershipCommand(dto);

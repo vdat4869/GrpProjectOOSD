@@ -6,6 +6,7 @@ using OwnershipService.Models;
 using OwnershipService.DTOs;
 using OwnershipService.Commands;
 using OwnershipService.Queries;
+using OwnershipService.Infrastructure;
 
 namespace OwnershipService.Handlers;
 
@@ -13,11 +14,19 @@ public class CreateOwnershipHandler : IRequestHandler<CreateOwnershipCommand, Ow
 {
     private readonly ApplicationDbContext _context;
     private readonly IMapper _mapper;
+    private readonly IRabbitMQService? _rabbitMQService;
+    private readonly ILogger<CreateOwnershipHandler>? _logger;
 
-    public CreateOwnershipHandler(ApplicationDbContext context, IMapper mapper)
+    public CreateOwnershipHandler(
+        ApplicationDbContext context, 
+        IMapper mapper,
+        IRabbitMQService? rabbitMQService = null,
+        ILogger<CreateOwnershipHandler>? logger = null)
     {
         _context = context;
         _mapper = mapper;
+        _rabbitMQService = rabbitMQService;
+        _logger = logger;
     }
 
     public async Task<OwnershipDto> Handle(CreateOwnershipCommand request, CancellationToken cancellationToken)
@@ -61,6 +70,29 @@ public class CreateOwnershipHandler : IRequestHandler<CreateOwnershipCommand, Ow
 
         await _context.Entry(ownership).Reference(o => o.CoOwner).LoadAsync(cancellationToken);
 
+        // Publish OwnershipUpdated event
+        if (_rabbitMQService != null)
+        {
+            try
+            {
+                var eventData = new OwnershipUpdatedEvent
+                {
+                    OwnershipId = ownership.Id,
+                    CoOwnerId = ownership.CoOwnerId,
+                    VehicleGroupId = ownership.VehicleGroupId,
+                    OwnershipPercentage = ownership.OwnershipPercentage,
+                    IsActive = ownership.IsActive,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _rabbitMQService.PublishEvent("ownership.updated", eventData);
+                _logger?.LogInformation("Published OwnershipUpdated event for ownership {OwnershipId}", ownership.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to publish OwnershipUpdated event for ownership {OwnershipId}", ownership.Id);
+            }
+        }
+
         return _mapper.Map<OwnershipDto>(ownership);
     }
 }
@@ -69,11 +101,19 @@ public class UpdateOwnershipHandler : IRequestHandler<UpdateOwnershipCommand, Ow
 {
     private readonly ApplicationDbContext _context;
     private readonly IMapper _mapper;
+    private readonly IRabbitMQService? _rabbitMQService;
+    private readonly ILogger<UpdateOwnershipHandler>? _logger;
 
-    public UpdateOwnershipHandler(ApplicationDbContext context, IMapper mapper)
+    public UpdateOwnershipHandler(
+        ApplicationDbContext context, 
+        IMapper mapper,
+        IRabbitMQService? rabbitMQService = null,
+        ILogger<UpdateOwnershipHandler>? logger = null)
     {
         _context = context;
         _mapper = mapper;
+        _rabbitMQService = rabbitMQService;
+        _logger = logger;
     }
 
     public async Task<OwnershipDto> Handle(UpdateOwnershipCommand request, CancellationToken cancellationToken)
@@ -118,6 +158,29 @@ public class UpdateOwnershipHandler : IRequestHandler<UpdateOwnershipCommand, Ow
         ownership.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);
+
+        // Publish OwnershipUpdated event
+        if (_rabbitMQService != null)
+        {
+            try
+            {
+                var eventData = new OwnershipUpdatedEvent
+                {
+                    OwnershipId = ownership.Id,
+                    CoOwnerId = ownership.CoOwnerId,
+                    VehicleGroupId = ownership.VehicleGroupId,
+                    OwnershipPercentage = ownership.OwnershipPercentage,
+                    IsActive = ownership.IsActive,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _rabbitMQService.PublishEvent("ownership.updated", eventData);
+                _logger?.LogInformation("Published OwnershipUpdated event for ownership {OwnershipId}", ownership.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to publish OwnershipUpdated event for ownership {OwnershipId}", ownership.Id);
+            }
+        }
 
         return _mapper.Map<OwnershipDto>(ownership);
     }
@@ -202,6 +265,45 @@ public class DeleteOwnershipHandler : IRequestHandler<DeleteOwnershipCommand, bo
         await _context.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+}
+
+public class GetAllOwnershipsHandler : IRequestHandler<GetAllOwnershipsQuery, List<OwnershipDto>>
+{
+    private readonly ApplicationDbContext _context;
+    private readonly IMapper _mapper;
+
+    public GetAllOwnershipsHandler(ApplicationDbContext context, IMapper mapper)
+    {
+        _context = context;
+        _mapper = mapper;
+    }
+
+    public async Task<List<OwnershipDto>> Handle(GetAllOwnershipsQuery request, CancellationToken cancellationToken)
+    {
+        var query = _context.Ownerships
+            .Include(o => o.CoOwner)
+            .AsQueryable();
+
+        if (request.IsActive.HasValue)
+        {
+            query = query.Where(o => o.IsActive == request.IsActive.Value);
+        }
+
+        if (request.VehicleGroupId.HasValue)
+        {
+            query = query.Where(o => o.VehicleGroupId == request.VehicleGroupId.Value);
+        }
+
+        if (request.CoOwnerId.HasValue)
+        {
+            query = query.Where(o => o.CoOwnerId == request.CoOwnerId.Value);
+        }
+
+        query = query.OrderByDescending(o => o.CreatedAt);
+
+        var ownerships = await query.ToListAsync(cancellationToken);
+        return _mapper.Map<List<OwnershipDto>>(ownerships);
     }
 }
 

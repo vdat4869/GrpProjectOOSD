@@ -28,6 +28,12 @@ public class CreateEContractHandler : IRequestHandler<CreateEContractCommand, EC
             throw new KeyNotFoundException($"Co-owner with ID {request.Dto.CoOwnerId} not found.");
         }
 
+        var vehicleGroup = await _context.VehicleGroups.FindAsync(new object[] { request.Dto.VehicleGroupId }, cancellationToken);
+        if (vehicleGroup == null)
+        {
+            throw new KeyNotFoundException($"Vehicle group with ID {request.Dto.VehicleGroupId} not found.");
+        }
+
         var eContract = _mapper.Map<EContract>(request.Dto);
         eContract.CreatedAt = DateTime.UtcNow;
         eContract.UpdatedAt = DateTime.UtcNow;
@@ -218,6 +224,45 @@ public class ApproveEContractHandler : IRequestHandler<ApproveEContractCommand, 
         await _context.SaveChangesAsync(cancellationToken);
 
         return _mapper.Map<EContractDto>(eContract);
+    }
+}
+
+public class GetAllEContractsHandler : IRequestHandler<GetAllEContractsQuery, List<EContractDto>>
+{
+    private readonly ApplicationDbContext _context;
+    private readonly IMapper _mapper;
+
+    public GetAllEContractsHandler(ApplicationDbContext context, IMapper mapper)
+    {
+        _context = context;
+        _mapper = mapper;
+    }
+
+    public async Task<List<EContractDto>> Handle(GetAllEContractsQuery request, CancellationToken cancellationToken)
+    {
+        var query = _context.EContracts
+            .Include(ec => ec.CoOwner)
+            .AsQueryable();
+
+        if (!string.IsNullOrEmpty(request.Status))
+        {
+            query = query.Where(ec => ec.ContractStatus == request.Status);
+        }
+
+        if (request.VehicleGroupId.HasValue)
+        {
+            query = query.Where(ec => ec.VehicleGroupId == request.VehicleGroupId.Value);
+        }
+
+        if (request.CoOwnerId.HasValue)
+        {
+            query = query.Where(ec => ec.CoOwnerId == request.CoOwnerId.Value);
+        }
+
+        query = query.OrderByDescending(ec => ec.CreatedAt);
+
+        var contracts = await query.ToListAsync(cancellationToken);
+        return _mapper.Map<List<EContractDto>>(contracts);
     }
 }
 

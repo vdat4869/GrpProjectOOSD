@@ -56,6 +56,26 @@ public class UpdateEContractHandler : IRequestHandler<UpdateEContractCommand, EC
             eContract.Notes = request.Dto.Notes;
         }
 
+        if (request.Dto.FilePath != null)
+        {
+            eContract.FilePath = request.Dto.FilePath;
+        }
+
+        if (request.Dto.FileName != null)
+        {
+            eContract.FileName = request.Dto.FileName;
+        }
+
+        if (request.Dto.FileType != null)
+        {
+            eContract.FileType = request.Dto.FileType;
+        }
+
+        if (request.Dto.FileSize.HasValue)
+        {
+            eContract.FileSize = request.Dto.FileSize.Value;
+        }
+
         if (request.Dto.ExpiresAt.HasValue)
         {
             eContract.ExpiresAt = request.Dto.ExpiresAt.Value;

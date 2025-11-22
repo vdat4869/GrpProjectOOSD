@@ -73,6 +73,7 @@ public enum ProposalType
     Repair = 2,
     SellVehicle = 3,
     InsuranceChange = 4,
+    Maintenance = 5,
     Other = 99
 }
 

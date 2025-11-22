@@ -39,6 +39,17 @@ public class EContract
     [MaxLength(1000)]
     public string? Notes { get; set; }
 
+    [MaxLength(500)]
+    public string? FilePath { get; set; } // Path to stored contract file
+
+    [MaxLength(100)]
+    public string? FileName { get; set; } // Original filename
+
+    [MaxLength(50)]
+    public string? FileType { get; set; } // MIME type (e.g., "application/pdf", "image/png")
+
+    public long? FileSize { get; set; } // File size in bytes
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

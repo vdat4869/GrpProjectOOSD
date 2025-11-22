@@ -122,6 +122,12 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Type);
             entity.HasIndex(e => e.Status);
 
+            // Configure enums to be stored as int
+            entity.Property(e => e.Type)
+                  .HasConversion<int>();
+            entity.Property(e => e.Status)
+                  .HasConversion<int>();
+
             entity.HasOne(p => p.VehicleGroup)
                   .WithMany(vg => vg.Proposals)
                   .HasForeignKey(p => p.VehicleGroupId)
@@ -139,6 +145,10 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.ProposalId, e.CoOwnerId }).IsUnique();
             entity.HasIndex(e => e.ProposalId);
             entity.HasIndex(e => e.CoOwnerId);
+
+            // Configure Choice enum to be stored as int
+            entity.Property(e => e.Choice)
+                  .HasConversion<int>();
 
             entity.HasOne(v => v.Proposal)
                   .WithMany(p => p.Votes)

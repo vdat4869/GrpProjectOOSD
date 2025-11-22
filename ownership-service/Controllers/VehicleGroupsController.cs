@@ -16,12 +16,18 @@ public class VehicleGroupsController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly ILogger<VehicleGroupsController> _logger;
     private readonly IWebHostEnvironment _env;
+    private readonly Infrastructure.IRabbitMQService? _rabbitMQService;
 
-    public VehicleGroupsController(ApplicationDbContext context, ILogger<VehicleGroupsController> logger, IWebHostEnvironment env)
+    public VehicleGroupsController(
+        ApplicationDbContext context, 
+        ILogger<VehicleGroupsController> logger, 
+        IWebHostEnvironment env,
+        Infrastructure.IRabbitMQService? rabbitMQService = null)
     {
         _context = context;
         _logger = logger;
         _env = env;
+        _rabbitMQService = rabbitMQService;
     }
 
     /// <summary>
@@ -103,6 +109,11 @@ public class VehicleGroupsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<VehicleGroupDto>> CreateVehicleGroup([FromBody] CreateVehicleGroupDto dto)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
@@ -150,6 +161,28 @@ public class VehicleGroupsController : ControllerBase
             };
             _context.GroupMembers.Add(member);
             await _context.SaveChangesAsync();
+        }
+
+        // Publish VehicleGroupUpdated event
+        if (_rabbitMQService != null)
+        {
+            try
+            {
+                var eventData = new Infrastructure.VehicleGroupUpdatedEvent
+                {
+                    VehicleGroupId = group.Id,
+                    Name = group.Name,
+                    Description = group.Description,
+                    Status = group.Status.ToString(),
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _rabbitMQService.PublishEvent("vehicle.group.updated", eventData);
+                _logger.LogInformation("Published VehicleGroupUpdated event for group {GroupId}", group.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish VehicleGroupUpdated event for group {GroupId}", group.Id);
+            }
         }
 
         var memberCount = coOwner != null ? 1 : 0;
@@ -200,6 +233,28 @@ public class VehicleGroupsController : ControllerBase
 
         group.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        // Publish VehicleGroupUpdated event
+        if (_rabbitMQService != null)
+        {
+            try
+            {
+                var eventData = new Infrastructure.VehicleGroupUpdatedEvent
+                {
+                    VehicleGroupId = group.Id,
+                    Name = group.Name,
+                    Description = group.Description,
+                    Status = group.Status.ToString(),
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _rabbitMQService.PublishEvent("vehicle.group.updated", eventData);
+                _logger.LogInformation("Published VehicleGroupUpdated event for group {GroupId}", group.Id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish VehicleGroupUpdated event for group {GroupId}", group.Id);
+            }
+        }
 
         return Ok(new VehicleGroupDto
         {
@@ -427,6 +482,28 @@ public class VehicleGroupsController : ControllerBase
             await _context.SaveChangesAsync();
             
             _logger.LogInformation("Updated vehicle group {GroupId} status to {Status}", id, status);
+
+            // Publish VehicleGroupUpdated event
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    var eventData = new Infrastructure.VehicleGroupUpdatedEvent
+                    {
+                        VehicleGroupId = group.Id,
+                        Name = group.Name,
+                        Description = group.Description,
+                        Status = group.Status.ToString(),
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _rabbitMQService.PublishEvent("vehicle.group.updated", eventData);
+                    _logger.LogInformation("Published VehicleGroupUpdated event for group {GroupId}", group.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to publish VehicleGroupUpdated event for group {GroupId}", group.Id);
+                }
+            }
         }
 
         return Ok(new VehicleGroupDto

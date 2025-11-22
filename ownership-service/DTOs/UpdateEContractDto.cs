@@ -16,6 +16,17 @@ public class UpdateEContractDto
     [StringLength(1000)]
     public string? Notes { get; set; }
 
+    [StringLength(500)]
+    public string? FilePath { get; set; }
+
+    [StringLength(100)]
+    public string? FileName { get; set; }
+
+    [StringLength(50)]
+    public string? FileType { get; set; }
+
+    public long? FileSize { get; set; }
+
     public DateTime? ExpiresAt { get; set; }
 }
 

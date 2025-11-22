@@ -150,20 +150,31 @@ public class RabbitMQService : IRabbitMQService, IDisposable
 }
 
 // Event models
-public class OwnershipUpdatedEvent
+public class VehicleGroupUpdatedEvent
 {
-    public int OwnershipId { get; set; }
-    public int CoOwnerId { get; set; }
-    public int VehicleGroupId { get; set; }
-    public decimal OwnershipPercentage { get; set; }
+    public Guid VehicleGroupId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Status { get; set; } = string.Empty;
     public DateTime UpdatedAt { get; set; }
 }
 
-public class GroupVoteCreatedEvent
+public class OwnershipUpdatedEvent
 {
-    public int VoteId { get; set; }
-    public int VehicleGroupId { get; set; }
+    public Guid OwnershipId { get; set; }
+    public Guid CoOwnerId { get; set; }
+    public Guid VehicleGroupId { get; set; }
+    public decimal OwnershipPercentage { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public class VotingStatusChangedEvent
+{
+    public Guid ProposalId { get; set; }
+    public Guid VehicleGroupId { get; set; }
     public string ProposalType { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public DateTime UpdatedAt { get; set; }
 }
 
