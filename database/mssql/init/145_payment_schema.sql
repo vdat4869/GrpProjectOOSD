@@ -6,10 +6,19 @@ SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
 GO
 
+-- Drop foreign key constraints first
+IF OBJECT_ID(N'[dbo].[FK_Transactions_Related]', N'F') IS NOT NULL ALTER TABLE [dbo].[Transactions] DROP CONSTRAINT [FK_Transactions_Related];
+IF OBJECT_ID(N'[dbo].[FK_Transactions_Wallets]', N'F') IS NOT NULL ALTER TABLE [dbo].[Transactions] DROP CONSTRAINT [FK_Transactions_Wallets];
+IF OBJECT_ID(N'[dbo].[FK_Payments_Wallets]', N'F') IS NOT NULL ALTER TABLE [dbo].[Payments] DROP CONSTRAINT [FK_Payments_Wallets];
+IF OBJECT_ID(N'[dbo].[FK_Payments_CostShareDetails]', N'F') IS NOT NULL ALTER TABLE [dbo].[Payments] DROP CONSTRAINT [FK_Payments_CostShareDetails];
+IF OBJECT_ID(N'[dbo].[FK_CostShareDetails_CostShares]', N'F') IS NOT NULL ALTER TABLE [dbo].[CostShareDetails] DROP CONSTRAINT [FK_CostShareDetails_CostShares];
+GO
+
+-- Drop tables in correct order (child tables first)
 IF OBJECT_ID(N'[dbo].[Transactions]', N'U') IS NOT NULL DROP TABLE [dbo].[Transactions];
+IF OBJECT_ID(N'[dbo].[Payments]', N'U') IS NOT NULL DROP TABLE [dbo].[Payments];
 IF OBJECT_ID(N'[dbo].[PaymentMethods]', N'U') IS NOT NULL DROP TABLE [dbo].[PaymentMethods];
 IF OBJECT_ID(N'[dbo].[CostShareDetails]', N'U') IS NOT NULL DROP TABLE [dbo].[CostShareDetails];
-IF OBJECT_ID(N'[dbo].[Payments]', N'U') IS NOT NULL DROP TABLE [dbo].[Payments];
 IF OBJECT_ID(N'[dbo].[CostShares]', N'U') IS NOT NULL DROP TABLE [dbo].[CostShares];
 IF SCHEMA_ID(N'Wallet') IS NOT NULL AND OBJECT_ID(N'[Wallet].[Wallets]', N'U') IS NOT NULL DROP TABLE [Wallet].[Wallets];
 GO
