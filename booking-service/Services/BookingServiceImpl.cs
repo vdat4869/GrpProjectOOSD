@@ -9,18 +9,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BookingService.Services
 {
+    /// <summary>
+    /// Service implementation xử lý business logic cho booking
+    /// Bao gồm: tạo, cập nhật, hủy booking, check-in/check-out, và quản lý lịch trình
+    /// </summary>
     public class BookingServiceImpl : IBookingService
     {
-        private readonly IBookingRepository _bookingRepository;
-        private readonly IBookingHistoryRepository _bookingHistoryRepository;
+        private readonly IBookingRepository _bookingRepository;              // Repository để truy cập dữ liệu booking
+        private readonly IBookingHistoryRepository _bookingHistoryRepository;  // Repository để truy cập lịch sử booking
 
-        private readonly IVehicleRepository _vehicleRepository;
-        private readonly ICoOwnerRepository _coOwnerRepository;
-        private readonly IQrCodeService _qrCodeService;
-        private readonly IRabbitMQService _rabbitMQService;
-        private readonly IAiService? _aiService;
-        private readonly ILogger<BookingServiceImpl>? _logger;
+        private readonly IVehicleRepository _vehicleRepository;               // Repository để truy cập dữ liệu vehicle
+        private readonly ICoOwnerRepository _coOwnerRepository;               // Repository để truy cập dữ liệu co-owner
+        private readonly IQrCodeService _qrCodeService;                        // Service để tạo và validate QR code
+        private readonly IRabbitMQService _rabbitMQService;                    // Service để publish/subscribe events qua RabbitMQ
+        private readonly IAiService? _aiService;                                // Service để gọi AI service (optional)
+        private readonly ILogger<BookingServiceImpl>? _logger;                 // Logger để ghi log
 
+        /// <summary>
+        /// Constructor - Dependency Injection
+        /// </summary>
         public BookingServiceImpl(
             IBookingRepository bookingRepository,
             IVehicleRepository vehicleRepository,
@@ -42,7 +49,10 @@ namespace BookingService.Services
             _logger = logger;
         }
 
-
+        /// <summary>
+        /// Lấy lịch trình của tất cả các xe (vehicles) kèm thông tin booking
+        /// Bao gồm: danh sách booking của mỗi xe, trạng thái xe (đang dùng hay trống)
+        /// </summary>
         public async Task<IEnumerable<VehicleScheduleResponse>> GetVehicleSchedulesAsync()
         {
             var vehicles = await _vehicleRepository.GetAllAsync();
@@ -91,7 +101,9 @@ namespace BookingService.Services
             return schedules;
         }
 
-        // Lấy tất cả booking
+        /// <summary>
+        /// Lấy tất cả các booking trong hệ thống
+        /// </summary>
         public async Task<IEnumerable<BookingResponse>> GetAllBookingsAsync()
         {
             var bookings = await _bookingRepository.GetAllAsync();
@@ -109,10 +121,22 @@ namespace BookingService.Services
             });
         }
 
-        // Tạo booking mới
+        /// <summary>
+        /// Tạo mới một booking
+        /// Bao gồm các bước:
+        /// 1. Validation cơ bản (thời gian, giờ hoạt động)
+        /// 2. Lấy dữ liệu liên quan (vehicle, co-owner)
+        /// 3. Kiểm tra trùng lịch
+        /// 4. Áp dụng rule ưu tiên dựa trên ownership ratio và usage
+        /// 5. Gọi AI service để kiểm tra fairness (optional)
+        /// 6. Tạo booking và publish event
+        /// </summary>
+        /// <param name="request">Thông tin booking cần tạo</param>
+        /// <returns>Thông tin booking vừa tạo, null nếu không thể tạo</returns>
         public async Task<BookingResponse?> CreateBookingAsync(CreateBookingRequest request)
         {
             // === 1. VALIDATION CƠ BẢN ===
+            // Kiểm tra các điều kiện cơ bản: thời gian hợp lệ, không trong quá khứ, giờ hoạt động
             // Convert request times to VN timezone if they are in UTC
             // Frontend sends UTC time, but we need to compare with VN time
             var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
@@ -272,6 +296,7 @@ namespace BookingService.Services
                     }
 
                     // === 6. User có ưu tiên => cancel booking người khác ===
+                    // Nếu user có ưu tiên cao hơn, hủy các booking trùng lịch của người khác
                     foreach (var existing in overlappingBookings)
                     {
                         existing.Status = "Cancelled";
@@ -282,6 +307,7 @@ namespace BookingService.Services
             }
 
             // === 6.5. GỌI AI SERVICE ĐỂ KIỂM TRA FAIRNESS (OPTIONAL) ===
+            // Gọi AI service để đánh giá tính công bằng của booking và đề xuất alternative slots
             if (_aiService != null)
             {
                 try
@@ -331,6 +357,7 @@ namespace BookingService.Services
             }
 
             // === 7. TẠO BOOKING ===
+            // Tạo booking entity và lưu vào database
             var newBooking = new Booking
             {
                 VehicleId = request.VehicleId,
@@ -348,7 +375,7 @@ namespace BookingService.Services
             if (saved == null)
                 throw new Exception("Không thể lấy booking sau khi lưu.");
 
-            // Publish BookingCreated event
+            // Publish BookingCreated event qua RabbitMQ để các service khác biết
             if (_rabbitMQService != null)
             {
                 try
@@ -371,6 +398,7 @@ namespace BookingService.Services
             }
 
             // === 8. TRẢ RESPONSE ===
+            // Trả về thông tin booking vừa tạo
             return new BookingResponse
             {
                 Id = saved.Id,
@@ -386,7 +414,13 @@ namespace BookingService.Services
         }
 
 
-        // Cập nhật booking
+        /// <summary>
+        /// Cập nhật thông tin booking (thời gian, ghi chú, etc.)
+        /// Chỉ có thể cập nhật booking có trạng thái "Pending"
+        /// </summary>
+        /// <param name="bookingId">ID của booking cần cập nhật</param>
+        /// <param name="request">Thông tin mới của booking</param>
+        /// <returns>Thông tin booking sau khi cập nhật, null nếu không tìm thấy</returns>
         public async Task<BookingResponse?> UpdateBookingAsync(int bookingId, UpdateBookingRequest request)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -558,7 +592,13 @@ namespace BookingService.Services
         }
 
 
-        // Cập nhật trạng thái booking
+        /// <summary>
+        /// Cập nhật trạng thái của booking
+        /// Nếu trạng thái chuyển sang "Approved" hoặc "Confirmed", sẽ publish event qua RabbitMQ
+        /// </summary>
+        /// <param name="bookingId">ID của booking</param>
+        /// <param name="status">Trạng thái mới (Pending, Confirmed, Approved, InProgress, Completed, Cancelled, NoShow)</param>
+        /// <returns>Thông tin booking sau khi cập nhật, null nếu không tìm thấy</returns>
         public async Task<BookingResponse?> UpdateBookingStatusAsync(int bookingId, string status)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -614,7 +654,11 @@ namespace BookingService.Services
 
 
 
-        // Hủy booking
+        /// <summary>
+        /// Hủy booking (chuyển trạng thái sang "Cancelled")
+        /// </summary>
+        /// <param name="bookingId">ID của booking cần hủy</param>
+        /// <returns>True nếu hủy thành công, False nếu không tìm thấy booking</returns>
         public async Task<bool> CancelBookingAsync(int bookingId)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -625,6 +669,10 @@ namespace BookingService.Services
             await _bookingRepository.SaveChangesAsync();
             return true;
         }
+        /// <summary>
+        /// Xóa booking khỏi database (hard delete)
+        /// </summary>
+        /// <param name="bookingId">ID của booking cần xóa</param>
         public async Task DeleteBookingAsync(int bookingId)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -635,6 +683,13 @@ namespace BookingService.Services
             await _bookingRepository.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Tạo QR code cho booking
+        /// QR code được sử dụng để check-in khi nhận xe
+        /// Chỉ có thể tạo QR code cho booking có trạng thái "Confirmed"
+        /// </summary>
+        /// <param name="bookingId">ID của booking</param>
+        /// <returns>QR code dưới dạng string và base64 image</returns>
         public async Task<QrCodeResponse> GenerateQrCodeAsync(int bookingId)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -661,6 +716,17 @@ namespace BookingService.Services
         }
 
 
+        /// <summary>
+        /// Check-in cho booking (nhận xe)
+        /// Yêu cầu:
+        /// - Booking phải có trạng thái "Confirmed"
+        /// - QR code phải hợp lệ (nếu có)
+        /// - Chỉ có thể check-in trước tối đa 5 phút và sau giờ bắt đầu
+        /// Sau khi check-in thành công, trạng thái sẽ chuyển sang "InProgress"
+        /// </summary>
+        /// <param name="bookingId">ID của booking</param>
+        /// <param name="request">Request chứa QR code và digital signature</param>
+        /// <returns>Thông tin check-in thành công</returns>
         public async Task<CheckInResponse> CheckInAsync(int bookingId, CheckInRequest request)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -712,6 +778,19 @@ namespace BookingService.Services
             };
         }
 
+        /// <summary>
+        /// Check-out cho booking (trả xe)
+        /// Yêu cầu:
+        /// - Booking phải đã được check-in
+        /// - Chỉ có thể check-out trong khoảng từ giờ bắt đầu đến 5 phút sau giờ kết thúc
+        /// Sau khi check-out thành công:
+        /// - Trạng thái sẽ chuyển sang "Completed"
+        /// - Tạo bản ghi trong BookingHistory
+        /// - Publish event "booking.completed" qua RabbitMQ
+        /// </summary>
+        /// <param name="bookingId">ID của booking</param>
+        /// <param name="request">Request chứa distance (km) và cost (chi phí)</param>
+        /// <returns>Thông tin check-out thành công</returns>
         public async Task<CheckOutResponse> CheckOutAsync(int bookingId, CheckOutRequest request)
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId);
@@ -785,11 +864,20 @@ namespace BookingService.Services
         }
 
 
+        /// <summary>
+        /// Kiểm tra và cập nhật các booking có trạng thái NoShow (không đến nhận xe)
+        /// Một booking được coi là NoShow nếu:
+        /// - Trạng thái là "Confirmed"
+        /// - Chưa được check-in
+        /// - Đã quá 5 phút kể từ giờ bắt đầu
+        /// Method này thường được gọi tự động bởi background service
+        /// </summary>
         public async Task CheckAndUpdateNoShowBookingsAsync()
         {
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
             var allBookings = await _bookingRepository.GetAllAsync();
 
+            // Tìm các booking thỏa mãn điều kiện NoShow
             var noShowBookings = allBookings
                 .Where(b => b.Status == "confirmed" &&
                         !b.CheckInTime.HasValue &&
@@ -797,12 +885,14 @@ namespace BookingService.Services
                         (now - b.StartTime).TotalMinutes >= 5)
                 .ToList();
 
+            // Cập nhật trạng thái sang "NoShow"
             foreach (var booking in noShowBookings)
             {
                 booking.Status = "NoShow";
                 _logger?.LogInformation("Booking {BookingId} automatically marked as NoShow", booking.Id);
             }
 
+            // Lưu thay đổi nếu có
             if (noShowBookings.Any())
                 await _bookingRepository.SaveChangesAsync();
 
@@ -810,6 +900,12 @@ namespace BookingService.Services
 
 
 
+        /// <summary>
+        /// Lấy lịch sử booking của một co-owner
+        /// Chỉ trả về các booking đã hoàn thành (có trong BookingHistory)
+        /// </summary>
+        /// <param name="coOwnerId">ID của co-owner</param>
+        /// <returns>Danh sách lịch sử booking</returns>
         public async Task<IEnumerable<BookingHistoryResponse>> GetBookingHistoryAsync(int coOwnerId)
         {
             var histories = await _bookingHistoryRepository.GetByCoOwnerIdAsync(coOwnerId);

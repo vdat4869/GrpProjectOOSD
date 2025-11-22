@@ -1,5 +1,17 @@
--- Migration script to fix Vote.Choice column from BIT to INT
--- This script will recreate the Votes table with correct schema if it doesn't match
+-- ============================================
+-- MIGRATION SCRIPT: SỬA CỘT VOTE.CHOICE TỪ BIT SANG INT
+-- ============================================
+-- Script này sửa lỗi cột Choice trong bảng Votes từ kiểu BIT sang INT
+-- Lý do: BIT chỉ có 2 giá trị (0/1), nhưng cần 3 giá trị (1=Approve, 2=Reject, 3=Abstain)
+-- 
+-- Script này sẽ:
+-- 1. Kiểm tra schema hiện tại của bảng Votes
+-- 2. Nếu Choice là BIT, chuyển đổi sang INT và chuyển đổi dữ liệu
+-- 3. Nếu bảng không tồn tại hoặc schema sai, tạo lại bảng với schema đúng
+--
+-- Script này là idempotent - có thể chạy nhiều lần mà không gây lỗi
+-- ============================================
+
 USE [ownership_db];
 GO
 
@@ -7,7 +19,9 @@ SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
 GO
 
--- Check if Votes table exists and has correct schema
+-- ============================================
+-- KIỂM TRA SCHEMA HIỆN TẠI CỦA BẢNG VOTES
+-- ============================================
 DECLARE @HasCorrectSchema BIT = 0;
 DECLARE @HasChoiceColumn BIT = 0;
 DECLARE @ChoiceIsInt BIT = 0;

@@ -39,7 +39,8 @@ public class SimpleProxyMiddleware
         { "/api/history", ("report-service", "/api/History") },
         { "/api/ai", ("ai-service", "/api/ai") },
         { "/api/admin", ("admin-service", "/api/Admin") },
-        { "/api/dashboard", ("admin-service", "/api/Dashboard") }
+        { "/api/dashboard", ("admin-service", "/api/Dashboard") },
+        { "/api/vnpay", ("vnpay-service", "/api/vnpay") }
     };
 
     public SimpleProxyMiddleware(RequestDelegate next, HttpClient httpClient, IConfiguration configuration, ILogger<SimpleProxyMiddleware> logger)
@@ -73,8 +74,13 @@ public class SimpleProxyMiddleware
     {
         var queryString = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty;
         
-        // Special handling for AI service - it runs on port 8000
-        var port = serviceName == "ai-service" ? ":8000" : "";
+        // Special handling for services that run on non-standard ports
+        var port = serviceName switch
+        {
+            "ai-service" => ":8000",
+            "vnpay-service" => ":3001",
+            _ => ""
+        };
         var targetUrl = $"http://{serviceName}{port}{targetPath}{queryString}";
         
         // Debug logging

@@ -15,12 +15,15 @@ import { ownershipService, VehicleGroup, Ownership } from "../../services/owners
 import { bookingService, Booking } from "../../services/bookingService";
 import { aiService, FairnessCheckResponse } from "../../services/aiService";
 
+/**
+ * Trang phân tích sử dụng - so sánh thói quen lái xe với mức trung bình của nhóm
+ */
 const UsageAnalytics: React.FC = () => {
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
   const [startDate, setStartDate] = useState<Date>(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 days ago
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 ngày trước
   );
   const [endDate, setEndDate] = useState<Date>(new Date());
   const [usageStats, setUsageStats] = useState<UsageStatistics | null>(null);
@@ -75,7 +78,7 @@ const UsageAnalytics: React.FC = () => {
       setUsageStats(usage);
       setCostStats(cost);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load statistics");
+      setError(err instanceof Error ? err.message : "Không thể tải thống kê");
     } finally {
       setLoading(false);
     }
@@ -227,13 +230,13 @@ const UsageAnalytics: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Usage Analytics" />
+      <PageMeta title="Đồng sở hữu | Phân Tích Sử Dụng" />
       <PageHeader
-        title="Usage Analytics"
-        description="Compare your driving habits with group averages and surface cost-saving opportunities."
+        title="Phân Tích Sử Dụng"
+        description="So sánh thói quen lái xe của bạn với mức trung bình của nhóm và tìm cơ hội tiết kiệm chi phí."
         actions={
           <Button size="sm" onClick={handleDownloadCSV} disabled={!usageStats}>
-            Download CSV
+            Tải CSV
           </Button>
         }
       />
@@ -241,12 +244,12 @@ const UsageAnalytics: React.FC = () => {
       <div className="mb-6 space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div>
-            <Label>Vehicle Group</Label>
+            <Label>Nhóm Xe</Label>
             <Select
               value={selectedGroupId}
               onChange={(value) => handleGroupChange(value)}
             >
-              <option value="">Select a group</option>
+              <option value="">Chọn nhóm xe</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
                   {group.name} - {group.vehicleName}

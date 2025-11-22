@@ -18,6 +18,9 @@ interface VehicleWithOwners extends VehicleGroup {
   vehicleId?: number; // Booking service vehicle ID
 }
 
+/**
+ * Trang chọn xe - chọn xe phù hợp với nhu cầu đặt xe (ngắn hạn, dài hạn, lâu dài)
+ */
 const VehicleSelection: React.FC<{
   needType: BookingNeedType;
   duration: number;
@@ -31,25 +34,31 @@ const VehicleSelection: React.FC<{
   const [bookingLoading, setBookingLoading] = useState<string | null>(null);
   const [createdBooking, setCreatedBooking] = useState<{ vehicleId: string; bookingId: number; ownerCode: string; vehicleName?: string; vehicleModel?: string } | null>(null);
 
+  /**
+   * Tải danh sách xe khi needType thay đổi
+   */
   useEffect(() => {
     loadVehicles();
   }, [needType]);
 
+  /**
+   * Tải danh sách xe phù hợp với nhu cầu
+   */
   const loadVehicles = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Get current user ID
+      // Lấy user ID hiện tại
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
       }
 
-      // Get co-owner by userId
+      // Lấy co-owner theo userId
       const coOwner = await ownershipService.getCoOwnerByUserId(userId);
       if (!coOwner) {
-        throw new Error("Co-owner not found. Please ensure you have completed KYC.");
+        throw new Error("Không tìm thấy co-owner. Vui lòng đảm bảo bạn đã hoàn thành KYC.");
       }
 
       // Get all ownerships for this co-owner
@@ -115,7 +124,7 @@ const VehicleSelection: React.FC<{
       const validVehicles = vehiclesWithOwnersResults.filter((v): v is VehicleWithOwners => v !== null);
       setVehicles(validVehicles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load vehicles");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách xe");
     } finally {
       setLoading(false);
     }
@@ -128,11 +137,16 @@ const VehicleSelection: React.FC<{
     return "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300";
   };
 
+  /**
+   * Lấy nhãn trạng thái xe (tiếng Việt)
+   * @param status - Trạng thái xe (0=Available, 1=In Use, 2=Maintenance, 3=Technical Issue)
+   * @returns Nhãn trạng thái
+   */
   const getStatusLabel = (status: number) => {
-    if (status === 0) return "Available";
-    if (status === 1) return "In Use";
-    if (status === 2) return "Maintenance";
-    return "Technical Issue";
+    if (status === 0) return "Có sẵn";
+    if (status === 1) return "Đang sử dụng";
+    if (status === 2) return "Bảo dưỡng";
+    return "Sự cố kỹ thuật";
   };
 
   const handleBookClick = (vehicleId: string) => {
@@ -229,7 +243,7 @@ const VehicleSelection: React.FC<{
         loadVehicles();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create booking");
+      setError(err instanceof Error ? err.message : "Không thể tạo booking");
     } finally {
       setBookingLoading(null);
     }
@@ -260,7 +274,7 @@ const VehicleSelection: React.FC<{
 
   return (
     <>
-      <PageMeta title="Co-owner | Select Vehicle" />
+      <PageMeta title="Đồng sở hữu | Chọn Xe" />
       <PageHeader
         title={`Chọn Xe - ${getNeedTypeLabel()}`}
         description={

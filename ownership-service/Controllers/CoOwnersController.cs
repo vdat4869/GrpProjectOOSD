@@ -26,7 +26,7 @@ public class CoOwnersController : ControllerBase
     }
 
     /// <summary>
-    /// Get all co-owners
+    /// Lấy danh sách co-owner
     /// </summary>
     [HttpGet]
     [Authorize] // Temporarily allow any authenticated user to debug

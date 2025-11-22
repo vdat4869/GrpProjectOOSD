@@ -12,6 +12,9 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Select from "../../components/form/Select";
 
+/**
+ * Trang quản lý phương thức thanh toán - thêm, sửa, xóa các phương thức thanh toán
+ */
 const PaymentMethods: React.FC = () => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,23 +31,29 @@ const PaymentMethods: React.FC = () => {
     isDefault: false,
   });
 
+  /**
+   * Tải danh sách phương thức thanh toán khi component mount
+   */
   useEffect(() => {
     loadPaymentMethods();
   }, []);
 
+  /**
+   * Tải danh sách phương thức thanh toán của user
+   */
   const loadPaymentMethods = async () => {
     try {
       setLoading(true);
       setError(null);
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        setError("User ID not found. Please login again.");
+        setError("Không tìm thấy User ID. Vui lòng đăng nhập lại.");
         return;
       }
       const data = await paymentService.getPaymentMethodsByUser(userId);
       setPaymentMethods(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load payment methods");
+      setError(err instanceof Error ? err.message : "Không thể tải phương thức thanh toán");
     } finally {
       setLoading(false);
     }
@@ -115,40 +124,49 @@ const PaymentMethods: React.FC = () => {
       setSelectedMethod(null);
       loadPaymentMethods();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save payment method");
+      setError(err instanceof Error ? err.message : "Không thể lưu phương thức thanh toán");
     }
   };
 
+  /**
+   * Xóa phương thức thanh toán
+   * @param id - ID của phương thức thanh toán cần xóa
+   */
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this payment method?")) return;
+    if (!confirm("Bạn có chắc chắn muốn xóa phương thức thanh toán này?")) return;
     try {
       await paymentService.deletePaymentMethod(id);
       loadPaymentMethods();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete payment method");
+      setError(err instanceof Error ? err.message : "Không thể xóa phương thức thanh toán");
     }
   };
 
+  /**
+   * Lấy nhãn loại phương thức thanh toán (tiếng Việt)
+   * @param type - Loại phương thức thanh toán
+   * @returns Nhãn loại phương thức
+   */
   const getMethodTypeLabel = (type: string) => {
     switch (type) {
       case "Banking":
       case PaymentMethodType.Banking.toString():
-        return "Banking";
+        return "Ngân hàng";
       case "EWallet":
       case "E-Wallet":
       case PaymentMethodType.EWallet.toString():
-        return "E-Wallet";
+        return "Ví điện tử";
       case "Cash":
       case PaymentMethodType.Cash.toString():
-        return "Cash";
+        return "Tiền mặt";
       default:
-        return type || "Unknown";
+        return type || "Không xác định";
     }
   };
 
   return (
     <>
-      <PageMeta title="Co-owner | Payment Methods" />
+      <PageMeta title="Đồng sở hữu | Phương Thức Thanh Toán" />
       <PageHeader
         title="Phương Thức Thanh Toán"
         description="Quản lý các phương thức thanh toán của bạn (Banking, E-Wallet)"

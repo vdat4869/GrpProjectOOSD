@@ -8,6 +8,9 @@ import CreateProposalModal from "../../components/modals/CreateProposalModal";
 import VoteModal from "../../components/modals/VoteModal";
 import ProposalDetailModal from "../../components/modals/ProposalDetailModal";
 
+/**
+ * Trang biểu quyết nhóm - tham gia các đề xuất về nâng cấp xe, chia sẻ chi phí, thay đổi chính sách
+ */
 const GroupVoting: React.FC = () => {
   // const _navigate = useNavigate(); // Reserved for future use
   const [proposals, setProposals] = useState<Proposal[]>([]);
@@ -80,7 +83,7 @@ const GroupVoting: React.FC = () => {
         await loadUserVotes(data);
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load proposals";
+      const errorMessage = err instanceof Error ? err.message : "Không thể tải đề xuất";
       setError(errorMessage);
       console.error("Error loading proposals:", err);
       // Don't clear proposals on error, keep existing data
@@ -186,7 +189,7 @@ const GroupVoting: React.FC = () => {
         await loadProposals(selectedGroupId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start voting");
+      setError(err instanceof Error ? err.message : "Không thể bắt đầu biểu quyết");
     } finally {
       setLoading(false);
     }
@@ -204,13 +207,13 @@ const GroupVoting: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Group Voting" />
+      <PageMeta title="Đồng sở hữu | Biểu Quyết Nhóm" />
       <PageHeader
-        title="Group Voting"
-        description="Participate in proposals that shape vehicle upgrades, cost sharing, and policy changes."
+        title="Biểu Quyết Nhóm"
+        description="Tham gia các đề xuất về nâng cấp xe, chia sẻ chi phí và thay đổi chính sách."
         actions={
           <Button size="sm" onClick={() => setShowCreateModal(true)}>
-            Create Proposal
+            Tạo Đề Xuất
           </Button>
         }
       />
@@ -218,7 +221,7 @@ const GroupVoting: React.FC = () => {
       {groups.length > 0 && (
         <div className="mb-4">
           <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Select Vehicle Group
+            Chọn Nhóm Xe
           </label>
           <select
             value={selectedGroupId}
@@ -236,7 +239,7 @@ const GroupVoting: React.FC = () => {
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading proposals...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải đề xuất...</p>
         </div>
       )}
 

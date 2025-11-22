@@ -13,6 +13,9 @@ import CreateCostShareModal from "../../components/modals/CreateCostShareModal";
 import CreatePaymentModal from "../../components/modals/CreatePaymentModal";
 import PaymentTypeModal from "../../components/modals/PaymentTypeModal";
 
+/**
+ * Trang quản lý cost shares - xem và quản lý chi phí chia sẻ cho các nhóm xe
+ */
 const CostShares: React.FC = () => {
   const navigate = useNavigate();
   const [costShares, setCostShares] = useState<CostShare[]>([]);
@@ -27,23 +30,45 @@ const CostShares: React.FC = () => {
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [totalPendingAmount, setTotalPendingAmount] = useState(0);
+  const [coOwnerId, setCoOwnerId] = useState<string | null>(null); // GUID của co-owner
   const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
 
+  /**
+   * Tải co-owner ID (GUID) để khớp với cost share detail userId
+   */
   useEffect(() => {
+    const loadCoOwnerId = async () => {
+      if (userId) {
+        try {
+          const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+          if (coOwner) {
+            setCoOwnerId(coOwner.id); // Đây là GUID cần thiết
+            console.log('Co-owner đã tải:', { userId, coOwnerId: coOwner.id });
+          }
+        } catch (err) {
+          console.error("Không thể tải co-owner:", err);
+        }
+      }
+    };
+    
+    loadCoOwnerId();
     loadCostShares();
-    // Show payment type modal on first visit
+    // Hiển thị modal chọn loại thanh toán khi lần đầu truy cập
     const hasSeenModal = sessionStorage.getItem("payment-type-selected");
     if (!hasSeenModal) {
       setShowPaymentTypeModal(true);
     }
-  }, []);
+  }, [userId]);
 
+  /**
+   * Tải danh sách cost shares cho user
+   */
   const loadCostShares = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Get user's groups first
+      // Lấy danh sách nhóm xe của user trước
       let userGroupIds: string[] = [];
       if (userId) {
         try {
@@ -53,33 +78,33 @@ const CostShares: React.FC = () => {
             userGroupIds = [...new Set(ownerships.map(o => o.vehicleGroupId))];
           }
         } catch (err) {
-          console.error("Failed to load user groups:", err);
+          console.error("Không thể tải nhóm xe của user:", err);
         }
       }
       
-      // Load cost shares for user's groups
+      // Tải cost shares cho các nhóm xe của user
       let allCostShares: CostShare[] = [];
       if (userGroupIds.length > 0) {
-        // Load cost shares for each group
+        // Tải cost shares cho từng nhóm
         const costSharesPromises = userGroupIds.map(groupId => 
           paymentService.getCostShares(groupId).catch(() => [])
         );
         const costSharesArrays = await Promise.all(costSharesPromises);
         allCostShares = costSharesArrays.flat();
       } else {
-        // If no groups, try loading all (for admin/staff)
+        // Nếu không có nhóm, thử tải tất cả (cho admin/staff)
         const data = await paymentService.getCostShares();
         allCostShares = data;
       }
       
-      // Load details for each cost share
+      // Tải chi tiết cho từng cost share
       const costSharesWithDetails = await Promise.all(
         allCostShares.map(async (costShare) => {
           try {
             const details = await paymentService.getCostShareDetails(costShare.id);
             return { ...costShare, costShareDetails: details };
           } catch (err) {
-            console.error(`Failed to load details for cost share ${costShare.id}:`, err);
+            console.error(`Không thể tải chi tiết cho cost share ${costShare.id}:`, err);
             return costShare;
           }
         })
@@ -87,13 +112,32 @@ const CostShares: React.FC = () => {
       
       setCostShares(costSharesWithDetails);
 
-      // Calculate pending payments for current user
+      // Tính toán số tiền chờ thanh toán cho user hiện tại
+      // Sử dụng coOwnerId (GUID) thay vì userId (number) để khớp với detail.userId
       let pending = 0;
       let totalPending = 0;
+      const currentCoOwnerId = coOwnerId ? String(coOwnerId).toLowerCase().trim() : null;
+      
       costSharesWithDetails.forEach((costShare) => {
         if (costShare.costShareDetails) {
           costShare.costShareDetails.forEach((detail) => {
-            if (detail.userId === userId && detail.status === PaymentStatus.Pending) {
+            const detailUserId = String(detail.userId).toLowerCase().trim();
+            // Chuẩn hóa status thành number (PaymentStatus enum)
+            let detailStatus: PaymentStatus;
+            if (typeof detail.status === 'number') {
+              detailStatus = detail.status as PaymentStatus;
+            } else if (typeof detail.status === 'string') {
+              // Chuyển string thành enum
+              detailStatus = (detail.status === 'Pending' || detail.status === '0') 
+                ? PaymentStatus.Pending 
+                : PaymentStatus.Completed; // Fallback mặc định
+            } else {
+              detailStatus = detail.status;
+            }
+            const isPending = detailStatus === PaymentStatus.Pending;
+            
+            // So sánh với coOwnerId (GUID) thay vì userId (number)
+            if (currentCoOwnerId && detailUserId === currentCoOwnerId && isPending) {
               pending++;
               totalPending += detail.amount;
             }
@@ -103,63 +147,83 @@ const CostShares: React.FC = () => {
       setPendingCount(pending);
       setTotalPendingAmount(totalPending);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load cost shares");
+      setError(err instanceof Error ? err.message : "Không thể tải cost shares");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Định dạng ngày tháng
+   * @param dateString - Chuỗi ngày tháng
+   * @returns Ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "short",
+    return new Date(dateString).toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
       year: "numeric",
     });
   };
 
+  /**
+   * Định dạng số tiền
+   * @param amount - Số tiền
+   * @returns Số tiền đã định dạng (₫)
+   */
   const formatAmount = (amount: number) => {
     return `₫${amount.toLocaleString()}`;
   };
 
+  /**
+   * Lấy nhãn loại chi phí (tiếng Việt)
+   * @param type - Loại chi phí
+   * @returns Nhãn loại chi phí
+   */
   const getCostTypeLabel = (type: CostType) => {
     switch (type) {
       case CostType.Charging:
-        return "Charging";
+        return "Sạc điện";
       case CostType.Insurance:
-        return "Insurance";
+        return "Bảo hiểm";
       case CostType.Maintenance:
-        return "Maintenance";
+        return "Bảo dưỡng";
       case CostType.Registration:
-        return "Registration";
+        return "Đăng ký";
       case CostType.Cleaning:
-        return "Cleaning";
+        return "Vệ sinh";
       case CostType.Parking:
-        return "Parking";
+        return "Đỗ xe";
       case CostType.Toll:
-        return "Toll";
+        return "Phí cầu đường";
       case CostType.Other:
-        return "Other";
+        return "Khác";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
+  /**
+   * Lấy nhãn trạng thái thanh toán (tiếng Việt)
+   * @param status - Trạng thái thanh toán
+   * @returns Nhãn trạng thái
+   */
   const getStatusLabel = (status: PaymentStatus) => {
     switch (status) {
       case PaymentStatus.Pending:
-        return "Pending";
+        return "Chờ thanh toán";
       case PaymentStatus.Processing:
-        return "Processing";
+        return "Đang xử lý";
       case PaymentStatus.Completed:
-        return "Completed";
+        return "Hoàn thành";
       case PaymentStatus.Failed:
-        return "Failed";
+        return "Thất bại";
       case PaymentStatus.Cancelled:
-        return "Cancelled";
+        return "Đã hủy";
       case PaymentStatus.Refunded:
-        return "Refunded";
+        return "Đã hoàn tiền";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
@@ -180,12 +244,20 @@ const CostShares: React.FC = () => {
     }
   };
 
+  /**
+   * Xử lý khi click nút thanh toán
+   * @param costShareDetailId - ID của cost share detail
+   * @param amount - Số tiền cần thanh toán
+   */
   const handlePay = (costShareDetailId: string, amount: number) => {
     setSelectedCostShareDetailId(costShareDetailId);
     setSelectedAmount(amount);
     setIsPaymentModalOpen(true);
   };
 
+  /**
+   * Xử lý khi thanh toán thành công
+   */
   const handlePaymentSuccess = () => {
     setIsPaymentModalOpen(false);
     setSelectedCostShareDetailId(null);
@@ -195,10 +267,10 @@ const CostShares: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Cost Shares" />
+      <PageMeta title="Đồng sở hữu | Chia Sẻ Chi Phí" />
       <PageHeader
-        title="Cost Shares"
-        description="View and manage shared costs for your vehicle groups."
+        title="Chia Sẻ Chi Phí"
+        description="Xem và quản lý chi phí chia sẻ cho các nhóm xe của bạn."
       />
 
       {/* Pending Payments Alert */}
@@ -207,15 +279,15 @@ const CostShares: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                You have {pendingCount} pending payment{pendingCount > 1 ? "s" : ""}
+                Bạn có {pendingCount} khoản thanh toán đang chờ{pendingCount > 1 ? "" : ""}
               </h3>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Total amount due: <span className="font-semibold">{formatAmount(totalPendingAmount)}</span>
+                Tổng số tiền cần thanh toán: <span className="font-semibold">{formatAmount(totalPendingAmount)}</span>
               </p>
             </div>
             <button
               onClick={() => {
-                // Scroll to first pending payment
+                // Cuộn đến khoản thanh toán chờ đầu tiên
                 const firstPending = document.querySelector('[data-pending="true"]');
                 if (firstPending) {
                   firstPending.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -223,7 +295,7 @@ const CostShares: React.FC = () => {
               }}
               className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
             >
-              View Pending Payments
+              Xem Thanh Toán Chờ
             </button>
           </div>
         </div>
@@ -234,13 +306,13 @@ const CostShares: React.FC = () => {
           onClick={() => setIsCreateModalOpen(true)}
           className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600"
         >
-          Create Cost Share
+          Tạo Chia Sẻ Chi Phí
         </button>
       </div>
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading cost shares...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải chia sẻ chi phí...</p>
         </div>
       )}
 
@@ -255,7 +327,7 @@ const CostShares: React.FC = () => {
           {costShares.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <p className="text-gray-600 dark:text-gray-400">
-                No cost shares found.
+                Không tìm thấy chia sẻ chi phí nào.
               </p>
             </div>
           ) : (
@@ -271,7 +343,7 @@ const CostShares: React.FC = () => {
                         {costShare.title}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {costShare.description || "No description"}
+                        {costShare.description || "Không có mô tả"}
                       </p>
                     </div>
                     <div className="text-right">
@@ -288,19 +360,40 @@ const CostShares: React.FC = () => {
                     </div>
                   </div>
                   <div className="mt-2 flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-                    <span>Type: {getCostTypeLabel(costShare.costType)}</span>
-                    <span>Due: {formatDate(costShare.dueDate)}</span>
+                    <span>Loại: {getCostTypeLabel(costShare.costType)}</span>
+                    <span>Hạn thanh toán: {formatDate(costShare.dueDate)}</span>
                   </div>
                 </div>
                 {costShare.costShareDetails &&
                   costShare.costShareDetails.length > 0 && (
                     <div className="p-4">
                       <h4 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        Cost Share Details
+                        Chi Tiết Chia Sẻ Chi Phí
                       </h4>
                       <div className="space-y-2">
                         {costShare.costShareDetails.map((detail) => {
-                          const isUserPending = detail.userId === userId && detail.status === PaymentStatus.Pending;
+                          // Use coOwnerId (GUID) to match with detail.userId (GUID)
+                          // NOT userId (number) from localStorage
+                          const detailUserId = String(detail.userId).toLowerCase().trim();
+                          const currentCoOwnerId = coOwnerId ? String(coOwnerId).toLowerCase().trim() : null;
+                          const isUserDetail = currentCoOwnerId && detailUserId === currentCoOwnerId;
+                          
+                          // Normalize status to PaymentStatus enum
+                          let detailStatus: PaymentStatus;
+                          if (typeof detail.status === 'number') {
+                            detailStatus = detail.status as PaymentStatus;
+                          } else if (typeof detail.status === 'string') {
+                            // Convert string to enum
+                            detailStatus = (detail.status === 'Pending' || detail.status === '0') 
+                              ? PaymentStatus.Pending 
+                              : PaymentStatus.Completed; // Default fallback
+                          } else {
+                            detailStatus = detail.status;
+                          }
+                          const isPending = detailStatus === PaymentStatus.Pending;
+                          
+                          const isUserPending = isUserDetail && isPending;
+                          
                           return (
                             <div
                               key={detail.id}
@@ -313,31 +406,31 @@ const CostShares: React.FC = () => {
                             >
                               <div>
                                 <p className="text-sm font-medium text-gray-900 dark:text-white/90">
-                                  {detail.userId === userId ? (
-                                    <span className="font-semibold">You</span>
+                                  {isUserDetail ? (
+                                    <span className="font-semibold">Bạn</span>
                                   ) : (
-                                    `User: ${detail.userId.substring(0, 8)}...`
+                                    `Người dùng: ${detail.userId.substring(0, 8)}...`
                                   )}
                                 </p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  Ownership: {detail.ownershipPercentage}% | Amount:{" "}
+                                  Tỷ lệ sở hữu: {detail.ownershipPercentage}% | Số tiền:{" "}
                                   {formatAmount(detail.amount)}
                                 </p>
                               </div>
                               <div className="flex items-center gap-3">
                                 <span
                                   className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
-                                    detail.status
+                                    detailStatus
                                   )}`}
                                 >
-                                  {getStatusLabel(detail.status)}
+                                  {getStatusLabel(detailStatus)}
                                 </span>
                                 {isUserPending && (
                                   <button
                                     onClick={() => handlePay(detail.id, detail.amount)}
                                     className="rounded-lg bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-700 dark:bg-primary-500 dark:hover:bg-primary-600 shadow-md hover:shadow-lg transition-all"
                                   >
-                                    Pay Now
+                                    Thanh Toán Ngay
                                   </button>
                                 )}
                               </div>

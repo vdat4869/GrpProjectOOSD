@@ -1,4 +1,20 @@
--- Payment DB schema (idempotent, aligns with EF Core models)
+-- ============================================
+-- SCHEMA CHI TIẾT CHO PAYMENT DATABASE
+-- ============================================
+-- File này định nghĩa cấu trúc bảng cho database payment_db
+-- Database này quản lý thanh toán, ví điện tử, và chia sẻ chi phí
+-- 
+-- Các bảng chính:
+-- - Wallets: Ví điện tử của từng người dùng trong mỗi nhóm xe
+-- - CostShares: Chia sẻ chi phí (bảo trì, nhiên liệu, phí đường...)
+-- - CostShareDetails: Chi tiết chia sẻ chi phí cho từng thành viên
+-- - PaymentMethods: Phương thức thanh toán (ngân hàng, ví điện tử...)
+-- - Payments: Giao dịch thanh toán
+-- - Transactions: Lịch sử giao dịch trong ví
+--
+-- Script này là idempotent - có thể chạy nhiều lần mà không gây lỗi
+-- ============================================
+
 USE [payment_db];
 GO
 
@@ -26,44 +42,58 @@ GO
 IF SCHEMA_ID(N'Wallet') IS NULL EXEC('CREATE SCHEMA [Wallet]');
 GO
 
+-- ============================================
+-- BẢNG WALLETS - VÍ ĐIỆN TỬ
+-- ============================================
+-- Lưu trữ ví điện tử của từng người dùng trong mỗi nhóm xe
+-- Mỗi người dùng có một ví riêng cho mỗi nhóm xe mà họ tham gia
+-- Ví được sử dụng để nạp tiền, thanh toán chi phí, và nhận tiền từ chia sẻ chi phí
+-- ============================================
 CREATE TABLE [Wallet].[Wallets] (
-    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_Wallets] PRIMARY KEY,
-    [UserId] UNIQUEIDENTIFIER NOT NULL,
-    [GroupId] UNIQUEIDENTIFIER NOT NULL,
-    [Balance] DECIMAL(18,2) NOT NULL DEFAULT(0),
-    [FrozenAmount] DECIMAL(18,2) NOT NULL DEFAULT(0),
-    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
-    [IsActive] BIT NOT NULL DEFAULT(1),
-    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
-    [UpdatedAt] DATETIME2 NULL,
-    [CreatedBy] NVARCHAR(200) NULL,
-    [UpdatedBy] NVARCHAR(200) NULL,
-    [IsDeleted] BIT NOT NULL DEFAULT(0)
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_Wallets] PRIMARY KEY,  -- ID duy nhất (GUID)
+    [UserId] UNIQUEIDENTIFIER NOT NULL,  -- ID người dùng (foreign key đến Users trong auth_db)
+    [GroupId] UNIQUEIDENTIFIER NOT NULL,  -- ID nhóm xe (foreign key đến VehicleGroups trong ownership_db)
+    [Balance] DECIMAL(18,2) NOT NULL DEFAULT(0),  -- Số dư hiện tại
+    [FrozenAmount] DECIMAL(18,2) NOT NULL DEFAULT(0),  -- Số tiền bị đóng băng (đang trong giao dịch)
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),  -- Đơn vị tiền tệ (VND, USD...)
+    [IsActive] BIT NOT NULL DEFAULT(1),  -- Trạng thái (1=active, 0=inactive)
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),  -- Thời gian tạo
+    [UpdatedAt] DATETIME2 NULL,  -- Thời gian cập nhật
+    [CreatedBy] NVARCHAR(200) NULL,  -- Người tạo
+    [UpdatedBy] NVARCHAR(200) NULL,  -- Người cập nhật
+    [IsDeleted] BIT NOT NULL DEFAULT(0)  -- Đã xóa chưa (soft delete)
 );
 GO
 
 CREATE INDEX [IX_Wallets_User_Group] ON [Wallet].[Wallets]([UserId], [GroupId]);
 GO
 
+-- ============================================
+-- BẢNG COSTSHARES - CHIA SẺ CHI PHÍ
+-- ============================================
+-- Lưu trữ các khoản chi phí cần chia sẻ giữa các chủ sở hữu
+-- Chi phí được chia theo tỷ lệ sở hữu hoặc theo thỏa thuận
+-- Các loại chi phí: Maintenance, Fuel, Insurance, Parking, Toll...
+-- ============================================
 CREATE TABLE [dbo].[CostShares] (
-    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_CostShares] PRIMARY KEY,
-    [GroupId] UNIQUEIDENTIFIER NOT NULL,
-    [VehicleId] UNIQUEIDENTIFIER NOT NULL,
-    [CostType] INT NOT NULL,
-    [Title] NVARCHAR(200) NOT NULL,
-    [Description] NVARCHAR(1000) NULL,
-    [TotalAmount] DECIMAL(18,2) NOT NULL,
-    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),
-    [DueDate] DATETIME2 NOT NULL,
-    [PaidDate] DATETIME2 NULL,
-    [Status] INT NOT NULL,
-    [ReceiptUrl] NVARCHAR(500) NULL,
-    [Metadata] NVARCHAR(1000) NULL,
-    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
-    [UpdatedAt] DATETIME2 NULL,
-    [CreatedBy] NVARCHAR(200) NULL,
-    [UpdatedBy] NVARCHAR(200) NULL,
-    [IsDeleted] BIT NOT NULL DEFAULT(0)
+    [Id] UNIQUEIDENTIFIER NOT NULL CONSTRAINT [PK_CostShares] PRIMARY KEY,  -- ID duy nhất (GUID)
+    [GroupId] UNIQUEIDENTIFIER NOT NULL,  -- ID nhóm xe (foreign key đến VehicleGroups trong ownership_db)
+    [VehicleId] UNIQUEIDENTIFIER NOT NULL,  -- ID xe (foreign key đến Vehicles trong booking_db)
+    [CostType] INT NOT NULL,  -- Loại chi phí (1=Maintenance, 2=Fuel, 3=Insurance, 4=Parking, 5=Toll...)
+    [Title] NVARCHAR(200) NOT NULL,  -- Tiêu đề chi phí
+    [Description] NVARCHAR(1000) NULL,  -- Mô tả chi tiết
+    [TotalAmount] DECIMAL(18,2) NOT NULL,  -- Tổng số tiền
+    [Currency] NVARCHAR(3) NOT NULL DEFAULT(N'VND'),  -- Đơn vị tiền tệ (VND, USD...)
+    [DueDate] DATETIME2 NOT NULL,  -- Ngày đến hạn thanh toán
+    [PaidDate] DATETIME2 NULL,  -- Ngày đã thanh toán (khi tất cả thành viên đã trả)
+    [Status] INT NOT NULL,  -- Trạng thái (0=Pending, 1=Partial, 2=Paid, 3=Overdue)
+    [ReceiptUrl] NVARCHAR(500) NULL,  -- URL hóa đơn/chứng từ
+    [Metadata] NVARCHAR(1000) NULL,  -- Dữ liệu bổ sung (JSON)
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),  -- Thời gian tạo
+    [UpdatedAt] DATETIME2 NULL,  -- Thời gian cập nhật
+    [CreatedBy] NVARCHAR(200) NULL,  -- Người tạo
+    [UpdatedBy] NVARCHAR(200) NULL,  -- Người cập nhật
+    [IsDeleted] BIT NOT NULL DEFAULT(0)  -- Đã xóa chưa (soft delete)
 );
 GO
 

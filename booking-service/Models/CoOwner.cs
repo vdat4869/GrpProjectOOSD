@@ -2,9 +2,16 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BookingService.Models
 {
-    
+    /// <summary>
+    /// Entity đại diện cho một đồng sở hữu (co-owner) trong hệ thống
+    /// Mỗi co-owner có tỷ lệ sở hữu và số lần sử dụng xe
+    /// Tỷ lệ sở hữu ảnh hưởng đến quyền ưu tiên khi đặt xe
+    /// </summary>
     public class CoOwner
     {
+        /// <summary>
+        /// ID duy nhất của co-owner (Primary Key)
+        /// </summary>
         [Key]
         public int Id { get; set; }
 

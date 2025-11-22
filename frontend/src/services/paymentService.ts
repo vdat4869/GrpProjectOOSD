@@ -312,32 +312,35 @@ export const paymentService = {
 
   // VNPay methods
   async createVNPayPayment(request: VNPayCreatePaymentRequest): Promise<VNPayCreatePaymentResponse> {
-    // Call VNPay service directly (port 3001) - same as payment-service frontend
-    const vnpayApiBase = import.meta.env.VITE_VNPAY_API_BASE_URL || 'http://localhost:3001';
+    // Call VNPay service through gateway
+    const response = await apiClient.post<VNPayCreatePaymentResponse>(
+      API_ENDPOINTS.VNPAY.CREATE_PAYMENT,
+      request
+    );
     
-    const response = await fetch(`${vnpayApiBase}/api/vnpay/create-payment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-    });
-    
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(text || `HTTP ${response.status}`);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to create VNPay payment");
     }
-    
-    const data = await response.json();
     
     // VNPay service returns: { success: true, data: { paymentUrl, orderId } }
-    if (!data.success || !data.data?.paymentUrl) {
-      throw new Error(data.message || "Failed to create VNPay payment");
+    // apiClient already unwraps the data, so response.data should be the actual response
+    if (typeof response.data === 'object' && 'data' in response.data) {
+      // If still wrapped, unwrap it
+      const vnpayData = (response.data as any).data;
+      if (vnpayData?.paymentUrl) {
+        return {
+          paymentUrl: vnpayData.paymentUrl,
+          orderId: vnpayData.orderId || request.orderId,
+        };
+      }
     }
     
-    // Return in the format expected by frontend: { paymentUrl, orderId }
-    return {
-      paymentUrl: data.data.paymentUrl,
-      orderId: data.data.orderId,
-    };
+    // If response.data is already the payment response
+    if ('paymentUrl' in response.data) {
+      return response.data as VNPayCreatePaymentResponse;
+    }
+    
+    throw new Error("Invalid response format from VNPay service");
   },
 
   // Company Payment Request methods

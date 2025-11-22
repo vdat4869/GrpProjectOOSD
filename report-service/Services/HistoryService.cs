@@ -806,34 +806,58 @@ public class HistoryService : IHistoryService
             }
 
             // Step 4: Create cost share details based on ownership percentages
+            // Payment service expects PascalCase property names
             var costShareDetails = new List<object>();
             foreach (var ownership in ownerships.Where(o => o.IsActive))
             {
+                // Parse CoOwnerId to GUID
+                if (!Guid.TryParse(ownership.CoOwnerId, out var coOwnerGuid))
+                {
+                    _logger?.LogWarning("Invalid CoOwnerId format: {CoOwnerId}, skipping", ownership.CoOwnerId);
+                    continue;
+                }
+                
                 var amount = (double)(maintenanceRecord.Cost * ownership.OwnershipPercentage / 100m);
                 costShareDetails.Add(new
                 {
-                    userId = ownership.CoOwnerId.ToString(),
-                    ownershipPercentage = ownership.OwnershipPercentage,
-                    amount = amount
+                    UserId = coOwnerGuid.ToString(), // GUID as string, PascalCase
+                    OwnershipPercentage = ownership.OwnershipPercentage,
+                    Amount = amount,
+                    Notes = (string?)null
                 });
             }
 
+            if (!costShareDetails.Any())
+            {
+                _logger?.LogError("No valid cost share details created. Cannot create cost share.");
+                throw new Exception("No valid cost share details created. Cannot create cost share.");
+            }
+
             // Step 5: Create cost share request
+            // Use matchedGroupId for vehicleId (it's the GUID of the vehicle group)
+            // Payment service expects PascalCase property names (GroupId, VehicleId, etc.)
             var costShareRequest = new
             {
-                groupId = matchedGroupId?.ToString() ?? Guid.Empty.ToString(),
-                vehicleId = maintenanceRecord.VehicleId.ToString(),
-                costType = 2, // Maintenance
-                title = $"Bảo dưỡng: {maintenanceRecord.MaintenanceType}",
-                description = maintenanceRecord.Description ?? $"Bảo dưỡng xe - {maintenanceRecord.MaintenanceType}",
-                totalAmount = (double)maintenanceRecord.Cost,
-                currency = "VND",
-                dueDate = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                receiptUrl = (string?)null,
-                costShareDetails = costShareDetails
+                GroupId = matchedGroupId.Value.ToString(), // GUID as string
+                VehicleId = matchedGroupId.Value.ToString(), // GUID as string
+                CostType = 2, // Maintenance
+                Title = $"Bảo dưỡng: {maintenanceRecord.MaintenanceType}",
+                Description = maintenanceRecord.Description ?? $"Bảo dưỡng xe - {maintenanceRecord.MaintenanceType}",
+                TotalAmount = (double)maintenanceRecord.Cost,
+                Currency = "VND",
+                DueDate = DateTime.UtcNow.AddDays(30).ToString("yyyy-MM-ddTHH:mm:ss.fffZ"), // ISO 8601 format
+                ReceiptUrl = (string?)null,
+                CostShareDetails = costShareDetails
             };
 
-            var json = JsonSerializer.Serialize(costShareRequest);
+            // Use default serialization (PascalCase) - payment service expects this
+            var jsonOptions = new JsonSerializerOptions
+            {
+                WriteIndented = false
+            };
+            var json = JsonSerializer.Serialize(costShareRequest, jsonOptions);
+            
+            _logger?.LogInformation("Cost share request JSON: {Json}", json);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             // Forward Authorization header from current request

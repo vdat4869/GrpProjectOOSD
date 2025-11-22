@@ -20,6 +20,9 @@ interface VehicleWithOwners extends VehicleGroup {
   vehicleId?: number; // Booking service vehicle ID
 }
 
+/**
+ * Trang quản lý bookings của Co-owner - xem, tạo, cập nhật, hủy bookings
+ */
 const MyBookings: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +33,7 @@ const MyBookings: React.FC = () => {
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   
-  // Create booking form state
+  // State cho form tạo booking
   const [availableVehicles, setAvailableVehicles] = useState<VehicleWithOwners[]>([]);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [startTime, setStartTime] = useState("");
@@ -42,6 +45,9 @@ const MyBookings: React.FC = () => {
   const [creatingBooking, setCreatingBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
+  /**
+   * Tải danh sách bookings của user
+   */
   const loadBookings = async () => {
     try {
       setLoading(true);
@@ -50,7 +56,7 @@ const MyBookings: React.FC = () => {
       const data = await bookingService.getBookings(userId || undefined);
       setBookings(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load bookings");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách bookings");
     } finally {
       setLoading(false);
     }
@@ -60,66 +66,69 @@ const MyBookings: React.FC = () => {
     loadBookings();
   }, []);
 
+  /**
+   * Tải danh sách xe có sẵn cho user (dựa trên quyền sở hữu)
+   */
   const loadAvailableVehicles = async () => {
     try {
       setLoadingVehicles(true);
       setBookingError(null);
       
-      // Get current user ID
+      // Lấy user ID hiện tại
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
       }
 
-      // Get co-owner by userId
+      // Lấy co-owner theo userId
       const coOwner = await ownershipService.getCoOwnerByUserId(userId);
       if (!coOwner) {
         setBookingError("Tài khoản chưa được đăng ký làm co-owner. Vui lòng hoàn thành KYC trước.");
         return;
       }
-      console.log("Co-owner found:", coOwner);
+      console.log("Đã tìm thấy co-owner:", coOwner);
 
-      // Get all ownerships for this co-owner
+      // Lấy tất cả quyền sở hữu cho co-owner này
       const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
-      console.log("All ownerships for co-owner:", allOwnerships);
+      console.log("Tất cả quyền sở hữu của co-owner:", allOwnerships);
       
       if (allOwnerships.length === 0) {
         setBookingError("Bạn chưa có quyền sở hữu xe nào. Vui lòng liên hệ admin để được thêm vào nhóm sở hữu.");
         return;
       }
       
-      // Get unique group IDs from ownerships
+      // Lấy danh sách group ID duy nhất từ ownerships
       const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
-      console.log("Group IDs from ownerships:", groupIds);
+      console.log("Group IDs từ ownerships:", groupIds);
       
-      // Get groups for these IDs
+      // Lấy groups cho các ID này
       const allGroups = await ownershipService.getGroups();
       const userGroups = allGroups.filter(g => groupIds.includes(g.id));
-      console.log("User groups:", userGroups.map(g => ({ id: g.id, name: g.name, vehicleName: g.vehicleName })));
+      console.log("Nhóm xe của user:", userGroups.map(g => ({ id: g.id, name: g.name, vehicleName: g.vehicleName })));
       
       if (userGroups.length === 0) {
         setBookingError("Không tìm thấy nhóm xe tương ứng với quyền sở hữu của bạn. Vui lòng liên hệ admin.");
         return;
       }
 
-      // Also load vehicles from booking service for vehicleId mapping
+      // Tải vehicles từ booking service để map vehicleId
       const vehiclesFromBooking = await bookingService.getVehicles();
       
-      // Load ownerships for each group and build vehicle list
+      // Tải ownerships cho từng group và xây dựng danh sách xe
       const vehiclesWithOwnersPromises = userGroups.map(async (group) => {
         try {
           const ownerships = await ownershipService.getOwnerships(group.id);
           
-          // Find current user's ownership
+          // Tìm quyền sở hữu của user hiện tại
           const currentUserOwnership = ownerships.find(o => o.coOwnerId === coOwner.id);
           
-          // Find matching vehicle ID from booking service by name
-          // Try multiple matching strategies
+          // Tìm vehicle ID khớp từ booking service theo tên
+          // Thử nhiều chiến lược khớp
           let matchingVehicle = vehiclesFromBooking.find(v => 
             v.name.toLowerCase() === group.vehicleName.toLowerCase()
           );
           
-          // If not found, try matching by license plate if available
+          // Nếu không tìm thấy, thử khớp theo biển số nếu có
           if (!matchingVehicle && group.licensePlate) {
             matchingVehicle = vehiclesFromBooking.find(v => 
               v.name.toLowerCase().includes(group.licensePlate!.toLowerCase()) ||
@@ -127,7 +136,7 @@ const MyBookings: React.FC = () => {
             );
           }
           
-          // If still not found, try partial name matching
+          // Nếu vẫn không tìm thấy, thử khớp một phần tên
           if (!matchingVehicle) {
             matchingVehicle = vehiclesFromBooking.find(v => 
               v.name.toLowerCase().includes(group.vehicleName.toLowerCase()) ||
@@ -135,17 +144,17 @@ const MyBookings: React.FC = () => {
             );
           }
           
-          // If still not found, automatically create vehicle in booking service
+          // Nếu vẫn không tìm thấy, tự động tạo vehicle trong booking service
           let vehicleId = matchingVehicle?.id;
           if (!vehicleId && group.vehicleName) {
             try {
-              console.log(`Creating vehicle "${group.vehicleName}" in booking service...`);
+              console.log(`Đang tạo vehicle "${group.vehicleName}" trong booking service...`);
               const newVehicle = await bookingService.createVehicle(group.vehicleName);
               vehicleId = newVehicle.id;
-              console.log(`Vehicle created successfully with ID: ${vehicleId}`);
+              console.log(`Đã tạo vehicle thành công với ID: ${vehicleId}`);
             } catch (err) {
-              console.error(`Failed to create vehicle "${group.vehicleName}":`, err);
-              // Continue without vehicleId - will show error when user tries to book
+              console.error(`Không thể tạo vehicle "${group.vehicleName}":`, err);
+              // Tiếp tục mà không có vehicleId - sẽ hiển thị lỗi khi user cố đặt xe
             }
           }
           
@@ -156,25 +165,25 @@ const MyBookings: React.FC = () => {
             vehicleId,
           } as VehicleWithOwners;
         } catch (err) {
-          console.error(`Failed to load ownerships for group ${group.id}:`, err);
+          console.error(`Không thể tải ownerships cho group ${group.id}:`, err);
           return null;
         }
       });
 
       const vehiclesWithOwnersResults = await Promise.all(vehiclesWithOwnersPromises);
-      // Show all vehicles with ownership, even if vehicleId is not found
-      // This allows users to see their groups and we'll show a warning if vehicleId is missing
+      // Hiển thị tất cả xe có quyền sở hữu, kể cả khi không tìm thấy vehicleId
+      // Điều này cho phép user thấy các nhóm của họ và chúng ta sẽ hiển thị cảnh báo nếu thiếu vehicleId
       const validVehicles = vehiclesWithOwnersResults.filter((v): v is VehicleWithOwners => v !== null);
       setAvailableVehicles(validVehicles);
       
-      // Auto-select first vehicle if available
+      // Tự động chọn xe đầu tiên nếu có
       if (validVehicles.length > 0 && !selectedVehicleId) {
         setSelectedVehicleId(validVehicles[0].id);
       }
       
-      // Log for debugging
+      // Log để debug
       if (validVehicles.length > 0) {
-        console.log("Available vehicles:", validVehicles.map(v => ({
+        console.log("Xe có sẵn:", validVehicles.map(v => ({
           groupId: v.id,
           vehicleName: v.vehicleName,
           vehicleId: v.vehicleId,
@@ -182,7 +191,7 @@ const MyBookings: React.FC = () => {
         })));
       }
     } catch (err) {
-      setBookingError(err instanceof Error ? err.message : "Failed to load vehicles");
+      setBookingError(err instanceof Error ? err.message : "Không thể tải danh sách xe");
     } finally {
       setLoadingVehicles(false);
     }
@@ -211,6 +220,9 @@ const MyBookings: React.FC = () => {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+  /**
+   * Lấy gợi ý từ AI về tính công bằng của booking
+   */
   const handleGetAISuggestion = async () => {
     if (!selectedVehicleId || !startTime || !endTime) {
       setBookingError("Vui lòng chọn xe và thời gian trước");
@@ -224,7 +236,7 @@ const MyBookings: React.FC = () => {
 
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
       }
 
       const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
@@ -235,7 +247,7 @@ const MyBookings: React.FC = () => {
         throw new Error(`Xe "${selectedVehicle.vehicleName}" chưa được đồng bộ với hệ thống đặt xe. Vui lòng liên hệ admin để đồng bộ xe này.`);
       }
 
-      // Get ownership percentage for current user
+      // Lấy tỷ lệ sở hữu của user hiện tại
       const ownershipPercentage = selectedVehicle.currentUserOwnership?.ownershipPercentage || 0;
 
       const suggestion = await aiService.getBookingSuggestion({
@@ -248,19 +260,22 @@ const MyBookings: React.FC = () => {
 
       if (suggestion) {
         setAiSuggestion(suggestion);
-        // Auto-apply suggestion if fairness score is good
+        // Tự động áp dụng gợi ý nếu điểm công bằng tốt
         if (suggestion.fairness_score >= 0.7) {
           setStartTime(new Date(suggestion.suggested_start).toISOString().slice(0, 16));
           setEndTime(new Date(suggestion.suggested_end).toISOString().slice(0, 16));
         }
       }
     } catch (err) {
-      setBookingError(err instanceof Error ? err.message : "Failed to get AI suggestion");
+      setBookingError(err instanceof Error ? err.message : "Không thể lấy gợi ý từ AI");
     } finally {
       setLoadingAI(false);
     }
   };
 
+  /**
+   * Tạo booking mới
+   */
   const handleCreateBooking = async () => {
     if (!selectedVehicleId || !startTime || !endTime) {
       setBookingError("Vui lòng điền đầy đủ thông tin");
@@ -273,7 +288,7 @@ const MyBookings: React.FC = () => {
 
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
       }
 
       const selectedVehicle = availableVehicles.find(v => v.id === selectedVehicleId);
@@ -291,7 +306,7 @@ const MyBookings: React.FC = () => {
         throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
       }
 
-      // Check AI suggestion first if not checked yet
+      // Kiểm tra AI suggestion trước nếu chưa kiểm tra
       if (!aiSuggestion) {
         setBookingError("Vui lòng kiểm tra AI trước khi đặt xe");
         return;
@@ -344,9 +359,14 @@ const MyBookings: React.FC = () => {
     }
   };
 
+  /**
+   * Định dạng ngày giờ theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày giờ
+   * @returns Ngày giờ đã định dạng
+   */
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      day: "numeric",
+    return new Date(dateString).toLocaleString("vi-VN", {
+      day: "2-digit",
       month: "short",
       year: "numeric",
       hour: "2-digit",
@@ -354,6 +374,11 @@ const MyBookings: React.FC = () => {
     });
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái booking
+   * @param status - Trạng thái booking
+   * @returns CSS classes cho màu
+   */
   const getStatusColor = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower.includes("confirmed") || statusLower.includes("đã xác nhận")) {
@@ -374,33 +399,54 @@ const MyBookings: React.FC = () => {
     return "bg-gray-50 text-gray-600 dark:bg-gray-500/10 dark:text-gray-300";
   };
 
+  /**
+   * Hủy booking
+   * @param id - ID của booking cần hủy
+   */
   const handleCancel = async (id: number) => {
-    if (!confirm("Are you sure you want to cancel this booking?")) {
+    if (!confirm("Bạn có chắc chắn muốn hủy booking này?")) {
       return;
     }
     try {
       await bookingService.cancelBooking(id);
       await loadBookings();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to cancel booking");
+      alert(err instanceof Error ? err.message : "Không thể hủy booking");
     }
   };
 
+  /**
+   * Mở modal cập nhật booking
+   * @param booking - Booking cần cập nhật
+   */
   const handleUpdate = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowUpdateModal(true);
   };
 
+  /**
+   * Mở modal check-in
+   * @param booking - Booking cần check-in
+   */
   const handleCheckIn = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowCheckInModal(true);
   };
 
+  /**
+   * Mở modal check-out
+   * @param booking - Booking cần check-out
+   */
   const handleCheckOut = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowCheckOutModal(true);
   };
 
+  /**
+   * Kiểm tra xem có thể check-in không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể check-in
+   */
   const canCheckIn = (booking: Booking) => {
     const status = booking.status.toLowerCase();
     return (
@@ -409,10 +455,20 @@ const MyBookings: React.FC = () => {
     );
   };
 
+  /**
+   * Kiểm tra xem có thể check-out không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể check-out
+   */
   const canCheckOut = (booking: Booking) => {
     return !!booking.checkInTime && !booking.checkOutTime;
   };
 
+  /**
+   * Kiểm tra xem có thể cập nhật booking không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể cập nhật
+   */
   const canUpdate = (booking: Booking) => {
     const status = booking.status.toLowerCase();
     return (
@@ -423,6 +479,11 @@ const MyBookings: React.FC = () => {
     );
   };
 
+  /**
+   * Kiểm tra xem có thể hủy booking không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể hủy
+   */
   const canCancel = (booking: Booking) => {
     const status = booking.status.toLowerCase();
     return (
@@ -435,10 +496,10 @@ const MyBookings: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | My Bookings" />
+      <PageMeta title="Đồng sở hữu | Đặt Xe Của Tôi" />
       <PageHeader
-        title="My Bookings"
-        description="Manage upcoming trips, review history, and share access with fellow co-owners."
+        title="Đặt Xe Của Tôi"
+        description="Quản lý các chuyến đi sắp tới, xem lịch sử, và chia sẻ quyền truy cập với các đồng sở hữu khác."
         actions={
           <Button 
             size="sm" 
@@ -452,7 +513,7 @@ const MyBookings: React.FC = () => {
       
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading bookings...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách bookings...</p>
         </div>
       )}
 
@@ -466,7 +527,7 @@ const MyBookings: React.FC = () => {
         <div className="grid gap-4">
           {bookings.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No bookings found.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy booking nào.</p>
             </div>
           ) : (
             bookings.map((booking) => (
@@ -491,17 +552,17 @@ const MyBookings: React.FC = () => {
                     </p>
                     {booking.vehicleName && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        Vehicle: {booking.vehicleName}
+                        Xe: {booking.vehicleName}
                       </p>
                     )}
                     {booking.distanceKm && (
                       <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Distance: {booking.distanceKm} km
+                        Quãng đường: {booking.distanceKm} km
                       </p>
                     )}
                     {booking.cost && (
                       <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Cost: ₫{booking.cost.toLocaleString()}
+                        Chi phí: ₫{booking.cost.toLocaleString()}
                       </p>
                     )}
                     {booking.checkInTime && (
@@ -516,7 +577,7 @@ const MyBookings: React.FC = () => {
                     )}
                     {booking.note && (
                       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                        Note: {booking.note}
+                        Ghi chú: {booking.note}
                       </p>
                     )}
                   </div>
@@ -545,7 +606,7 @@ const MyBookings: React.FC = () => {
                         variant="outline"
                         onClick={() => handleUpdate(booking)}
                       >
-                        Edit
+                        Sửa
                       </Button>
                     )}
                     {canCancel(booking) && (
@@ -554,7 +615,7 @@ const MyBookings: React.FC = () => {
                         variant="outline"
                         onClick={() => handleCancel(booking.id)}
                       >
-                        Cancel
+                        Hủy
                       </Button>
                     )}
                   </div>

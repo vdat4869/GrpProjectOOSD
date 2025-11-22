@@ -16,35 +16,74 @@ namespace AuthService.Services;
 
 /// <summary>
 /// Interface cho Auth Service
+/// Định nghĩa các phương thức xử lý authentication và authorization
 /// </summary>
 public interface IAuthService
 {
+    /// <summary>Đăng nhập user và trả về JWT tokens</summary>
     Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress = null, string? userAgent = null);
+    
+    /// <summary>Đăng ký user mới</summary>
     Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request);
+    
+    /// <summary>Làm mới access token bằng refresh token</summary>
     Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request);
+    
+    /// <summary>Lấy thông tin profile của user</summary>
     Task<ApiResponse<UserDto>> GetUserProfileAsync(int userId);
+    
+    /// <summary>Đăng xuất user (xóa refresh token và revoke session)</summary>
     Task<ApiResponse<bool>> LogoutAsync(int userId);
+    
+    /// <summary>Đổi mật khẩu của user</summary>
     Task<ApiResponse<bool>> ChangePasswordAsync(int userId, ChangePasswordRequest request);
+    
+    /// <summary>Lấy danh sách sessions đang hoạt động</summary>
     Task<List<Models.UserSession>> GetActiveSessionsAsync(int userId);
+    
+    /// <summary>Thu hồi một session cụ thể</summary>
     Task<ApiResponse<bool>> RevokeSessionAsync(int sessionId, int userId);
+    
+    /// <summary>Thu hồi tất cả sessions của user</summary>
     Task<ApiResponse<bool>> RevokeAllSessionsAsync(int userId);
 }
 
 /// <summary>
 /// Service xử lý authentication và authorization
+/// Chứa business logic cho đăng nhập, đăng ký, quản lý tokens, sessions, v.v.
 /// </summary>
 public class AuthService : IAuthService
 {
+    // Repository để truy cập dữ liệu User
     private readonly IUserRepository _userRepository;
+    
+    // Service để tạo và validate JWT tokens
     private readonly IJwtService _jwtService;
+    
+    // AutoMapper để map giữa Entity và DTO
     private readonly IMapper _mapper;
+    
+    // DbContext để truy cập database (cho các thao tác đặc biệt như tạo Role)
     private readonly AuthDbContext _dbContext;
+    
+    // HttpClientFactory để gọi các service khác (như ownership-service)
     private readonly IHttpClientFactory _httpClientFactory;
+    
+    // Logger để ghi log
     private readonly ILogger<AuthService> _logger;
+    
+    // Configuration để đọc cấu hình từ appsettings.json
     private readonly IConfiguration _configuration;
+    
+    // RabbitMQ Service để publish events (optional - có thể null)
     private readonly Infrastructure.IRabbitMQService? _rabbitMQService;
+    
+    // Session Service để quản lý user sessions (optional - có thể null)
     private readonly ISessionService? _sessionService;
 
+    /// <summary>
+    /// Constructor - Dependency Injection
+    /// </summary>
     public AuthService(
         IUserRepository userRepository, 
         IJwtService jwtService, 
@@ -69,13 +108,20 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Đăng nhập user
+    /// Xác thực email và password, tạo JWT tokens và session
     /// </summary>
+    /// <param name="request">Thông tin đăng nhập (Email và Password)</param>
+    /// <param name="ipAddress">IP address của client (để lưu vào session)</param>
+    /// <param name="userAgent">User-Agent của client (để lưu vào session)</param>
+    /// <returns>JWT tokens và thông tin user nếu đăng nhập thành công</returns>
     public async Task<ApiResponse<LoginResponse>> LoginAsync(LoginRequest request, string? ipAddress = null, string? userAgent = null)
     {
         try
         {
-            // Tìm user theo email
+            // Tìm user theo email trong database
             var user = await _userRepository.GetByEmailAsync(request.Email);
+            
+            // Kiểm tra user có tồn tại không
             if (user == null)
             {
                 return new ApiResponse<LoginResponse>
@@ -86,7 +132,7 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Kiểm tra tài khoản có active không
+            // Kiểm tra tài khoản có bị khóa không
             if (!user.IsActive)
             {
                 return new ApiResponse<LoginResponse>
@@ -97,7 +143,8 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Kiểm tra mật khẩu
+            // Xác thực mật khẩu bằng BCrypt
+            // BCrypt tự động so sánh password plaintext với password hash
             if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             {
                 return new ApiResponse<LoginResponse>
@@ -108,16 +155,19 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Tạo tokens
+            // Tạo JWT access token (có thời gian hết hạn ngắn - 60 phút)
             var accessToken = _jwtService.GenerateAccessToken(user);
+            
+            // Tạo refresh token (random string, lưu trong database)
             var refreshToken = _jwtService.GenerateRefreshToken();
 
-            // Cập nhật refresh token vào database
+            // Lưu refresh token vào database để có thể validate sau này
             user.RefreshToken = refreshToken;
             user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7); // Refresh token hết hạn sau 7 ngày
             await _userRepository.UpdateAsync(user);
 
-            // Tạo session nếu SessionService có sẵn
+            // Tạo session để theo dõi các thiết bị đang đăng nhập
+            // Session lưu thông tin IP, User-Agent, thời gian đăng nhập, v.v.
             if (_sessionService != null)
             {
                 try
@@ -126,19 +176,22 @@ public class AuthService : IAuthService
                 }
                 catch (Exception ex)
                 {
+                    // Log lỗi nhưng không block quá trình đăng nhập
                     _logger.LogWarning(ex, "Failed to create session for user {UserId}", user.Id);
                 }
             }
 
-            // Tạo response
+            // Map User entity sang UserDto để trả về cho client
             var userDto = _mapper.Map<UserDto>(user);
+            // Thêm danh sách roles vào DTO
             userDto.Roles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
 
+            // Tạo response với tokens và thông tin user
             var response = new LoginResponse
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
-                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(60).ToUnixTimeSeconds(),
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(60).ToUnixTimeSeconds(), // Unix timestamp
                 User = userDto
             };
 
@@ -151,6 +204,8 @@ public class AuthService : IAuthService
         }
         catch (Exception ex)
         {
+            // Log lỗi và trả về response lỗi
+            _logger.LogError(ex, "Error during login for email {Email}", request.Email);
             return new ApiResponse<LoginResponse>
             {
                 Success = false,
@@ -162,12 +217,15 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Đăng ký user mới
+    /// Tạo user mới, gán role CoOwner mặc định, và tự động tạo CoOwner record trong ownership-service
     /// </summary>
+    /// <param name="request">Thông tin đăng ký (Email, Password, FirstName, LastName, PhoneNumber, v.v.)</param>
+    /// <returns>Thông tin user đã tạo nếu đăng ký thành công</returns>
     public async Task<ApiResponse<UserDto>> RegisterAsync(RegisterRequest request)
     {
         try
         {
-            // Kiểm tra email đã tồn tại chưa
+            // Kiểm tra email đã tồn tại chưa (email phải unique)
             if (await _userRepository.EmailExistsAsync(request.Email))
             {
                 return new ApiResponse<UserDto>
@@ -178,10 +236,11 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Hash password
+            // Hash password bằng BCrypt trước khi lưu vào database
+            // BCrypt tự động thêm salt và hash password
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // Tạo user mới
+            // Tạo user entity mới
             var user = new User
             {
                 Email = request.Email,
@@ -192,11 +251,13 @@ public class AuthService : IAuthService
             };
 
             // Lưu user vào database
+            // Repository sẽ tự động set CreatedAt, UpdatedAt, IsActive = true
             var createdUser = await _userRepository.CreateAsync(user);
 
-            // Gán role CoOwner mặc định cho user mới
-            // Tìm hoặc tạo role CoOwner
+            // Gán role CoOwner mặc định cho user mới đăng ký
+            // Tìm role CoOwner trong database
             var coOwnerRole = await _dbContext.Roles.FirstOrDefaultAsync(r => r.Name == "CoOwner");
+            
             if (coOwnerRole == null)
             {
                 // Nếu chưa có role CoOwner, tạo mới
@@ -210,7 +271,7 @@ public class AuthService : IAuthService
                 await _dbContext.SaveChangesAsync();
             }
 
-            // Gán role cho user
+            // Gán role CoOwner cho user mới
             var userRole = new UserRole
             {
                 UserId = createdUser.Id,
@@ -230,7 +291,8 @@ public class AuthService : IAuthService
                 userDto.Roles = new List<string> { "CoOwner" };
             }
 
-            // Tự động tạo CoOwner record trong ownership service nếu user có role CoOwner
+            // Tự động tạo CoOwner record trong ownership-service
+            // Để đồng bộ dữ liệu giữa auth-service và ownership-service
             if (userDto.Roles.Any(r => r.Equals("CoOwner", StringComparison.OrdinalIgnoreCase)))
             {
                 try
@@ -245,7 +307,8 @@ public class AuthService : IAuthService
                 }
             }
 
-            // Publish UserCreated event to RabbitMQ
+            // Publish UserCreated event lên RabbitMQ
+            // Các service khác có thể subscribe event này để xử lý (ví dụ: gửi email chào mừng)
             if (_rabbitMQService != null)
             {
                 try
@@ -260,12 +323,14 @@ public class AuthService : IAuthService
                         Roles = userDto.Roles ?? new List<string>(),
                         CreatedAt = DateTime.UtcNow
                     };
+                    // Publish event lên queue "user.created"
                     _rabbitMQService.PublishEvent("user.created", userCreatedEvent);
                     _logger.LogInformation("Published UserCreated event for user {UserId}", createdUser.Id);
                 }
                 catch (Exception ex)
                 {
                     // Log lỗi nhưng không block quá trình register
+                    // Event có thể được publish sau bằng cách khác
                     _logger.LogWarning(ex, "Failed to publish UserCreated event for user {UserId}. User registration succeeded.", createdUser.Id);
                 }
             }
@@ -290,15 +355,21 @@ public class AuthService : IAuthService
 
     /// <summary>
     /// Làm mới access token
+    /// Khi access token hết hạn, client có thể dùng refresh token để lấy access token mới
+    /// mà không cần đăng nhập lại
     /// </summary>
+    /// <param name="request">Refresh token hiện tại</param>
+    /// <returns>Access token và refresh token mới nếu refresh token hợp lệ</returns>
     public async Task<ApiResponse<RefreshTokenResponse>> RefreshTokenAsync(RefreshTokenRequest request)
     {
         try
         {
-            // Lấy claims từ expired token
+            // Lấy claims từ refresh token (không validate lifetime vì token có thể đã expired)
+            // Refresh token thực chất là access token cũ, nhưng ta lưu nó trong database để validate
             var principal = _jwtService.GetPrincipalFromExpiredToken(request.RefreshToken);
             var userIdClaim = principal?.FindFirst(ClaimTypes.NameIdentifier);
             
+            // Kiểm tra token có chứa UserId không
             if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
             {
                 return new ApiResponse<RefreshTokenResponse>
@@ -309,8 +380,13 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Tìm user
+            // Tìm user trong database
             var user = await _userRepository.GetByIdAsync(userId);
+            
+            // Validate refresh token:
+            // 1. User phải tồn tại
+            // 2. Refresh token trong database phải khớp với refresh token trong request
+            // 3. Refresh token chưa hết hạn
             if (user == null || user.RefreshToken != request.RefreshToken || 
                 user.RefreshTokenExpiryTime <= DateTime.UtcNow)
             {
@@ -322,11 +398,14 @@ public class AuthService : IAuthService
                 };
             }
 
-            // Tạo tokens mới
+            // Tạo access token mới (60 phút)
             var newAccessToken = _jwtService.GenerateAccessToken(user);
+            
+            // Tạo refresh token mới (7 ngày)
             var newRefreshToken = _jwtService.GenerateRefreshToken();
 
-            // Cập nhật refresh token mới
+            // Cập nhật refresh token mới vào database
+            // Rotation: mỗi lần refresh, ta tạo refresh token mới để tăng tính bảo mật
             user.RefreshToken = newRefreshToken;
             user.RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(7);
             await _userRepository.UpdateAsync(user);
@@ -519,22 +598,33 @@ public class AuthService : IAuthService
     }
 
     /// <summary>
-    /// Tự động tạo CoOwner record trong ownership service khi user đăng ký với role CoOwner
+    /// Tự động tạo CoOwner record trong ownership-service khi user đăng ký với role CoOwner
+    /// Để đồng bộ dữ liệu giữa auth-service và ownership-service
     /// </summary>
+    /// <param name="user">User entity đã được tạo</param>
     private async Task CreateCoOwnerInOwnershipServiceAsync(User user)
     {
         try
         {
+            // Lấy Gateway URL từ configuration (hoặc dùng default)
             var gatewayUrl = _configuration["GatewayUrl"] ?? "http://localhost:8000";
+            
+            // Tạo HttpClient từ factory (để tận dụng connection pooling)
             var httpClient = _httpClientFactory.CreateClient();
-            httpClient.Timeout = TimeSpan.FromSeconds(5); // Short timeout để không block register
+            
+            // Set timeout ngắn (5 giây) để không block quá trình register quá lâu
+            httpClient.Timeout = TimeSpan.FromSeconds(5);
 
+            // Tạo full name từ FirstName và LastName
             var fullName = $"{user.FirstName} {user.LastName}".Trim();
             if (string.IsNullOrEmpty(fullName))
             {
+                // Nếu không có tên, dùng email
                 fullName = user.Email ?? "Unknown";
             }
 
+            // Tạo DTO để gửi đến ownership-service
+            // identityCardNumber tạm thời dùng GUID (user sẽ cập nhật sau khi KYC)
             var createCoOwnerDto = new
             {
                 userId = user.Id.ToString(),
@@ -545,10 +635,12 @@ public class AuthService : IAuthService
                 address = (string?)null
             };
 
+            // Serialize DTO thành JSON
             var jsonContent = JsonSerializer.Serialize(createCoOwnerDto);
             var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            // Use internal endpoint for service-to-service call
+            // Gọi internal endpoint của ownership-service qua gateway
+            // Endpoint này không cần authentication (service-to-service call)
             var response = await httpClient.PostAsync($"{gatewayUrl}/api/ownership/coowners/internal", content);
             
             if (response.IsSuccessStatusCode)
@@ -557,6 +649,7 @@ public class AuthService : IAuthService
             }
             else
             {
+                // Log lỗi và throw exception
                 var errorContent = await response.Content.ReadAsStringAsync();
                 _logger.LogWarning("Failed to create CoOwner record in ownership service for user {UserId}. Status: {Status}, Error: {Error}", 
                     user.Id, response.StatusCode, errorContent);
@@ -565,16 +658,19 @@ public class AuthService : IAuthService
         }
         catch (TaskCanceledException)
         {
+            // Timeout khi gọi ownership-service
             _logger.LogWarning("Timeout when creating CoOwner record in ownership service for user {UserId}", user.Id);
             throw;
         }
         catch (HttpRequestException ex)
         {
+            // Lỗi network (không kết nối được đến ownership-service)
             _logger.LogWarning(ex, "Network error when creating CoOwner record in ownership service for user {UserId}", user.Id);
             throw;
         }
         catch (Exception ex)
         {
+            // Lỗi khác
             _logger.LogError(ex, "Error creating CoOwner record in ownership service for user {UserId}", user.Id);
             throw;
         }

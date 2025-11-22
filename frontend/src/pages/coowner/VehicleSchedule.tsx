@@ -4,16 +4,25 @@ import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
 import { bookingService, type VehicleSchedule, type BookingPeriod } from "../../services/bookingService";
 
+/**
+ * Trang lịch xe - xem lịch sử dụng xe và trạng thái xe
+ */
 const VehicleSchedule: React.FC = () => {
   const [schedules, setSchedules] = useState<VehicleSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
+  /**
+   * Tải lịch xe khi component mount
+   */
   useEffect(() => {
     loadSchedules();
   }, []);
 
+  /**
+   * Tải danh sách lịch xe từ API
+   */
   const loadSchedules = async () => {
     try {
       setLoading(true);
@@ -21,12 +30,17 @@ const VehicleSchedule: React.FC = () => {
       const data = await bookingService.getSchedules();
       setSchedules(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load vehicle schedules");
+      setError(err instanceof Error ? err.message : "Không thể tải lịch xe");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Định dạng ngày giờ theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày giờ
+   * @returns Ngày giờ đã định dạng
+   */
   const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleString("vi-VN", {
@@ -38,6 +52,11 @@ const VehicleSchedule: React.FC = () => {
     });
   };
 
+  /**
+   * Định dạng ngày tháng
+   * @param date - Đối tượng Date
+   * @returns Ngày tháng đã định dạng
+   */
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -46,6 +65,12 @@ const VehicleSchedule: React.FC = () => {
     });
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái booking
+   * @param status - Trạng thái booking
+   * @param isCurrentlyInUse - Xe có đang được sử dụng không
+   * @returns CSS classes cho màu
+   */
   const getStatusColor = (status: string | undefined, isCurrentlyInUse: boolean | undefined) => {
     if (isCurrentlyInUse) {
       return "bg-error-500 text-white";
@@ -68,10 +93,21 @@ const VehicleSchedule: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy nhãn trạng thái xe
+   * @param isCurrentlyInUse - Xe có đang được sử dụng không
+   * @returns Nhãn trạng thái
+   */
   const getStatusLabel = (isCurrentlyInUse: boolean | undefined) => {
     return isCurrentlyInUse ? "Đang sử dụng" : "Trống";
   };
 
+  /**
+   * Kiểm tra xem booking có nằm trong ngày đã chọn không
+   * @param booking - Booking period
+   * @param date - Ngày đã chọn
+   * @returns true nếu booking nằm trong ngày đã chọn
+   */
   const isBookingOnSelectedDate = (booking: BookingPeriod, date: Date) => {
     const bookingStart = new Date(booking.startTime);
     const bookingEnd = new Date(booking.endTime);
@@ -96,13 +132,13 @@ const VehicleSchedule: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Vehicle Schedule" />
+      <PageMeta title="Đồng sở hữu | Lịch Xe" />
       <PageHeader
         title="Lịch Xe"
         description="Xem lịch sử dụng xe và trạng thái xe đang trống/đang dùng"
         actions={
           <Button size="sm" onClick={loadSchedules} disabled={loading}>
-            Refresh
+            Làm mới
           </Button>
         }
       />

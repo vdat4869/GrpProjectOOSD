@@ -8,6 +8,9 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import Select from "../../components/form/Select";
 
+/**
+ * Trang chi tiết quyền sở hữu - xem và quản lý quyền sở hữu xe của các co-owner
+ */
 const OwnershipDetails: React.FC = () => {
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
   const [coOwners, setCoOwners] = useState<CoOwner[]>([]);
@@ -27,10 +30,16 @@ const OwnershipDetails: React.FC = () => {
   });
   const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
 
+  /**
+   * Tải dữ liệu khi component mount
+   */
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Tải dữ liệu: groups và co-owners
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -46,18 +55,22 @@ const OwnershipDetails: React.FC = () => {
         await loadGroupOwnerships(groupsData[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load ownership details");
+      setError(err instanceof Error ? err.message : "Không thể tải chi tiết quyền sở hữu");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Tải danh sách quyền sở hữu cho một group
+   * @param groupId - ID của group
+   */
   const loadGroupOwnerships = async (groupId: string) => {
     try {
       const ownerships = await ownershipService.getOwnerships(groupId);
       setGroupOwnerships(ownerships);
     } catch (err) {
-      console.error("Failed to load ownerships:", err);
+      console.error("Không thể tải quyền sở hữu:", err);
     }
   };
 
@@ -93,7 +106,7 @@ const OwnershipDetails: React.FC = () => {
       setIsAddMemberModalOpen(false);
       await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add member");
+      setError(err instanceof Error ? err.message : "Không thể thêm thành viên");
     }
   };
 
@@ -105,31 +118,39 @@ const OwnershipDetails: React.FC = () => {
       setSelectedOwnership(null);
       await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update ownership");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật quyền sở hữu");
     }
   };
 
+  /**
+   * Xóa thành viên khỏi group
+   * @param _ownershipId - ID của ownership cần xóa
+   */
   const handleRemoveMember = async (_ownershipId: string) => {
-    if (!confirm("Are you sure you want to remove this member?")) return;
+    if (!confirm("Bạn có chắc chắn muốn xóa thành viên này?")) return;
     try {
       // TODO: Implement remove member API call
       if (selectedGroup) {
         await loadGroupOwnerships(selectedGroup.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove member");
+      setError(err instanceof Error ? err.message : "Không thể xóa thành viên");
     }
   };
 
+  /**
+   * Đặt thành viên làm admin của group
+   * @param _ownershipId - ID của ownership
+   */
   const handleSetGroupAdmin = async (_ownershipId: string) => {
-    if (!confirm("Set this member as group admin?")) return;
+    if (!confirm("Đặt thành viên này làm admin của nhóm?")) return;
     try {
       // TODO: Implement set group admin API call
       if (selectedGroup) {
         await loadGroupOwnerships(selectedGroup.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set group admin");
+      setError(err instanceof Error ? err.message : "Không thể đặt group admin");
     }
   };
 
@@ -148,15 +169,15 @@ const OwnershipDetails: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Ownership Details" />
+      <PageMeta title="Đồng sở hữu | Chi Tiết Quyền Sở Hữu" />
       <PageHeader
-        title="Ownership Details"
-        description="Understand your equity split, privileges, and shared responsibilities across each EV."
+        title="Chi Tiết Quyền Sở Hữu"
+        description="Hiểu rõ tỷ lệ sở hữu, quyền lợi và trách nhiệm chia sẻ của bạn trên từng xe điện."
       />
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading ownership details...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải chi tiết quyền sở hữu...</p>
         </div>
       )}
 
@@ -168,11 +189,11 @@ const OwnershipDetails: React.FC = () => {
 
       {!loading && !error && (
         <>
-          {/* Group Selector */}
+          {/* Chọn nhóm xe */}
           {groups.length > 1 && (
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Select Vehicle Group
+                Chọn Nhóm Xe
               </label>
               <select
                 value={selectedGroup?.id || ""}
@@ -198,37 +219,37 @@ const OwnershipDetails: React.FC = () => {
                       {selectedGroup.name}
                     </h3>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {selectedGroup.vehicleName} • {selectedGroup.licensePlate || "No license plate"}
+                      {selectedGroup.vehicleName} • {selectedGroup.licensePlate || "Không có biển số"}
                     </p>
                     {currentUserOwnership && (
                       <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                        Your Ownership: <span className="text-primary-600 dark:text-primary-400">{currentUserOwnership.ownershipPercentage}%</span>
+                        Quyền Sở Hữu Của Bạn: <span className="text-primary-600 dark:text-primary-400">{currentUserOwnership.ownershipPercentage}%</span>
                       </p>
                     )}
                   </div>
                   <Button size="sm" onClick={() => handleAddMember(selectedGroup)}>
-                    Add Member
+                    Thêm Thành Viên
                   </Button>
                 </div>
               </div>
 
-              {/* Ownership Summary */}
+              {/* Tóm tắt quyền sở hữu */}
               <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-500/40 dark:bg-blue-500/10">
                 <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Total Ownership: <span className="font-semibold">{totalOwnership.toFixed(2)}%</span>
+                  Tổng Quyền Sở Hữu: <span className="font-semibold">{totalOwnership.toFixed(2)}%</span>
                   {totalOwnership !== 100 && (
                     <span className="ml-2 text-amber-600 dark:text-amber-400">
-                      (Should be 100%)
+                      (Nên là 100%)
                     </span>
                   )}
                 </p>
               </div>
 
-              {/* Members List */}
+              {/* Danh sách thành viên */}
               <div className="grid gap-4">
                 {groupOwnerships.length === 0 ? (
                   <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-                    <p className="text-gray-600 dark:text-gray-400">No members found.</p>
+                    <p className="text-gray-600 dark:text-gray-400">Không tìm thấy thành viên nào.</p>
                   </div>
                 ) : (
                   groupOwnerships.map((ownership) => {
@@ -255,16 +276,16 @@ const OwnershipDetails: React.FC = () => {
                                 </span>
                                 {isCurrentUser && (
                                   <span className="rounded-full bg-primary-500 px-3 py-1 text-xs font-medium text-white">
-                                    You
+                                    Bạn
                                   </span>
                                 )}
                               </div>
                               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                {coOwner?.email || "No email"}
+                                {coOwner?.email || "Không có email"}
                               </p>
                               <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                Start: {formatDate(ownership.startDate)}
-                                {ownership.endDate && ` • End: ${formatDate(ownership.endDate)}`}
+                                Bắt đầu: {formatDate(ownership.startDate)}
+                                {ownership.endDate && ` • Kết thúc: ${formatDate(ownership.endDate)}`}
                               </p>
                             </div>
                             <div className="flex gap-2">
@@ -273,7 +294,7 @@ const OwnershipDetails: React.FC = () => {
                                 variant="outline"
                                 onClick={() => handleEditOwnership(ownership)}
                               >
-                                Edit
+                                Sửa
                               </Button>
                               {!isCurrentUser && (
                                 <>
@@ -282,14 +303,14 @@ const OwnershipDetails: React.FC = () => {
                                     variant="outline"
                                     onClick={() => handleSetGroupAdmin(ownership.id)}
                                   >
-                                    Set Admin
+                                    Đặt Admin
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     onClick={() => handleRemoveMember(ownership.id)}
                                   >
-                                    Remove
+                                    Xóa
                                   </Button>
                                 </>
                               )}
@@ -318,10 +339,10 @@ const OwnershipDetails: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[500px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Add Member
+              Thêm Thành Viên
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Add a new co-owner to the group.
+              Thêm một co-owner mới vào nhóm.
             </p>
           </div>
 
@@ -332,7 +353,7 @@ const OwnershipDetails: React.FC = () => {
                 value={memberFormData.coOwnerId}
                 onChange={(value) => setMemberFormData({ ...memberFormData, coOwnerId: value })}
               >
-                <option value="">Select co-owner</option>
+                <option value="">Chọn co-owner</option>
                 {coOwners
                   .filter((c) => !groupOwnerships.some((o) => o.coOwnerId === c.id && o.isActive))
                   .map((coOwner) => (
@@ -344,7 +365,7 @@ const OwnershipDetails: React.FC = () => {
             </div>
 
             <div>
-              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Label>Tỷ Lệ Sở Hữu <span className="text-error-500">*</span></Label>
               <Input
                 type="number"
                 step="0.01"
@@ -352,10 +373,10 @@ const OwnershipDetails: React.FC = () => {
                 max="100"
                 value={memberFormData.ownershipPercentage === 0 ? "" : String(memberFormData.ownershipPercentage)}
                 onChange={(e) => setMemberFormData({ ...memberFormData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter ownership percentage"
+                placeholder="Nhập tỷ lệ sở hữu"
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Current total: {totalOwnership.toFixed(2)}% • Remaining: {(100 - totalOwnership).toFixed(2)}%
+                Tổng hiện tại: {totalOwnership.toFixed(2)}% • Còn lại: {(100 - totalOwnership).toFixed(2)}%
               </p>
             </div>
 
@@ -368,10 +389,10 @@ const OwnershipDetails: React.FC = () => {
                   setSelectedGroup(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSaveMember}>
-                Add Member
+                Thêm Thành Viên
               </Button>
             </div>
           </div>
@@ -390,10 +411,10 @@ const OwnershipDetails: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[500px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Ownership
+              Sửa Quyền Sở Hữu
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Update ownership percentage.
+              Cập nhật tỷ lệ sở hữu.
             </p>
           </div>
 
@@ -401,13 +422,13 @@ const OwnershipDetails: React.FC = () => {
             {selectedOwnership && (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Member: {coOwners.find((c) => c.id === selectedOwnership.coOwnerId)?.fullName || selectedOwnership.coOwnerName || selectedOwnership.coOwnerId.substring(0, 8)}
+                  Thành viên: {coOwners.find((c) => c.id === selectedOwnership.coOwnerId)?.fullName || selectedOwnership.coOwnerName || selectedOwnership.coOwnerId.substring(0, 8)}
                 </p>
               </div>
             )}
 
             <div>
-              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Label>Tỷ Lệ Sở Hữu <span className="text-error-500">*</span></Label>
               <Input
                 type="number"
                 step="0.01"
@@ -415,10 +436,10 @@ const OwnershipDetails: React.FC = () => {
                 max="100"
                 value={editFormData.ownershipPercentage === 0 ? "" : String(editFormData.ownershipPercentage)}
                 onChange={(e) => setEditFormData({ ...editFormData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter ownership percentage"
+                placeholder="Nhập tỷ lệ sở hữu"
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Current total: {totalOwnership.toFixed(2)}% • Remaining: {(100 - totalOwnership + (selectedOwnership?.ownershipPercentage || 0)).toFixed(2)}%
+                Tổng hiện tại: {totalOwnership.toFixed(2)}% • Còn lại: {(100 - totalOwnership + (selectedOwnership?.ownershipPercentage || 0)).toFixed(2)}%
               </p>
             </div>
 
@@ -431,10 +452,10 @@ const OwnershipDetails: React.FC = () => {
                   setSelectedOwnership(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSaveOwnership}>
-                Save Changes
+                Lưu Thay Đổi
               </Button>
             </div>
           </div>

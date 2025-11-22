@@ -40,7 +40,7 @@ dotnet ef database update
 
 **Giải pháp**:
 ```bash
-# Tạo file .env từ .env.example (nếu có)
+
 # Hoặc tạo file .env với các biến sau:
 
 SA_PASSWORD=Hoyo@4869
@@ -69,9 +69,6 @@ cd ownership-service && dotnet restore && cd ..
 cd booking-service && dotnet restore && cd ..
 cd payment_service/payment-service && dotnet restore && cd ../..
 cd report-service && dotnet restore && cd ..
-
-# Hoặc restore tất cả từ solution
-dotnet restore GrpProjectOOSD.sln
 
 # Frontend
 cd frontend
@@ -115,8 +112,12 @@ git push
 **Giải pháp**:
 ```bash
 # Clean tất cả build artifacts
-# Backend
-dotnet clean GrpProjectOOSD.sln
+# Backend - Clean từng service
+cd auth-service && dotnet clean && cd ..
+cd ownership-service && dotnet clean && cd ..
+cd booking-service && dotnet clean && cd ..
+cd payment_service/payment-service && dotnet clean && cd ../..
+cd report-service && dotnet clean && cd ..
 
 # Frontend
 cd frontend
@@ -143,8 +144,12 @@ cp .env.example .env  # Nếu có
 
 ### Bước 3: Restore dependencies
 ```bash
-# Backend
-dotnet restore GrpProjectOOSD.sln
+# Backend - Restore từng service
+cd auth-service && dotnet restore && cd ..
+cd ownership-service && dotnet restore && cd ..
+cd booking-service && dotnet restore && cd ..
+cd payment_service/payment-service && dotnet restore && cd ../..
+cd report-service && dotnet restore && cd ..
 
 # Frontend
 cd frontend
@@ -179,7 +184,6 @@ docker-compose ps
 
 ### Lỗi: "Package not found"
 - Chạy `dotnet restore` trong từng service
-- Hoặc `dotnet restore GrpProjectOOSD.sln` ở root
 
 ### Lỗi: "Port already in use"
 - Kiểm tra port nào đang bị chiếm: `netstat -ano | findstr :5000`
@@ -198,4 +202,3 @@ docker-compose ps
 ## Xem Backend Logs
 
 Xem file **`DEBUG_LOGS.md`** để biết cách kiểm tra logs của các services khi debug.
-

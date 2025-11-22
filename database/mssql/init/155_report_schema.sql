@@ -1,4 +1,25 @@
--- Report DB schema (idempotent, aligns with EF Core models)
+-- ============================================
+-- SCHEMA CHI TIẾT CHO REPORT DATABASE
+-- ============================================
+-- File này định nghĩa cấu trúc bảng cho database report_db
+-- Database này lưu trữ dữ liệu phân tích, báo cáo, và lịch sử sử dụng xe
+-- 
+-- Các bảng chính:
+-- - UsageHistories: Lịch sử sử dụng xe (quãng đường, năng lượng tiêu thụ, chi phí)
+-- - ChargingSessions: Lịch sử sạc xe (thời gian, năng lượng, chi phí)
+-- - MaintenanceRecords: Hồ sơ bảo trì xe (loại bảo trì, chi phí, ngày bảo trì)
+-- - CostRecords: Bản ghi chi phí (nhiên liệu, phí đường, phí đỗ xe...)
+-- - AnalyticsReports: Báo cáo phân tích (báo cáo theo thời gian, theo xe...)
+--
+-- Mục đích sử dụng:
+-- - Phân tích xu hướng sử dụng xe
+-- - Tính toán chi phí và chia sẻ chi phí
+-- - Báo cáo hiệu suất và bảo trì
+-- - Dự đoán nhu cầu bảo trì
+--
+-- Script này là idempotent - có thể chạy nhiều lần mà không gây lỗi
+-- ============================================
+
 USE [report_db];
 GO
 
@@ -13,24 +34,31 @@ IF OBJECT_ID(N'[dbo].[ChargingSessions]', N'U') IS NOT NULL DROP TABLE [dbo].[Ch
 IF OBJECT_ID(N'[dbo].[UsageHistories]', N'U') IS NOT NULL DROP TABLE [dbo].[UsageHistories];
 GO
 
+-- ============================================
+-- BẢNG USAGEHISTORIES - LỊCH SỬ SỬ DỤNG XE
+-- ============================================
+-- Lưu trữ lịch sử sử dụng xe chi tiết (sau khi hoàn thành booking)
+-- Dữ liệu này được tạo từ booking sau khi check-out
+-- Sử dụng để phân tích xu hướng sử dụng, tính toán chi phí, và báo cáo
+-- ============================================
 CREATE TABLE [dbo].[UsageHistories] (
-    [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_UsageHistories] PRIMARY KEY,
-    [VehicleId] INT NOT NULL,
-    [CoOwnerId] INT NOT NULL,
-    [StartTime] DATETIME2 NOT NULL,
-    [EndTime] DATETIME2 NOT NULL,
-    [StartLocation] NVARCHAR(255) NULL,
-    [EndLocation] NVARCHAR(255) NULL,
-    [DistanceKm] DECIMAL(10,2) NOT NULL,
-    [StartBatteryLevel] DECIMAL(5,2) NOT NULL,
-    [EndBatteryLevel] DECIMAL(5,2) NOT NULL,
-    [EnergyConsumed] DECIMAL(10,2) NOT NULL,
-    [Cost] DECIMAL(18,2) NOT NULL,
-    [Purpose] NVARCHAR(255) NULL,
-    [Notes] NVARCHAR(500) NULL,
-    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
-    [UpdatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),
-    [IsActive] BIT NOT NULL DEFAULT(1)
+    [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_UsageHistories] PRIMARY KEY,  -- ID tự tăng, khóa chính
+    [VehicleId] INT NOT NULL,  -- ID xe
+    [CoOwnerId] INT NOT NULL,  -- ID chủ sở hữu sử dụng
+    [StartTime] DATETIME2 NOT NULL,  -- Thời gian bắt đầu sử dụng
+    [EndTime] DATETIME2 NOT NULL,  -- Thời gian kết thúc sử dụng
+    [StartLocation] NVARCHAR(255) NULL,  -- Địa điểm bắt đầu (GPS coordinates hoặc địa chỉ)
+    [EndLocation] NVARCHAR(255) NULL,  -- Địa điểm kết thúc (GPS coordinates hoặc địa chỉ)
+    [DistanceKm] DECIMAL(10,2) NOT NULL,  -- Quãng đường đi được (km)
+    [StartBatteryLevel] DECIMAL(5,2) NOT NULL,  -- Mức pin bắt đầu (%)
+    [EndBatteryLevel] DECIMAL(5,2) NOT NULL,  -- Mức pin kết thúc (%)
+    [EnergyConsumed] DECIMAL(10,2) NOT NULL,  -- Năng lượng tiêu thụ (kWh)
+    [Cost] DECIMAL(18,2) NOT NULL,  -- Chi phí sử dụng (tính theo quãng đường và năng lượng)
+    [Purpose] NVARCHAR(255) NULL,  -- Mục đích sử dụng (Personal, Business, Family...)
+    [Notes] NVARCHAR(500) NULL,  -- Ghi chú
+    [CreatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),  -- Thời gian tạo
+    [UpdatedAt] DATETIME2 NOT NULL DEFAULT(SYSUTCDATETIME()),  -- Thời gian cập nhật
+    [IsActive] BIT NOT NULL DEFAULT(1)  -- Trạng thái (1=active, 0=deleted)
 );
 GO
 

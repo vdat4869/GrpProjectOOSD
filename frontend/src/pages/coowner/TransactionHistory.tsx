@@ -10,6 +10,10 @@ import {
 import Select from "../../components/form/Select";
 import Label from "../../components/form/Label";
 
+/**
+ * Trang lịch sử giao dịch - hiển thị tất cả các giao dịch thanh toán, hoàn tiền, chuyển khoản
+ * Đã gộp với PaymentHistory (lịch sử thanh toán)
+ */
 const TransactionHistory: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,31 +23,41 @@ const TransactionHistory: React.FC = () => {
   const [filterType, setFilterType] = useState<string>("all");
   const [walletId, setWalletId] = useState<string | null>(null);
 
+  /**
+   * Tải userId từ localStorage khi component mount
+   */
   useEffect(() => {
     const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
     if (userId) {
-      // Use userId to get transactions (backend will find wallets automatically)
+      // Sử dụng userId để lấy transactions (backend sẽ tự động tìm wallets)
       setWalletId(userId);
       loadTransactions(userId);
     } else {
-      setError("User ID not found. Please login again.");
+      setError("Không tìm thấy User ID. Vui lòng đăng nhập lại.");
       setLoading(false);
     }
   }, []);
 
+  /**
+   * Tải lại transactions khi page, filterType, hoặc walletId thay đổi
+   */
   useEffect(() => {
     if (walletId) {
       loadTransactions(walletId);
     }
   }, [page, filterType, walletId]);
 
+  /**
+   * Tải danh sách giao dịch từ API
+   * @param id - User ID hoặc Wallet ID
+   */
   const loadTransactions = async (id: string) => {
     try {
       setLoading(true);
       setError(null);
       const data = await paymentService.getTransactions(id, page, pageSize);
       
-      // Filter by type if needed
+      // Lọc theo loại giao dịch nếu cần
       let filteredData = data;
       if (filterType !== "all") {
         filteredData = data.filter(
@@ -53,12 +67,17 @@ const TransactionHistory: React.FC = () => {
       
       setTransactions(filteredData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load transactions");
+      setError(err instanceof Error ? err.message : "Không thể tải lịch sử giao dịch");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Định dạng ngày giờ theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày giờ
+   * @returns Ngày giờ đã định dạng (dd/mm/yyyy, hh:mm)
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
@@ -69,6 +88,12 @@ const TransactionHistory: React.FC = () => {
     });
   };
 
+  /**
+   * Định dạng số tiền theo định dạng tiền tệ Việt Nam
+   * @param amount - Số tiền
+   * @param currency - Loại tiền tệ (mặc định: VND)
+   * @returns Số tiền đã định dạng
+   */
   const formatAmount = (amount: number, currency: string = "VND") => {
     return new Intl.NumberFormat("vi-VN", {
       style: "currency",
@@ -76,6 +101,11 @@ const TransactionHistory: React.FC = () => {
     }).format(amount);
   };
 
+  /**
+   * Lấy nhãn loại giao dịch (tiếng Việt)
+   * @param type - Loại giao dịch
+   * @returns Nhãn loại giao dịch
+   */
   const getTransactionTypeLabel = (type: TransactionType) => {
     switch (type) {
       case TransactionType.Payment:
@@ -93,6 +123,11 @@ const TransactionHistory: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho loại giao dịch
+   * @param type - Loại giao dịch
+   * @returns CSS classes cho màu
+   */
   const getTransactionTypeColor = (type: TransactionType) => {
     switch (type) {
       case TransactionType.Payment:
@@ -108,46 +143,56 @@ const TransactionHistory: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy nhãn trạng thái giao dịch (tiếng Việt)
+   * @param status - Trạng thái giao dịch (0=Pending, 1=Processing, 2=Completed, 3=Failed, 4=Cancelled)
+   * @returns Nhãn trạng thái
+   */
   const getStatusLabel = (status: number) => {
     switch (status) {
       case 0:
-        return "Pending";
+        return "Chờ xử lý";
       case 1:
-        return "Processing";
+        return "Đang xử lý";
       case 2:
-        return "Completed";
+        return "Hoàn thành";
       case 3:
-        return "Failed";
+        return "Thất bại";
       case 4:
-        return "Cancelled";
+        return "Đã hủy";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái giao dịch
+   * @param status - Trạng thái giao dịch
+   * @returns CSS classes cho màu
+   */
   const getStatusColor = (status: number) => {
     switch (status) {
-      case 2:
+      case 2: // Completed
         return "bg-success-100 text-success-800 dark:bg-success-500/20 dark:text-success-200";
-      case 3:
-      case 4:
+      case 3: // Failed
+      case 4: // Cancelled
         return "bg-error-100 text-error-800 dark:bg-error-500/20 dark:text-error-200";
-      case 1:
+      case 1: // Processing
         return "bg-warning-100 text-warning-800 dark:bg-warning-500/20 dark:text-warning-200";
-      default:
+      default: // Pending
         return "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
     }
   };
 
   return (
     <>
-      <PageMeta title="Co-owner | Transaction History" />
+      <PageMeta title="Đồng sở hữu | Lịch Sử Giao Dịch" />
       <PageHeader
         title="Lịch Sử Giao Dịch"
         description="Xem tất cả các giao dịch thanh toán, hoàn tiền, chuyển khoản của bạn"
         actions={
           <Button size="sm" onClick={() => walletId && loadTransactions(walletId)} disabled={loading}>
-            Refresh
+            Làm mới
           </Button>
         }
       />
@@ -238,7 +283,7 @@ const TransactionHistory: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                          {transaction.description || transaction.reference || "N/A"}
+                          {transaction.description || transaction.reference || "Không có"}
                         </td>
                         <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-white">
                           {formatAmount(transaction.amount, transaction.currency)}

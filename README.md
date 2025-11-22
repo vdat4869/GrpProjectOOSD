@@ -203,7 +203,13 @@ cd GrpProjectOOSD
 
 # 2. Tạo file .env (xem SETUP.md để biết các biến cần thiết)
 # 3. Restore dependencies
-dotnet restore GrpProjectOOSD.sln
+# Backend - Restore từng service
+cd auth-service && dotnet restore && cd ..
+cd ownership-service && dotnet restore && cd ..
+cd booking-service && dotnet restore && cd ..
+cd payment_service/payment-service && dotnet restore && cd ../..
+cd report-service && dotnet restore && cd ..
+# Frontend
 cd frontend && npm install --legacy-peer-deps && cd ..
 
 # 4. Start với Docker Compose (khuyến nghị)

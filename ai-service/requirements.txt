@@ -1,10 +1,31 @@
+# Python dependencies cho AI Service
+
+# FastAPI - Web framework để tạo REST API
 fastapi==0.104.1
+
+# Uvicorn - ASGI server để chạy FastAPI (standard extras bao gồm uvloop và httptools)
 uvicorn[standard]==0.24.0
+
+# Pydantic - Data validation và serialization (dùng cho request/response models)
 pydantic==2.5.0
+
+# PyMongo - MongoDB driver (synchronous)
 pymongo==4.6.0
+
+# Motor - MongoDB async driver (dùng với FastAPI async)
 motor==3.3.2
+
+# Redis client với hiredis (C extension) để tăng hiệu suất
 redis[hiredis]==5.0.1
+
+# python-dotenv - Đọc .env files cho environment variables
 python-dotenv==1.0.0
+
+# Prometheus FastAPI Instrumentator - Tự động expose metrics cho Prometheus
 prometheus-fastapi-instrumentator==6.1.0
+
+# orjson - Fast JSON library (nhanh hơn json standard library)
 orjson==3.10.7
+
+# Pika - RabbitMQ client để consume messages
 pika==1.3.2

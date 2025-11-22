@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import CoownerLayout from "../components/Layouts/CoownerLayout";
 import Dashboard from "../pages/coowner/Dashboard";
 import MyBookings from "../pages/coowner/MyBookings";
-import PaymentHistory from "../pages/coowner/PaymentHistory";
 import CostShares from "../pages/coowner/CostShares";
 import CompanyPayment from "../pages/coowner/CompanyPayment";
 import CommonFund from "../pages/coowner/CommonFund";
@@ -22,7 +21,8 @@ const CoownerRoutes: React.FC = () => {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="bookings" element={<MyBookings />} />
         <Route path="schedule" element={<VehicleSchedule />} />
-        <Route path="payments" element={<PaymentHistory />} />
+        {/* PaymentHistory đã được gộp vào TransactionHistory */}
+        <Route path="payments" element={<TransactionHistory />} />
         <Route path="transactions" element={<TransactionHistory />} />
         <Route path="payment-methods" element={<PaymentMethods />} />
         <Route path="cost-shares" element={<CostShares />} />

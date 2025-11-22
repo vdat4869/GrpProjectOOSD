@@ -6,6 +6,9 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import { paymentService } from "../../services/paymentService";
 
+/**
+ * Trang thanh toán công ty - quét mã QR hoặc giải trình các dịch vụ đã sử dụng
+ */
 const CompanyPayment: React.FC = () => {
   const [qrCode, setQrCode] = useState<string>("");
   const [serviceType, setServiceType] = useState<string>("");
@@ -88,7 +91,7 @@ const CompanyPayment: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Company Payment" />
+      <PageMeta title="Đồng sở hữu | Thanh Toán Công Ty" />
       <PageHeader
         title="Thanh Toán Công Ty"
         description="Quét mã QR hoặc giải trình các dịch vụ đã sử dụng"

@@ -300,6 +300,33 @@ services:
     volumes:
       - ai-models:/app/models
 
+  # VNPay Service (Node.js)
+  vnpay-service:
+    build:
+      context: ./payment_service/vnpay-service
+      dockerfile: Dockerfile
+    container_name: ev-vnpay-service
+    environment:
+      - NODE_ENV=${ENVIRONMENT:-Development}
+      - PORT=3001
+      - VNP_TMN_CODE=${VNP_TMN_CODE:-8LSI1RMU}
+      - VNP_HASH_SECRET=${VNP_HASH_SECRET:-IJ6ABY1X6OZFCPIR7AKXKH7X36Q09EH0}
+      - VNP_HOST=${VNP_HOST:-https://sandbox.vnpayment.vn}
+      - VNP_RETURN_URL=${VNP_RETURN_URL:-http://localhost/vnpay-return}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost}
+      - VNP_IPN_URL=${VNP_IPN_URL:-http://gateway-service:80/api/vnpay/ipn}
+      - PAYMENT_SERVICE_URL=http://payment-service:80
+    ports:
+      - "${VNPAY_PORT:-3001}:3001"
+    networks:
+      - ev_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   # Frontend (React + Vite + TailAdmin - Role-based)
   frontend:
     build:

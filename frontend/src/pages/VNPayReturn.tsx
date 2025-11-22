@@ -135,7 +135,7 @@ export default function VNPayReturn() {
           </div>
 
           <button
-            onClick={() => navigate('/coowner/payment-history')}
+            onClick={() => navigate('/coowner/transactions')}
             className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transform hover:scale-[1.02] transition-all duration-200"
           >
             Xem lịch sử thanh toán
@@ -184,7 +184,7 @@ export default function VNPayReturn() {
 
         <div className="space-y-2">
           <button
-            onClick={() => navigate('/coowner/payment-history')}
+            onClick={() => navigate('/coowner/transactions')}
             className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transform hover:scale-[1.02] transition-all duration-200"
           >
             Thử lại

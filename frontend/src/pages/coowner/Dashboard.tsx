@@ -15,6 +15,9 @@ import { bookingService } from "../../services/bookingService";
 import { ownershipService } from "../../services/ownershipService";
 import CreatePaymentModal from "../../components/modals/CreatePaymentModal";
 
+/**
+ * Dashboard cho Co-owner - hiển thị tổng quan về bookings, payments, và xu hướng sử dụng
+ */
 const CoownerDashboard: React.FC = () => {
   const navigate = useNavigate();
   const firstName =
@@ -31,14 +34,19 @@ const CoownerDashboard: React.FC = () => {
   const [selectedCostShareDetailId, setSelectedCostShareDetailId] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number>(0);
 
+  /**
+   * Tải dữ liệu dashboard khi component mount
+   */
   useEffect(() => {
     loadDashboardData();
   }, []);
 
+  /**
+   * Tải tất cả dữ liệu cho dashboard: cost shares, bookings, vehicle groups
+   */
   const loadDashboardData = async () => {
     try {
-
-      // Load cost shares and find pending payments for current user
+      // Tải cost shares và tìm các khoản thanh toán đang chờ của user hiện tại
       const costShares = await paymentService.getCostShares();
       const costSharesMap = new Map<string, CostShare>();
       const allPendingDetails: CostShareDetail[] = [];
@@ -47,14 +55,14 @@ const CoownerDashboard: React.FC = () => {
         costSharesMap.set(costShare.id, costShare);
         try {
           const details = await paymentService.getCostShareDetails(costShare.id);
-          // Filter for current user's pending payments
+          // Lọc các khoản thanh toán đang chờ của user hiện tại
           const userPendingDetails = details.filter(
             (detail) =>
               detail.userId === userId && detail.status === PaymentStatus.Pending
           );
           allPendingDetails.push(...userPendingDetails);
         } catch (err) {
-          console.error(`Failed to load details for cost share ${costShare.id}:`, err);
+          console.error(`Không thể tải chi tiết cho cost share ${costShare.id}:`, err);
         }
       }
 
@@ -63,7 +71,7 @@ const CoownerDashboard: React.FC = () => {
       const total = allPendingDetails.reduce((sum, detail) => sum + detail.amount, 0);
       setTotalBalanceDue(total);
 
-      // Load bookings for upcoming trips
+      // Tải bookings cho các chuyến đi sắp tới
       try {
         const bookings = await bookingService.getBookings();
         const now = new Date();
@@ -74,30 +82,38 @@ const CoownerDashboard: React.FC = () => {
         );
         setUpcomingTrips(upcoming.length);
       } catch (err) {
-        console.error("Failed to load bookings:", err);
+        console.error("Không thể tải bookings:", err);
       }
 
-      // Load vehicle groups
+      // Tải nhóm xe
       try {
         const groups = await ownershipService.getGroups();
         setSharedVehicles(groups.length);
       } catch (err) {
-        console.error("Failed to load groups:", err);
+        console.error("Không thể tải nhóm xe:", err);
       }
 
-      // TODO: Load voting items when voting service is available
+      // TODO: Tải voting items khi voting service có sẵn
       setVotingItems(0);
     } catch (err) {
-      console.error("Failed to load dashboard data:", err);
+      console.error("Không thể tải dữ liệu dashboard:", err);
     }
   };
 
+  /**
+   * Xử lý khi click nút thanh toán
+   * @param costShareDetailId - ID của cost share detail
+   * @param amount - Số tiền cần thanh toán
+   */
   const handlePay = (costShareDetailId: string, amount: number) => {
     setSelectedCostShareDetailId(costShareDetailId);
     setSelectedAmount(amount);
     setIsPaymentModalOpen(true);
   };
 
+  /**
+   * Xử lý khi thanh toán thành công
+   */
   const handlePaymentSuccess = () => {
     setIsPaymentModalOpen(false);
     setSelectedCostShareDetailId(null);
@@ -105,10 +121,20 @@ const CoownerDashboard: React.FC = () => {
     loadDashboardData();
   };
 
+  /**
+   * Định dạng số tiền
+   * @param amount - Số tiền
+   * @returns Số tiền đã định dạng (₫)
+   */
   const formatAmount = (amount: number) => {
     return `₫${amount.toLocaleString()}`;
   };
 
+  /**
+   * Định dạng ngày tháng
+   * @param dateString - Chuỗi ngày tháng
+   * @returns Ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "numeric",
@@ -119,42 +145,41 @@ const CoownerDashboard: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Dashboard" />
+      <PageMeta title="Đồng sở hữu | Bảng Điều Khiển" />
       <PageHeader
-        title={`Welcome back${firstName ? `, ${firstName}` : ""}`}
-        description="Track your bookings, payments, and usage trends across every shared EV you co-own."
+        title={`Chào mừng trở lại${firstName ? `, ${firstName}` : ""}`}
+        description="Theo dõi bookings, thanh toán và xu hướng sử dụng của bạn trên tất cả các xe điện đồng sở hữu."
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Upcoming Trips"
+          label="Chuyến Đi Sắp Tới"
           value={upcomingTrips}
-          trend={upcomingTrips > 0 ? "Next 7 days" : "No upcoming trips"}
+          trend={upcomingTrips > 0 ? "7 ngày tới" : "Không có chuyến đi"}
         />
         <StatCard
-          label="Shared Vehicles"
+          label="Xe Đồng Sở Hữu"
           value={sharedVehicles}
-          trend={sharedVehicles > 0 ? "Active" : "No vehicles"}
+          trend={sharedVehicles > 0 ? "Đang hoạt động" : "Không có xe"}
         />
         <StatCard
-          label="Balance Due"
+          label="Số Tiền Cần Thanh Toán"
           value={formatAmount(totalBalanceDue)}
-          trend={totalBalanceDue > 0 ? `${pendingPayments.length} pending` : "Paid in full"}
+          trend={totalBalanceDue > 0 ? `${pendingPayments.length} đang chờ` : "Đã thanh toán đủ"}
         />
-        <StatCard label="Voting Items" value={votingItems} trend={votingItems > 0 ? "New" : "None"} />
+        <StatCard label="Mục Biểu Quyết" value={votingItems} trend={votingItems > 0 ? "Mới" : "Không có"} />
       </div>
 
-      {/* Pending Payments Section */}
+      {/* Phần Thanh Toán Đang Chờ */}
       {pendingPayments.length > 0 && (
         <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-theme-xs dark:border-amber-500/40 dark:bg-amber-500/10">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                Pending Payments
+                Thanh Toán Đang Chờ
               </h2>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                You have {pendingPayments.length} payment{pendingPayments.length > 1 ? "s" : ""} waiting
-                for payment
+                Bạn có {pendingPayments.length} khoản thanh toán đang chờ{pendingPayments.length > 1 ? "" : ""}
               </p>
             </div>
             <Button
@@ -162,7 +187,7 @@ const CoownerDashboard: React.FC = () => {
               onClick={() => navigate("/coowner/cost-shares")}
               variant="outline"
             >
-              View All
+              Xem Tất Cả
             </Button>
           </div>
 
@@ -182,8 +207,8 @@ const CoownerDashboard: React.FC = () => {
                       {costShareTitle}
                     </p>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      Amount: {formatAmount(detail.amount)} • Ownership: {detail.ownershipPercentage}%
-                      {dueDate && ` • Due: ${dueDate}`}
+                      Số tiền: {formatAmount(detail.amount)} • Tỷ lệ sở hữu: {detail.ownershipPercentage}%
+                      {dueDate && ` • Hạn thanh toán: ${dueDate}`}
                     </p>
                   </div>
                   <Button
@@ -191,7 +216,7 @@ const CoownerDashboard: React.FC = () => {
                     onClick={() => handlePay(detail.id, detail.amount)}
                     className="ml-4"
                   >
-                    Pay Now
+                    Thanh Toán Ngay
                   </Button>
                 </div>
               );
@@ -205,7 +230,7 @@ const CoownerDashboard: React.FC = () => {
                 variant="outline"
                 onClick={() => navigate("/coowner/cost-shares")}
               >
-                View {pendingPayments.length - 3} more payment{pendingPayments.length - 3 > 1 ? "s" : ""}
+                Xem thêm {pendingPayments.length - 3} khoản thanh toán{pendingPayments.length - 3 > 1 ? "" : ""}
               </Button>
             </div>
           )}
@@ -215,10 +240,10 @@ const CoownerDashboard: React.FC = () => {
       <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-            Personal Usage Trend
+            Xu Hướng Sử Dụng Cá Nhân
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Review how often you have booked compared to the group average over the past 12 months.
+            Xem tần suất bạn đã đặt xe so với mức trung bình của nhóm trong 12 tháng qua.
           </p>
         </div>
         <LineChartOne />

@@ -178,4 +178,3 @@ docker-compose logs -f payment-service
 # 5. Tìm kiếm error cụ thể
 docker-compose logs report-service | grep -i "error\|failed"
 ```
-

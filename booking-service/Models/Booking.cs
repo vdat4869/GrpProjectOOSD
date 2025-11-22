@@ -5,9 +5,16 @@ using BookingService.DTOs;
 
 namespace BookingService.Models
 {
-    [EndTimeGreaterThanStartTime]
+    /// <summary>
+    /// Entity đại diện cho một booking (đặt chỗ) trong hệ thống
+    /// Chứa thông tin về: xe được đặt, người đặt, thời gian, trạng thái, check-in/check-out, QR code
+    /// </summary>
+    [EndTimeGreaterThanStartTime]  // Validation: EndTime phải lớn hơn StartTime
     public class Booking
     {
+        /// <summary>
+        /// ID duy nhất của booking (Primary Key)
+        /// </summary>
         [Key]
         public int Id { get; set; }
 

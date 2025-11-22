@@ -15,6 +15,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Serilog;
+using System.Data.Common;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -164,13 +165,45 @@ app.MapHub<PaymentHub>("/paymentHub");
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<PaymentDbContext>();
+    var loggerInit = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
+        // Check if CostShareId column exists and needs to be renamed
+        var connection = context.Database.GetDbConnection();
+        await connection.OpenAsync();
+        try
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                IF EXISTS (
+                    SELECT * FROM sys.columns 
+                    WHERE object_id = OBJECT_ID(N'[Payment].[Payments]') 
+                    AND name = 'CostShareId'
+                )
+                AND NOT EXISTS (
+                    SELECT * FROM sys.columns 
+                    WHERE object_id = OBJECT_ID(N'[Payment].[Payments]') 
+                    AND name = 'CostShareDetailId'
+                )
+                BEGIN
+                    EXEC sp_rename '[Payment].[Payments].[CostShareId]', 'CostShareDetailId', 'COLUMN';
+                END";
+            await command.ExecuteNonQueryAsync();
+            loggerInit.LogInformation("Database schema check completed");
+        }
+        catch (Exception schemaEx)
+        {
+            loggerInit.LogWarning(schemaEx, "Schema fix attempt failed, continuing with migration");
+        }
+        finally
+        {
+            await connection.CloseAsync();
+        }
+        
         context.Database.Migrate();
     }
     catch (Exception ex)
     {
-        var loggerInit = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         loggerInit.LogError(ex, "Error migrating Payment database");
     }
 }

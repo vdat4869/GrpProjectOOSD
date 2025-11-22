@@ -406,6 +406,8 @@ export const reportService = {
       createdAt: record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString(),
       updatedAt: record.updatedAt ? new Date(record.updatedAt).toISOString() : new Date().toISOString(),
       isActive: record.isActive ?? true,
+      mileageAtService: record.mileageAtService,
+      status: record.status !== undefined ? String(record.status) : undefined, // Map status (enum có thể là number hoặc string)
     }));
   },
 

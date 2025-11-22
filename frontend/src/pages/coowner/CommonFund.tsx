@@ -17,6 +17,9 @@ interface FundSummary {
   balance: number;
 }
 
+/**
+ * Trang quản lý quỹ chung - xem và quản lý quỹ bảo dưỡng, quỹ dự trữ và lịch sử giao dịch
+ */
 const CommonFund: React.FC = () => {
   const [groups, setGroups] = useState<VehicleGroup[]>([]);
   const [costShares, setCostShares] = useState<CostShare[]>([]);
@@ -71,7 +74,7 @@ const CommonFund: React.FC = () => {
         setSelectedGroupId(data[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load groups");
+      setError(err instanceof Error ? err.message : "Không thể tải nhóm xe");
     } finally {
       setLoading(false);
     }
@@ -132,7 +135,7 @@ const CommonFund: React.FC = () => {
 
   const handleCreateTransaction = () => {
     if (!selectedFundId) {
-      setError("Please select a fund first");
+      setError("Vui lòng chọn quỹ trước");
       return;
     }
     setTransactionFormData({
@@ -168,7 +171,7 @@ const CommonFund: React.FC = () => {
       }
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create transaction");
+      setError(err instanceof Error ? err.message : "Không thể tạo giao dịch");
     }
   };
 
@@ -184,26 +187,31 @@ const CommonFund: React.FC = () => {
     });
   };
 
+  /**
+   * Lấy nhãn loại chi phí (tiếng Việt)
+   * @param type - Loại chi phí
+   * @returns Nhãn loại chi phí
+   */
   const getCostTypeLabel = (type: CostType) => {
     switch (type) {
       case CostType.Maintenance:
-        return "Maintenance";
+        return "Bảo dưỡng";
       case CostType.Insurance:
-        return "Insurance";
+        return "Bảo hiểm";
       case CostType.Charging:
-        return "Charging";
+        return "Sạc điện";
       case CostType.Registration:
-        return "Registration";
+        return "Đăng ký";
       case CostType.Cleaning:
-        return "Cleaning";
+        return "Vệ sinh";
       case CostType.Parking:
-        return "Parking";
+        return "Đỗ xe";
       case CostType.Toll:
-        return "Toll";
+        return "Phí cầu đường";
       case CostType.Other:
-        return "Reserve Fund";
+        return "Quỹ dự trữ";
       default:
-        return "Other";
+        return "Khác";
     }
   };
 
