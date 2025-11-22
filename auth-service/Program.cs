@@ -5,6 +5,7 @@ using System.Text;
 using AuthService.Data;
 using AuthService.Services;
 using AuthService.Repositories;
+using AuthService.Infrastructure;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using AutoMapper;
@@ -14,7 +15,12 @@ using Microsoft.Data.SqlClient;
 var builder = WebApplication.CreateBuilder(args);
 
 // Thêm services vào container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.WriteIndented = false;
+    });
 
 // Cấu hình Entity Framework
 var defaultConn = builder.Configuration["ConnectionStrings:DefaultConnection"] 
@@ -41,6 +47,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 
 // Thêm HttpClientFactory để gọi ownership service
 builder.Services.AddHttpClient();
+
+// Infrastructure Services (RabbitMQ)
+builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
 
 // Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JWT");

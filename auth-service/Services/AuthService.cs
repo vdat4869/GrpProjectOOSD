@@ -39,6 +39,7 @@ public class AuthService : IAuthService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AuthService> _logger;
     private readonly IConfiguration _configuration;
+    private readonly Infrastructure.IRabbitMQService? _rabbitMQService;
 
     public AuthService(
         IUserRepository userRepository, 
@@ -47,7 +48,8 @@ public class AuthService : IAuthService
         AuthDbContext dbContext,
         IHttpClientFactory httpClientFactory,
         ILogger<AuthService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        Infrastructure.IRabbitMQService? rabbitMQService = null)
     {
         _userRepository = userRepository;
         _jwtService = jwtService;
@@ -56,6 +58,7 @@ public class AuthService : IAuthService
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _configuration = configuration;
+        _rabbitMQService = rabbitMQService;
     }
 
     /// <summary>
@@ -220,6 +223,31 @@ public class AuthService : IAuthService
                     // Log lỗi nhưng không block quá trình register
                     // CoOwner record có thể được tạo sau bằng sync endpoint
                     _logger.LogWarning(ex, "Failed to create CoOwner record in ownership service for user {UserId}. User registration succeeded.", createdUser.Id);
+                }
+            }
+
+            // Publish UserCreated event to RabbitMQ
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    var userCreatedEvent = new Infrastructure.UserCreatedEvent
+                    {
+                        UserId = createdUser.Id,
+                        Email = createdUser.Email ?? string.Empty,
+                        FirstName = createdUser.FirstName ?? string.Empty,
+                        LastName = createdUser.LastName ?? string.Empty,
+                        PhoneNumber = createdUser.PhoneNumber,
+                        Roles = userDto.Roles ?? new List<string>(),
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _rabbitMQService.PublishEvent("user.created", userCreatedEvent);
+                    _logger.LogInformation("Published UserCreated event for user {UserId}", createdUser.Id);
+                }
+                catch (Exception ex)
+                {
+                    // Log lỗi nhưng không block quá trình register
+                    _logger.LogWarning(ex, "Failed to publish UserCreated event for user {UserId}. User registration succeeded.", createdUser.Id);
                 }
             }
 

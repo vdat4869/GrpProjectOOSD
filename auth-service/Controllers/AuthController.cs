@@ -71,6 +71,15 @@ public class AuthController : ControllerBase
             _db.Users.Add(admin);
             await _db.SaveChangesAsync();
         }
+        else
+        {
+            // Update password if admin already exists (for test/dev purposes)
+            admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin@12345");
+            admin.IsActive = true;
+            admin.UpdatedAt = DateTime.UtcNow;
+            _db.Users.Update(admin);  // Explicitly mark as modified
+            await _db.SaveChangesAsync();
+        }
         if (!admin.UserRoles.Any(ur => ur.RoleId == adminRole.Id))
         {
             _db.UserRoles.Add(new UserRole { UserId = admin.Id, RoleId = adminRole.Id, AssignedAt = DateTime.UtcNow });
@@ -104,6 +113,17 @@ public class AuthController : ControllerBase
                 IsActive = true
             };
             _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            // Update password if user already exists (for test/dev purposes)
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password);
+            user.FirstName = req.FirstName;
+            user.LastName = req.LastName;
+            user.IsActive = true;
+            user.UpdatedAt = DateTime.UtcNow;
+            _db.Users.Update(user);  // Explicitly mark as modified
             await _db.SaveChangesAsync();
         }
 
