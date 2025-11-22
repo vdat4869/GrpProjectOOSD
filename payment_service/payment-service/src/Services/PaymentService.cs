@@ -7,12 +7,6 @@ using PaymentService.Services.Interfaces;
 
 namespace PaymentService.Services
 {
-    public interface IPaymentService
-    {
-        Task<List<TransactionDto>> GetTransactionsAsync(Guid walletId, int page = 1, int pageSize = 20);
-        Task<TransactionDto> CreateTransactionAsync(CreateTransactionDto dto);
-    }
-
     public class PaymentService : IPaymentService
     {
         private readonly PaymentDbContext _context;

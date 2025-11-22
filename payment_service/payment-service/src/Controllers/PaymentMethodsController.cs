@@ -27,10 +27,18 @@ namespace PaymentService.Controllers
         }
 
         [HttpGet("user/{userId}")]
-        public async Task<ActionResult<List<PaymentMethodDto>>> GetPaymentMethodsByUser(Guid userId)
+        public async Task<ActionResult<List<PaymentMethodDto>>> GetPaymentMethodsByUser(string userId)
         {
+            // Support both GUID and numeric userId (from auth service)
+            if (!Guid.TryParse(userId, out var userGuid))
+            {
+                // userId is not a GUID (might be a numeric ID from auth service)
+                // Return empty list as we cannot find payment methods without GUID
+                return Ok(new List<PaymentMethodDto>());
+            }
+            
             var paymentMethods = await _context.PaymentMethods
-                .Where(pm => pm.UserId == userId && !pm.IsDeleted)
+                .Where(pm => pm.UserId == userGuid && !pm.IsDeleted)
                 .OrderByDescending(pm => pm.IsDefault)
                 .ThenBy(pm => pm.CreatedAt)
                 .ToListAsync();
@@ -79,8 +87,37 @@ namespace PaymentService.Controllers
         }
 
         [HttpPost]
-        public async Task<ActionResult<PaymentMethodDto>> CreatePaymentMethod([FromBody] CreatePaymentMethodDto dto)
+        public async Task<ActionResult<PaymentMethodDto>> CreatePaymentMethod([FromBody] CreatePaymentMethodRequest request)
         {
+            // Handle both Guid and string userId from frontend
+            Guid userGuid;
+            if (request.UserId is Guid guid)
+            {
+                userGuid = guid;
+            }
+            else if (request.UserId is string userIdString)
+            {
+                if (!Guid.TryParse(userIdString, out userGuid))
+                {
+                    return BadRequest(new { message = "Invalid userId format. Must be a valid GUID." });
+                }
+            }
+            else
+            {
+                return BadRequest(new { message = "UserId is required" });
+            }
+
+            var dto = new CreatePaymentMethodDto
+            {
+                UserId = userGuid,
+                MethodType = request.MethodType,
+                AccountNumber = request.AccountNumber,
+                AccountName = request.AccountName,
+                BankName = request.BankName,
+                BankCode = request.BankCode,
+                IsDefault = request.IsDefault
+            };
+
             var validationResult = await _createPaymentMethodValidator.ValidateAsync(dto);
             if (!validationResult.IsValid)
                 return BadRequest(validationResult.Errors);
@@ -199,5 +236,17 @@ namespace PaymentService.Controllers
 
             return NoContent();
         }
+    }
+
+    // Request DTO to handle both Guid and string userId
+    public class CreatePaymentMethodRequest
+    {
+        public object UserId { get; set; } = null!; // Can be Guid or string
+        public string MethodType { get; set; } = string.Empty;
+        public string AccountNumber { get; set; } = string.Empty;
+        public string? AccountName { get; set; }
+        public string? BankName { get; set; }
+        public string? BankCode { get; set; }
+        public bool IsDefault { get; set; } = false;
     }
 }

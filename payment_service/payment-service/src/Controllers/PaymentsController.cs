@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaymentService.DTOs;
-using PaymentService.Services;
+using PaymentService.Services.Interfaces;
 using FluentValidation;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,11 +13,11 @@ namespace PaymentService.Controllers
     [Authorize]
     public class PaymentsController : ControllerBase
     {
-        private readonly PaymentService.Services.PaymentGatewayService _paymentGatewayService;
+        private readonly IPaymentGatewayService _paymentGatewayService;
         private readonly IValidator<CreatePaymentDto> _createPaymentValidator;
 
         public PaymentsController(
-            PaymentService.Services.PaymentGatewayService paymentGatewayService,
+            IPaymentGatewayService paymentGatewayService,
             IValidator<CreatePaymentDto> createPaymentValidator)
         {
             _paymentGatewayService = paymentGatewayService;
@@ -59,9 +59,17 @@ namespace PaymentService.Controllers
         // Payment gateway callbacks can be added here if needed
 
         [HttpGet("user/{userId}")]
-        public async Task<ActionResult<List<PaymentDto>>> GetPaymentsByUser(Guid userId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<ActionResult<List<PaymentDto>>> GetPaymentsByUser(string userId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var payments = await _paymentGatewayService.GetPaymentsByUserAsync(userId, page, pageSize);
+            // Support both GUID and numeric userId (from auth service)
+            if (!Guid.TryParse(userId, out var userGuid))
+            {
+                // userId is not a GUID (might be a numeric ID from auth service)
+                // Return empty list as we cannot find payments without GUID
+                return Ok(new List<PaymentDto>());
+            }
+            
+            var payments = await _paymentGatewayService.GetPaymentsByUserAsync(userGuid, page, pageSize);
             return Ok(payments);
         }
 

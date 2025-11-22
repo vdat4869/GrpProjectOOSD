@@ -90,4 +90,26 @@ namespace PaymentService.Validators
                 .WithMessage("Image URLs are required for non-QR services");
         }
     }
+
+    public class UpdatePaymentMethodValidator : AbstractValidator<UpdatePaymentMethodDto>
+    {
+        public UpdatePaymentMethodValidator()
+        {
+            // All fields are optional for update
+            RuleFor(x => x.AccountName)
+                .MaximumLength(200)
+                .When(x => !string.IsNullOrEmpty(x.AccountName))
+                .WithMessage("AccountName must not exceed 200 characters");
+            
+            RuleFor(x => x.BankName)
+                .MaximumLength(200)
+                .When(x => !string.IsNullOrEmpty(x.BankName))
+                .WithMessage("BankName must not exceed 200 characters");
+            
+            RuleFor(x => x.BankCode)
+                .MaximumLength(50)
+                .When(x => !string.IsNullOrEmpty(x.BankCode))
+                .WithMessage("BankCode must not exceed 50 characters");
+        }
+    }
 }

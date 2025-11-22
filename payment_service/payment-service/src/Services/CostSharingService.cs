@@ -4,30 +4,27 @@ using PaymentService.Data;
 using PaymentService.DTOs;
 using PaymentService.Models;
 using PaymentService.Services.Interfaces;
+using PaymentService.Microservice.MessageQueue;
 
 namespace PaymentService.Services
 {
-    public interface ICostSharingService
-    {
-        Task<CostShareDto?> GetCostShareAsync(Guid id);
-        Task<List<CostShareDto>> GetCostSharesByGroupAsync(Guid groupId, int page = 1, int pageSize = 20);
-        Task<List<CostShareDto>> GetAllCostSharesAsync(int page = 1, int pageSize = 20);
-        Task<CostShareDto> CreateCostShareAsync(CreateCostShareDto dto);
-        Task<CostShareDto?> UpdateCostShareAsync(Guid id, UpdateCostShareDto dto);
-        Task<bool> DeleteCostShareAsync(Guid id);
-        Task<List<CostShareDetailDto>> GetCostShareDetailsAsync(Guid costShareId);
-        Task<bool> MarkAsPaidAsync(Guid costShareDetailId);
-    }
-
     public class CostSharingService : ICostSharingService
     {
         private readonly PaymentDbContext _context;
         private readonly IMapper _mapper;
+        private readonly RabbitMQService? _rabbitMQService;
+        private readonly ILogger<CostSharingService>? _logger;
 
-        public CostSharingService(PaymentDbContext context, IMapper mapper)
+        public CostSharingService(
+            PaymentDbContext context, 
+            IMapper mapper,
+            RabbitMQService? rabbitMQService = null,
+            ILogger<CostSharingService>? logger = null)
         {
             _context = context;
             _mapper = mapper;
+            _rabbitMQService = rabbitMQService;
+            _logger = logger;
         }
 
         public async Task<CostShareDto?> GetCostShareAsync(Guid id)
@@ -78,6 +75,29 @@ namespace PaymentService.Services
 
             _context.CostShares.Add(costShare);
             await _context.SaveChangesAsync();
+
+            // Publish CostShareCreated event
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    _rabbitMQService.PublishMessage("costshare.created", "costshare.created", new CostShareCreatedMessage
+                    {
+                        CostShareId = costShare.Id,
+                        GroupId = costShare.GroupId,
+                        VehicleId = costShare.VehicleId,
+                        TotalAmount = costShare.TotalAmount,
+                        Currency = costShare.Currency,
+                        Title = costShare.Title,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    _logger?.LogInformation("Published CostShareCreated event for cost share {CostShareId}", costShare.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to publish CostShareCreated event for cost share {CostShareId}", costShare.Id);
+                }
+            }
             
             return await GetCostShareAsync(costShare.Id) ?? throw new InvalidOperationException("Failed to create cost share");
         }
@@ -97,6 +117,29 @@ namespace PaymentService.Services
             
             costShare.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
+
+            // Publish CostShareUpdated event
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    _rabbitMQService.PublishMessage("costshare.updated", "costshare.updated", new CostShareCreatedMessage
+                    {
+                        CostShareId = costShare.Id,
+                        GroupId = costShare.GroupId,
+                        VehicleId = costShare.VehicleId,
+                        TotalAmount = costShare.TotalAmount,
+                        Currency = costShare.Currency,
+                        Title = costShare.Title,
+                        CreatedAt = costShare.UpdatedAt ?? DateTime.UtcNow
+                    });
+                    _logger?.LogInformation("Published CostShareUpdated event for cost share {CostShareId}", costShare.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to publish CostShareUpdated event for cost share {CostShareId}", costShare.Id);
+                }
+            }
             
             return await GetCostShareAsync(id);
         }
@@ -154,6 +197,29 @@ namespace PaymentService.Services
                     costShare.PaidDate = DateTime.UtcNow;
                     costShare.UpdatedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
+
+                    // Publish CostShareUpdated event when all paid
+                    if (_rabbitMQService != null)
+                    {
+                        try
+                        {
+                            _rabbitMQService.PublishMessage("costshare.updated", "costshare.updated", new CostShareCreatedMessage
+                            {
+                                CostShareId = costShare.Id,
+                                GroupId = costShare.GroupId,
+                                VehicleId = costShare.VehicleId,
+                                TotalAmount = costShare.TotalAmount,
+                                Currency = costShare.Currency,
+                                Title = costShare.Title,
+                                CreatedAt = DateTime.UtcNow
+                            });
+                            _logger?.LogInformation("Published CostShareUpdated event for cost share {CostShareId} (all paid)", costShare.Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogWarning(ex, "Failed to publish CostShareUpdated event for cost share {CostShareId}", costShare.Id);
+                        }
+                    }
                 }
             }
             

@@ -223,7 +223,7 @@ function App() {
     try {
       setLoading(true); setError(null)
       const data = await getCostSharesByGroup('group-prototype')
-      setCostShares(data)
+      setCostShares(data as any[])
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
 
@@ -231,7 +231,7 @@ function App() {
     try {
       setLoading(true); setError(null)
       const data = await getPaymentsByUser('user-prototype')
-      setPayments(data)
+      setPayments(data as any[])
     } catch (e: any) { setError(e.message) } finally { setLoading(false) }
   }
 

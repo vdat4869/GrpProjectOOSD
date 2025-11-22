@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using PaymentService.DTOs;
-using PaymentService.Services;
+using PaymentService.Services.Interfaces;
 using FluentValidation;
 
 namespace PaymentService.Controllers
@@ -11,11 +11,11 @@ namespace PaymentService.Controllers
     [Authorize]
     public class CostSharesController : ControllerBase
     {
-        private readonly PaymentService.Services.CostSharingService _costSharingService;
+        private readonly ICostSharingService _costSharingService;
         private readonly IValidator<CreateCostShareDto> _createCostShareValidator;
 
         public CostSharesController(
-            PaymentService.Services.CostSharingService costSharingService,
+            ICostSharingService costSharingService,
             IValidator<CreateCostShareDto> createCostShareValidator)
         {
             _costSharingService = costSharingService;

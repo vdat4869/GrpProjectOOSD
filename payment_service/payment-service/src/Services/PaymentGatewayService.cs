@@ -4,21 +4,10 @@ using PaymentService.Data;
 using PaymentService.DTOs;
 using PaymentService.Models;
 using PaymentService.Services.Interfaces;
+using PaymentService.Microservice.MessageQueue;
 
 namespace PaymentService.Services
 {
-    public interface IPaymentGatewayService
-    {
-        Task<PaymentDto> CreatePaymentAsync(CreatePaymentDto dto);
-        Task<bool> ProcessPaymentCallbackAsync(PaymentCallbackDto dto);
-        Task<bool> ProcessVNPayCallbackAsync(Controllers.VNPayCallbackDto callback);
-        Task<PaymentDto?> GetPaymentAsync(Guid id);
-        Task<PaymentDto?> GetPaymentByOrderIdAsync(string orderId);
-        Task<List<PaymentDto>> GetPaymentsByUserAsync(Guid userId, int page = 1, int pageSize = 20);
-        Task<bool> CancelPaymentAsync(Guid id);
-        Task<bool> RefundPaymentAsync(Guid id, decimal? amount = null);
-    }
-
     public class PaymentGatewayService : IPaymentGatewayService
     {
         private readonly PaymentDbContext _context;
@@ -26,19 +15,22 @@ namespace PaymentService.Services
         private readonly IConfiguration _configuration;
         private readonly ILogger<PaymentGatewayService> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly RabbitMQService? _rabbitMQService;
 
         public PaymentGatewayService(
             PaymentDbContext context, 
             IMapper mapper, 
             IConfiguration configuration,
             ILogger<PaymentGatewayService> logger,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            RabbitMQService? rabbitMQService = null)
         {
             _context = context;
             _mapper = mapper;
             _configuration = configuration;
             _logger = logger;
             _httpClientFactory = httpClientFactory;
+            _rabbitMQService = rabbitMQService;
         }
 
         public async Task<PaymentDto> CreatePaymentAsync(CreatePaymentDto dto)
@@ -53,6 +45,29 @@ namespace PaymentService.Services
 
             _context.Payments.Add(payment);
             await _context.SaveChangesAsync();
+
+            // Publish PaymentCreated event
+            if (_rabbitMQService != null)
+            {
+                try
+                {
+                    _rabbitMQService.PublishMessage("payment.created", "payment.created", new Microservice.MessageQueue.PaymentCreatedMessage
+                    {
+                        PaymentId = payment.Id,
+                        UserId = payment.CostShareDetail?.UserId ?? Guid.Empty,
+                        GroupId = payment.CostShareDetail?.CostShare?.GroupId ?? Guid.Empty,
+                        Amount = payment.Amount,
+                        Currency = payment.Currency,
+                        PaymentMethod = payment.Method.ToString(),
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    _logger.LogInformation("Published PaymentCreated event for payment {PaymentId}", payment.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to publish PaymentCreated event for payment {PaymentId}", payment.Id);
+                }
+            }
             
             return _mapper.Map<PaymentDto>(payment);
         }
@@ -84,6 +99,7 @@ namespace PaymentService.Services
                 
                 // Mark cost share detail as paid
                 var costShareDetail = await _context.CostShareDetails
+                    .Include(csd => csd.CostShare)
                     .FirstOrDefaultAsync(csd => csd.Id == payment.CostShareDetailId);
                 
                 if (costShareDetail != null)
@@ -91,6 +107,29 @@ namespace PaymentService.Services
                     costShareDetail.Status = CostShareDetailStatus.Paid;
                     costShareDetail.PaidDate = DateTime.UtcNow;
                     costShareDetail.UpdatedAt = DateTime.UtcNow;
+                }
+
+                // Publish PaymentCompleted event
+                if (_rabbitMQService != null)
+                {
+                    try
+                    {
+                        _rabbitMQService.PublishMessage("payment.completed", "payment.completed", new Microservice.MessageQueue.PaymentCompletedMessage
+                        {
+                            PaymentId = payment.Id,
+                            UserId = costShareDetail?.UserId ?? Guid.Empty,
+                            GroupId = costShareDetail?.CostShare?.GroupId ?? Guid.Empty,
+                            Amount = payment.Amount,
+                            Currency = payment.Currency,
+                            TransactionId = payment.TransactionId ?? string.Empty,
+                            CompletedAt = DateTime.UtcNow
+                        });
+                        _logger.LogInformation("Published PaymentCompleted event for payment {PaymentId}", payment.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to publish PaymentCompleted event for payment {PaymentId}", payment.Id);
+                    }
                 }
             }
             
@@ -126,6 +165,7 @@ namespace PaymentService.Services
                 
                 // Mark cost share detail as paid
                 var costShareDetail = await _context.CostShareDetails
+                    .Include(csd => csd.CostShare)
                     .FirstOrDefaultAsync(csd => csd.Id == payment.CostShareDetailId);
                 
                 if (costShareDetail != null)
@@ -134,6 +174,29 @@ namespace PaymentService.Services
                     costShareDetail.PaidDate = DateTime.UtcNow;
                     costShareDetail.UpdatedAt = DateTime.UtcNow;
                     _logger.LogInformation($"[VNPay Service] Updated cost share detail: {costShareDetail.Id}");
+                }
+
+                // Publish PaymentCompleted event
+                if (_rabbitMQService != null)
+                {
+                    try
+                    {
+                        _rabbitMQService.PublishMessage("payment.completed", "payment.completed", new Microservice.MessageQueue.PaymentCompletedMessage
+                        {
+                            PaymentId = payment.Id,
+                            UserId = costShareDetail?.UserId ?? Guid.Empty,
+                            GroupId = costShareDetail?.CostShare?.GroupId ?? Guid.Empty,
+                            Amount = payment.Amount,
+                            Currency = payment.Currency,
+                            TransactionId = payment.TransactionId ?? string.Empty,
+                            CompletedAt = DateTime.UtcNow
+                        });
+                        _logger.LogInformation("Published PaymentCompleted event for payment {PaymentId}", payment.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to publish PaymentCompleted event for payment {PaymentId}", payment.Id);
+                    }
                 }
 
                 // Wallet balance update removed (Wallets not in current schema)
@@ -169,7 +232,7 @@ namespace PaymentService.Services
         {
             var payments = await _context.Payments
                 .Include(p => p.CostShareDetail)
-                .Where(p => p.CostShareDetail.UserId == userId && !p.IsDeleted)
+                .Where(p => p.CostShareDetail != null && p.CostShareDetail.UserId == userId && !p.IsDeleted)
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)

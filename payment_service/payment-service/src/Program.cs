@@ -6,6 +6,7 @@ using PaymentService.Validators;
 using PaymentService.Hubs;
 using PaymentService.Repositories;
 using PaymentService.Repositories.Interfaces;
+using PaymentService.Microservice.MessageQueue;
 // using PaymentService.Infrastructure; // TODO: Implement Infrastructure services
 using FluentValidation;
 using System.Reflection;
@@ -62,14 +63,13 @@ builder.Services.AddScoped<ICostShareRepository, CostShareRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 
 // Services
-builder.Services.AddScoped<PaymentService.Services.PaymentService>();
-builder.Services.AddScoped<PaymentService.Services.CostSharingService>();
-builder.Services.AddScoped<PaymentService.Services.PaymentGatewayService>();
+builder.Services.AddScoped<PaymentService.Services.Interfaces.IPaymentService, PaymentService.Services.PaymentService>();
+builder.Services.AddScoped<PaymentService.Services.Interfaces.ICostSharingService, PaymentService.Services.CostSharingService>();
+builder.Services.AddScoped<PaymentService.Services.Interfaces.IPaymentGatewayService, PaymentService.Services.PaymentGatewayService>();
 
 // Infrastructure Services (Singleton)
-// TODO: Implement RabbitMQ and Redis services
-// builder.Services.AddSingleton<IRabbitMQService, RabbitMQService>();
-// builder.Services.AddSingleton<IRedisService, RedisService>();
+builder.Services.AddSingleton<RabbitMQService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RabbitMQService>());
 
 // AI Service (HttpClient for calling AI Service)
 // TODO: Implement AI service interface and class
@@ -176,44 +176,31 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Subscribe to RabbitMQ events (services are Singleton, so they're available here)
-// TODO: Implement RabbitMQ service and uncomment this section
-/*
-var rabbitMQService = app.Services.GetRequiredService<IRabbitMQService>();
+var rabbitMQService = app.Services.GetService<RabbitMQService>();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
-try
+if (rabbitMQService != null)
 {
-    // Subscribe to booking completed events
-    rabbitMQService.SubscribeEvent<BookingCompletedEvent>("booking.completed", (bookingEvent) =>
+    try
     {
-        logger.LogInformation("Received booking completed event: BookingId={BookingId}, CoOwnerId={CoOwnerId}",
-            bookingEvent.BookingId, bookingEvent.CoOwnerId);
-
-        // Process payment for completed booking asynchronously
-        _ = Task.Run(() =>
+        // Subscribe to booking completed events
+        rabbitMQService.SubscribeToQueue<BookingCompletedEvent>("booking.completed", async (bookingEvent) =>
         {
-            try
-            {
-                using var serviceScope = app.Services.CreateScope();
-                // Here you would process the payment
-                // var paymentService = serviceScope.ServiceProvider.GetRequiredService<PaymentService.Services.PaymentService>();
-                // await paymentService.ProcessBookingPaymentAsync(bookingEvent);
-                logger.LogInformation("Processing payment for booking {BookingId}", bookingEvent.BookingId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error processing booking payment");
-            }
-        });
-    });
+            logger.LogInformation("Received booking completed event: BookingId={BookingId}, CoOwnerId={CoOwnerId}",
+                bookingEvent.BookingId, bookingEvent.CoOwnerId);
 
-    Log.Information("Starting Payment Service with RabbitMQ integration");
+            // Process payment for completed booking asynchronously
+            // Auto-generate cost share or payment can be implemented here
+            logger.LogInformation("Processing payment for booking {BookingId}", bookingEvent.BookingId);
+        });
+
+        Log.Information("Starting Payment Service with RabbitMQ integration");
+    }
+    catch (Exception ex)
+    {
+        Log.Warning(ex, "Error setting up RabbitMQ subscriptions. Service will continue without subscriptions.");
+    }
 }
-catch (Exception ex)
-{
-    Log.Fatal(ex, "Error setting up RabbitMQ subscriptions");
-}
-*/
 
 Log.Information("Starting Payment Service");
 

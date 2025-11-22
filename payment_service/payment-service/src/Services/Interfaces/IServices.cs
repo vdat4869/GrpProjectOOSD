@@ -10,6 +10,7 @@ namespace PaymentService.Services.Interfaces
     {
         Task<DTOs.CostShareDto?> GetCostShareAsync(Guid id);
         Task<List<DTOs.CostShareDto>> GetCostSharesByGroupAsync(Guid groupId, int page = 1, int pageSize = 20);
+        Task<List<DTOs.CostShareDto>> GetAllCostSharesAsync(int page = 1, int pageSize = 20);
         Task<DTOs.CostShareDto> CreateCostShareAsync(DTOs.CreateCostShareDto dto);
         Task<DTOs.CostShareDto?> UpdateCostShareAsync(Guid id, DTOs.UpdateCostShareDto dto);
         Task<bool> DeleteCostShareAsync(Guid id);

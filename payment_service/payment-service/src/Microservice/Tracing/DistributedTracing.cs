@@ -22,7 +22,7 @@ namespace PaymentService.Microservice.Tracing
             var traceId = GetOrCreateTraceId(context);
             var spanId = Activity.Current?.Id ?? Guid.NewGuid().ToString();
 
-            using var activity = ActivitySource.StartActivity("HTTP Request");
+            using var activity = ActivitySource.Instance.StartActivity("HTTP Request");
             activity?.SetTag("http.method", context.Request.Method);
             activity?.SetTag("http.url", context.Request.Path);
             activity?.SetTag("http.user_agent", context.Request.Headers.UserAgent.ToString());
@@ -102,7 +102,14 @@ namespace PaymentService.Microservice.Tracing
 
         public void RecordException(Exception exception)
         {
-            Activity.Current?.RecordException(exception);
+            var activity = Activity.Current;
+            if (activity != null)
+            {
+                activity.SetTag("error", true);
+                activity.SetTag("error.message", exception.Message);
+                activity.SetTag("error.type", exception.GetType().Name);
+                activity.SetTag("error.stack", exception.StackTrace ?? string.Empty);
+            }
             _logger.LogError(exception, "Exception recorded in trace");
         }
     }
