@@ -12,4 +12,3 @@ public class GetCoOwnerByUserIdQuery : IRequest<CoOwnerDto?>
         UserId = userId;
     }
 }
-

@@ -57,6 +57,7 @@ public class VehicleGroupsController : ControllerBase
             LicensePlate = vg.LicensePlate,
             VehicleModel = vg.VehicleModel,
             VehicleYear = vg.VehicleYear,
+            ImageUrl = vg.ImageUrl,
             CreatedByCoOwnerId = vg.CreatedByCoOwnerId,
             Status = vg.Status.ToString(),
             CreatedAt = vg.CreatedAt,
@@ -92,6 +93,7 @@ public class VehicleGroupsController : ControllerBase
             LicensePlate = group.LicensePlate,
             VehicleModel = group.VehicleModel,
             VehicleYear = group.VehicleYear,
+            ImageUrl = group.ImageUrl,
             CreatedByCoOwnerId = group.CreatedByCoOwnerId,
             Status = group.Status.ToString(),
             CreatedAt = group.CreatedAt,
@@ -109,42 +111,45 @@ public class VehicleGroupsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<VehicleGroupDto>> CreateVehicleGroup([FromBody] CreateVehicleGroupDto dto)
     {
-        if (!ModelState.IsValid)
+        try
         {
-            return BadRequest(ModelState);
-        }
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
 
-        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
 
-        // Check if user is Admin
-        var isAdmin = User.IsInRole("Admin") || 
-                     User.Claims.Any(c => c.Type == ClaimTypes.Role && (c.Value == "Admin" || c.Value == "admin"));
+            // Check if user is Admin
+            var isAdmin = User.IsInRole("Admin") || 
+                         User.Claims.Any(c => c.Type == ClaimTypes.Role && (c.Value == "Admin" || c.Value == "admin"));
 
-        // Find co-owner by userId
-        var coOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == userId);
-        
-        // If not admin and no co-owner found, return error
-        if (!isAdmin && coOwner == null)
-            return BadRequest(new { message = "Co-owner not found" });
+            // Find co-owner by userId
+            var coOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == userId);
+            
+            // If not admin and no co-owner found, return error
+            if (!isAdmin && coOwner == null)
+                return BadRequest(new { message = "Co-owner not found" });
 
-        var group = new VehicleGroup
-        {
-            Name = dto.Name,
-            Description = dto.Description,
-            VehicleName = dto.VehicleName,
-            LicensePlate = dto.LicensePlate,
-            VehicleModel = dto.VehicleModel,
-            VehicleYear = dto.VehicleYear,
-            CreatedByCoOwnerId = coOwner?.Id, // Allow null for Admin
-            Status = GroupStatus.Active,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var group = new VehicleGroup
+            {
+                Name = dto.Name,
+                Description = dto.Description,
+                VehicleName = dto.VehicleName,
+                LicensePlate = dto.LicensePlate,
+                VehicleModel = dto.VehicleModel,
+                VehicleYear = dto.VehicleYear,
+                ImageUrl = dto.ImageUrl,
+                CreatedByCoOwnerId = coOwner?.Id, // Allow null for Admin
+                Status = GroupStatus.Active,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
 
-        _context.VehicleGroups.Add(group);
-        await _context.SaveChangesAsync();
+            _context.VehicleGroups.Add(group);
+            await _context.SaveChangesAsync();
 
         // Add creator as Owner member only if co-owner exists
         if (coOwner != null)
@@ -185,25 +190,32 @@ public class VehicleGroupsController : ControllerBase
             }
         }
 
-        var memberCount = coOwner != null ? 1 : 0;
-        var result = new VehicleGroupDto
-        {
-            Id = group.Id,
-            Name = group.Name,
-            Description = group.Description,
-            VehicleName = group.VehicleName,
-            LicensePlate = group.LicensePlate,
-            VehicleModel = group.VehicleModel,
-            VehicleYear = group.VehicleYear,
-            CreatedByCoOwnerId = group.CreatedByCoOwnerId,
-            Status = group.Status.ToString(),
-            CreatedAt = group.CreatedAt,
-            UpdatedAt = group.UpdatedAt,
-            MemberCount = memberCount,
-            TotalFundBalance = 0
-        };
+            var memberCount = coOwner != null ? 1 : 0;
+            var result = new VehicleGroupDto
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Description = group.Description,
+                VehicleName = group.VehicleName,
+                LicensePlate = group.LicensePlate,
+                VehicleModel = group.VehicleModel,
+                VehicleYear = group.VehicleYear,
+                ImageUrl = group.ImageUrl,
+                CreatedByCoOwnerId = group.CreatedByCoOwnerId,
+                Status = group.Status.ToString(),
+                CreatedAt = group.CreatedAt,
+                UpdatedAt = group.UpdatedAt,
+                MemberCount = memberCount,
+                TotalFundBalance = 0
+            };
 
-        return CreatedAtAction(nameof(GetVehicleGroupById), new { id = group.Id }, result);
+            return CreatedAtAction(nameof(GetVehicleGroupById), new { id = group.Id }, result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating vehicle group: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while creating the vehicle group", error = ex.Message });
+        }
     }
 
     /// <summary>
@@ -228,6 +240,8 @@ public class VehicleGroupsController : ControllerBase
             group.VehicleModel = dto.VehicleModel;
         if (dto.VehicleYear != null)
             group.VehicleYear = dto.VehicleYear;
+        if (dto.ImageUrl != null)
+            group.ImageUrl = dto.ImageUrl;
         if (!string.IsNullOrEmpty(dto.Status) && Enum.TryParse<GroupStatus>(dto.Status, true, out var status))
             group.Status = status;
 
@@ -265,6 +279,7 @@ public class VehicleGroupsController : ControllerBase
             LicensePlate = group.LicensePlate,
             VehicleModel = group.VehicleModel,
             VehicleYear = group.VehicleYear,
+            ImageUrl = group.ImageUrl,
             CreatedByCoOwnerId = group.CreatedByCoOwnerId,
             Status = group.Status.ToString(),
             CreatedAt = group.CreatedAt,
@@ -276,12 +291,18 @@ public class VehicleGroupsController : ControllerBase
     /// Get members of a vehicle group
     /// </summary>
     [HttpGet("{id}/members")]
-    public async Task<ActionResult<List<GroupMemberDto>>> GetGroupMembers(Guid id)
+    public async Task<ActionResult<List<GroupMemberDto>>> GetGroupMembers(Guid id, [FromQuery] bool includeRemoved = false)
     {
-        var members = await _context.GroupMembers
+        var query = _context.GroupMembers
             .Include(m => m.CoOwner)
-            .Where(m => m.VehicleGroupId == id && m.Status == MemberStatus.Active)
-            .ToListAsync();
+            .Where(m => m.VehicleGroupId == id);
+
+        if (!includeRemoved)
+        {
+            query = query.Where(m => m.Status == MemberStatus.Active);
+        }
+
+        var members = await query.ToListAsync();
 
         var result = members.Select(m => new GroupMemberDto
         {
@@ -404,7 +425,8 @@ public class VehicleGroupsController : ControllerBase
         if (member == null)
             return NotFound();
 
-        // Check if user has permission to update role (Owner or Admin of the group)
+        // Check if user has permission to update role
+        // Only Owner can set Admin role, not group Admin
         var currentUserCoOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == userId);
         if (currentUserCoOwner == null)
             return Unauthorized();
@@ -414,9 +436,16 @@ public class VehicleGroupsController : ControllerBase
                                       m.CoOwnerId == currentUserCoOwner.Id && 
                                       m.Status == MemberStatus.Active);
         
-        if (currentUserMember == null || (currentUserMember.Role != MemberRole.Owner && currentUserMember.Role != MemberRole.Admin))
+        if (currentUserMember == null)
         {
-            return Forbid("Only Owner or Admin can update member roles");
+            return Forbid("You are not a member of this group");
+        }
+
+        // Only Owner can update roles, especially setting Admin role
+        // Group Admin cannot set Admin role for others
+        if (currentUserMember.Role != MemberRole.Owner)
+        {
+            return Forbid("Only Owner can update member roles");
         }
 
         // Prevent changing Owner role or removing the last Owner
@@ -506,6 +535,10 @@ public class VehicleGroupsController : ControllerBase
             }
         }
 
+        // Reload to get all related data
+        await _context.Entry(group).Collection(vg => vg.Members).LoadAsync();
+        await _context.Entry(group).Collection(vg => vg.Funds).LoadAsync();
+
         return Ok(new VehicleGroupDto
         {
             Id = group.Id,
@@ -515,10 +548,13 @@ public class VehicleGroupsController : ControllerBase
             LicensePlate = group.LicensePlate,
             VehicleModel = group.VehicleModel,
             VehicleYear = group.VehicleYear,
+            ImageUrl = group.ImageUrl,
             CreatedByCoOwnerId = group.CreatedByCoOwnerId,
             Status = group.Status.ToString(),
             CreatedAt = group.CreatedAt,
-            UpdatedAt = group.UpdatedAt
+            UpdatedAt = group.UpdatedAt,
+            MemberCount = group.Members.Count(m => m.Status == MemberStatus.Active),
+            TotalFundBalance = group.Funds.Where(f => f.Status == FundStatus.Active).Sum(f => f.Balance)
         });
     }
 
@@ -588,6 +624,11 @@ public class VehicleGroupsController : ControllerBase
         {
             Name = dto.Name ?? "Dev Group",
             Description = dto.Description,
+            VehicleName = dto.VehicleName ?? "Dev Vehicle",
+            LicensePlate = dto.LicensePlate,
+            VehicleModel = dto.VehicleModel,
+            VehicleYear = dto.VehicleYear,
+            ImageUrl = dto.ImageUrl,
             Status = GroupStatus.Active,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -595,14 +636,26 @@ public class VehicleGroupsController : ControllerBase
         _context.VehicleGroups.Add(group);
         await _context.SaveChangesAsync();
 
+        // Reload to get all related data
+        await _context.Entry(group).Collection(vg => vg.Members).LoadAsync();
+        await _context.Entry(group).Collection(vg => vg.Funds).LoadAsync();
+        
         return Ok(new VehicleGroupDto
         {
             Id = group.Id,
             Name = group.Name,
             Description = group.Description,
+            VehicleName = group.VehicleName,
+            LicensePlate = group.LicensePlate,
+            VehicleModel = group.VehicleModel,
+            VehicleYear = group.VehicleYear,
+            ImageUrl = group.ImageUrl,
+            CreatedByCoOwnerId = group.CreatedByCoOwnerId,
             Status = group.Status.ToString(),
             CreatedAt = group.CreatedAt,
-            UpdatedAt = group.UpdatedAt
+            UpdatedAt = group.UpdatedAt,
+            MemberCount = group.Members.Count(m => m.Status == MemberStatus.Active),
+            TotalFundBalance = group.Funds.Where(f => f.Status == FundStatus.Active).Sum(f => f.Balance)
         });
     }
 

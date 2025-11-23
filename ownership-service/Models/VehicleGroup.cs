@@ -31,6 +31,9 @@ public class VehicleGroup
     [MaxLength(20)]
     public string? VehicleYear { get; set; } // Năm sản xuất
 
+    // No MaxLength to support base64 image data (can be very long)
+    public string? ImageUrl { get; set; } // URL ảnh xe hoặc base64 image data
+
     public Guid? CreatedByCoOwnerId { get; set; } // Người tạo nhóm (nullable for Admin)
 
     [Required]
