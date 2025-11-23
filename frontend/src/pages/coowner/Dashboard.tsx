@@ -39,6 +39,21 @@ const CoownerDashboard: React.FC = () => {
    */
   useEffect(() => {
     loadDashboardData();
+    
+    // Listen for payment completion events to refresh cost shares
+    const handlePaymentCompleted = () => {
+      console.log('[Dashboard] Payment completed, refreshing dashboard data...');
+      // Delay a bit to ensure backend has updated
+      setTimeout(() => {
+        loadDashboardData();
+      }, 1500);
+    };
+    
+    window.addEventListener('paymentCompleted', handlePaymentCompleted);
+    
+    return () => {
+      window.removeEventListener('paymentCompleted', handlePaymentCompleted);
+    };
   }, []);
 
   /**
@@ -85,12 +100,29 @@ const CoownerDashboard: React.FC = () => {
         console.error("Không thể tải bookings:", err);
       }
 
-      // Tải nhóm xe
+      // Tải nhóm xe (chỉ đếm groups mà co-owner có quyền)
       try {
-        const groups = await ownershipService.getGroups();
-        setSharedVehicles(groups.length);
+        const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+        if (userId) {
+          const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+          if (coOwner) {
+            // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+            const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+            
+            // Lấy danh sách group IDs từ ownerships
+            const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+            
+            // Chỉ đếm số lượng groups mà co-owner có quyền
+            setSharedVehicles(groupIds.length);
+          } else {
+            setSharedVehicles(0);
+          }
+        } else {
+          setSharedVehicles(0);
+        }
       } catch (err) {
         console.error("Không thể tải nhóm xe:", err);
+        setSharedVehicles(0);
       }
 
       // TODO: Tải voting items khi voting service có sẵn
@@ -114,11 +146,12 @@ const CoownerDashboard: React.FC = () => {
   /**
    * Xử lý khi thanh toán thành công
    */
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setIsPaymentModalOpen(false);
     setSelectedCostShareDetailId(null);
     setSelectedAmount(0);
-    loadDashboardData();
+    // Reload data để cập nhật lịch sử thanh toán
+    await loadDashboardData();
   };
 
   /**
@@ -148,7 +181,7 @@ const CoownerDashboard: React.FC = () => {
       <PageMeta title="Đồng sở hữu | Bảng Điều Khiển" />
       <PageHeader
         title={`Chào mừng trở lại${firstName ? `, ${firstName}` : ""}`}
-        description="Theo dõi bookings, thanh toán và xu hướng sử dụng của bạn trên tất cả các xe điện đồng sở hữu."
+        description="Theo dõi đặt chỗ, thanh toán và xu hướng sử dụng của bạn trên tất cả các xe điện đồng sở hữu."
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -194,7 +227,7 @@ const CoownerDashboard: React.FC = () => {
           <div className="space-y-3">
             {pendingPayments.slice(0, 3).map((detail) => {
               const costShare = costSharesMap.get(detail.costShareId);
-              const costShareTitle = costShare?.title || "Cost Share";
+              const costShareTitle = costShare?.title || "Chia Sẻ Chi Phí";
               const dueDate = costShare?.dueDate ? formatDate(costShare.dueDate) : "";
 
               return (

@@ -40,11 +40,12 @@ public class AnalyticsService : IAnalyticsService
         try
         {
             // Nếu không có ngày bắt đầu/kết thúc, lấy dữ liệu 30 ngày gần nhất
-            var actualStartDate = startDate ?? DateTime.UtcNow.AddDays(-30);
-            var actualEndDate = endDate ?? DateTime.UtcNow;
+            // Sử dụng UTC để đảm bảo consistency với database
+            var actualStartDate = startDate?.ToUniversalTime() ?? DateTime.UtcNow.AddDays(-30);
+            var actualEndDate = endDate?.ToUniversalTime() ?? DateTime.UtcNow;
 
-            var usageHistories = await _historyRepository.GetUsageHistoriesByDateRangeAsync(actualStartDate, actualEndDate);
-            var vehicleUsages = usageHistories.Where(u => u.VehicleId == vehicleId).ToList();
+            // Sử dụng query tối ưu: filter theo vehicleId và date range cùng lúc
+            var vehicleUsages = await _historyRepository.GetUsageHistoriesByVehicleIdAndDateRangeAsync(vehicleId, actualStartDate, actualEndDate);
 
             if (!vehicleUsages.Any())
             {
@@ -93,8 +94,9 @@ public class AnalyticsService : IAnalyticsService
         try
         {
             // Nếu không có ngày bắt đầu/kết thúc, lấy dữ liệu 30 ngày gần nhất
-            var actualStartDate = startDate ?? DateTime.UtcNow.AddDays(-30);
-            var actualEndDate = endDate ?? DateTime.UtcNow;
+            // Sử dụng UTC để đảm bảo consistency với database
+            var actualStartDate = startDate?.ToUniversalTime() ?? DateTime.UtcNow.AddDays(-30);
+            var actualEndDate = endDate?.ToUniversalTime() ?? DateTime.UtcNow;
 
             var costRecords = await _historyRepository.GetCostRecordsByDateRangeAsync(actualStartDate, actualEndDate);
             var vehicleCosts = costRecords.Where(c => c.VehicleId == vehicleId).ToList();

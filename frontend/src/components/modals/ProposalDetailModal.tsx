@@ -41,6 +41,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     }
   };
 
+  // Tải danh sách phiếu bầu
   const loadVotes = async () => {
     try {
       setLoading(true);
@@ -48,7 +49,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
       const data = await ownershipService.getVotes(proposal.id);
       setVotes(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load votes");
+      setError(err instanceof Error ? err.message : "Không thể tải phiếu bầu");
     } finally {
       setLoading(false);
     }
@@ -65,6 +66,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     });
   };
 
+  // Lấy màu cho lựa chọn bỏ phiếu
   const getVoteColor = (choice: string) => {
     switch (choice.toLowerCase()) {
       case "approve":
@@ -78,6 +80,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     }
   };
 
+  // Lấy màu cho trạng thái đề xuất
   const getStatusColor = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower === "voting" || statusLower === "open") {
@@ -95,6 +98,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     return "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300";
   };
 
+  // Kiểm tra xem có thể bỏ phiếu không
   const canVote = proposal.status.toLowerCase() === "voting";
 
   const displayProposal = proposalDetail || proposal;
@@ -103,17 +107,17 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
     <>
       <Modal isOpen={isOpen} onClose={onClose} className="max-w-[800px] m-4">
         <div className="no-scrollbar relative w-full max-w-[800px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
-          <div className="px-2 pr-14">
-            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Proposal Details
-            </h4>
-            <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              {displayProposal.title}
-            </p>
-          </div>
+        <div className="px-2 pr-14">
+          <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+            Chi Tiết Đề Xuất
+          </h4>
+          <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
+            {displayProposal.title}
+          </p>
+        </div>
 
           <div className="custom-scrollbar max-h-[600px] overflow-y-auto px-2 pb-3">
-            {/* Proposal Info */}
+            {/* Thông tin Đề Xuất */}
             <div className="mb-6 space-y-4">
               <div className="flex items-center gap-3">
                 <span
@@ -130,7 +134,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
               <div>
                 <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                  Type
+                  Loại
                 </h5>
                 <p className="text-sm text-gray-900 dark:text-white/90">
                   {displayProposal.type}
@@ -140,7 +144,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
               {displayProposal.description && (
                 <div>
                   <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Description
+                    Mô Tả
                   </h5>
                   <p className="text-sm text-gray-900 dark:text-white/90">
                     {displayProposal.description}
@@ -151,7 +155,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
               {displayProposal.details && (
                 <div>
                   <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Details
+                    Chi Tiết
                   </h5>
                   <p className="text-sm text-gray-900 dark:text-white/90">
                     {displayProposal.details}
@@ -162,7 +166,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
               {displayProposal.estimatedCost && (
                 <div>
                   <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Estimated Cost
+                    Chi Phí Ước Tính
                   </h5>
                   <p className="text-sm text-gray-900 dark:text-white/90">
                     {displayProposal.currency || "VND"}{" "}
@@ -174,7 +178,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Created At
+                    Ngày Tạo
                   </h5>
                   <p className="text-sm text-gray-900 dark:text-white/90">
                     {formatDate(displayProposal.createdAt)}
@@ -183,7 +187,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                 {displayProposal.votingStartDate && (
                   <div>
                     <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                      Voting Start
+                      Bắt Đầu Bỏ Phiếu
                     </h5>
                     <p className="text-sm text-gray-900 dark:text-white/90">
                       {formatDate(displayProposal.votingStartDate)}
@@ -193,7 +197,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                 {displayProposal.votingEndDate && (
                   <div>
                     <h5 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                      Voting End
+                      Kết Thúc Bỏ Phiếu
                     </h5>
                     <p className="text-sm text-gray-900 dark:text-white/90">
                       {formatDate(displayProposal.votingEndDate)}
@@ -202,34 +206,34 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                 )}
               </div>
 
-              {/* Vote Summary */}
+              {/* Tóm Tắt Phiếu Bầu */}
               {(displayProposal.totalVotes !== undefined ||
                 displayProposal.totalVotes !== 0) && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800">
                   <h5 className="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Vote Summary
+                    Tóm Tắt Phiếu Bầu
                   </h5>
                   <div className="grid grid-cols-4 gap-4">
                     <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Total</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Tổng</p>
                       <p className="text-lg font-semibold text-gray-900 dark:text-white/90">
                         {displayProposal.totalVotes || 0}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Approve</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Đồng ý</p>
                       <p className="text-lg font-semibold text-green-600 dark:text-green-400">
                         {displayProposal.approveVotes || 0}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Reject</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Từ chối</p>
                       <p className="text-lg font-semibold text-red-600 dark:text-red-400">
                         {displayProposal.rejectVotes || 0}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">Abstain</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Trung lập</p>
                       <p className="text-lg font-semibold text-gray-600 dark:text-gray-400">
                         {displayProposal.abstainVotes || 0}
                       </p>
@@ -239,24 +243,24 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
               )}
             </div>
 
-            {/* Votes List */}
+            {/* Danh Sách Phiếu Bầu */}
             <div>
               <div className="mb-4 flex items-center justify-between">
                 <h5 className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Votes ({votes.length})
+                  Phiếu Bầu ({votes.length})
                 </h5>
                 {canVote && (
                   <Button
                     size="sm"
                     onClick={() => setShowVoteModal(true)}
                   >
-                    Vote Now
+                    Bỏ Phiếu Ngay
                   </Button>
                 )}
               </div>
 
               {loading && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">Loading votes...</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Đang tải phiếu bầu...</p>
               )}
 
               {error && (
@@ -269,7 +273,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                 <div className="space-y-3">
                   {votes.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                      No votes yet. Be the first to vote!
+                      Chưa có phiếu bầu nào. Hãy là người đầu tiên bỏ phiếu!
                     </p>
                   ) : (
                     votes.map((vote) => (
@@ -285,7 +289,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
                                   vote.choice
                                 )}`}
                               >
-                                {vote.choice}
+                                {vote.choice === "Approve" ? "Đồng ý" : vote.choice === "Reject" ? "Từ chối" : "Trung lập"}
                               </span>
                               <p className="text-sm font-medium text-gray-900 dark:text-white/90">
                                 {vote.coOwnerName}
@@ -311,7 +315,7 @@ const ProposalDetailModal: React.FC<ProposalDetailModalProps> = ({
 
           <div className="mt-6 flex items-center gap-3 px-2 lg:justify-end">
             <Button size="sm" variant="outline" onClick={onClose}>
-              Close
+              Đóng
             </Button>
           </div>
         </div>

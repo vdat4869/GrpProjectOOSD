@@ -20,15 +20,16 @@ interface CreateCostShareModalProps {
   onSuccess: () => void;
 }
 
+// Các loại chi phí
 const COST_TYPES = [
-  { value: CostType.Charging, label: "Charging" },
-  { value: CostType.Insurance, label: "Insurance" },
-  { value: CostType.Maintenance, label: "Maintenance" },
-  { value: CostType.Registration, label: "Registration" },
-  { value: CostType.Cleaning, label: "Cleaning" },
-  { value: CostType.Parking, label: "Parking" },
-  { value: CostType.Toll, label: "Toll" },
-  { value: CostType.Other, label: "Other" },
+  { value: CostType.Charging, label: "Sạc Điện" },
+  { value: CostType.Insurance, label: "Bảo Hiểm" },
+  { value: CostType.Maintenance, label: "Bảo Dưỡng" },
+  { value: CostType.Registration, label: "Đăng Ký" },
+  { value: CostType.Cleaning, label: "Vệ Sinh" },
+  { value: CostType.Parking, label: "Đỗ Xe" },
+  { value: CostType.Toll, label: "Phí Cầu Đường" },
+  { value: CostType.Other, label: "Khác" },
 ];
 
 const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
@@ -87,9 +88,10 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
     }
   };
 
+  // Lấy gợi ý phân bổ chi phí
   const handleGetSuggestions = async () => {
     if (!formData.groupId || !formData.totalAmount || formData.totalAmount <= 0) {
-      setError("Please select a group and enter a valid total amount");
+      setError("Vui lòng chọn nhóm và nhập tổng số tiền hợp lệ");
       return;
     }
 
@@ -104,34 +106,35 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
       const data = await paymentService.getCostSharingSuggestion(request);
       setSuggestions(data);
 
-      // Auto-populate cost share details from suggestions
+      // Tự động điền chi tiết cost share từ gợi ý
       if (data.length > 0) {
         const details = data.map((suggestion) => ({
           userId: suggestion.coOwnerId,
-          ownershipPercentage: 0, // Will be calculated
+          ownershipPercentage: 0, // Sẽ được tính toán
           amount: suggestion.suggestedAmount,
           notes: suggestion.reason,
         }));
         setFormData((prev) => ({ ...prev, costShareDetails: details }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get suggestions");
+      setError(err instanceof Error ? err.message : "Không thể lấy gợi ý");
     } finally {
       setLoadingSuggestions(false);
     }
   };
 
+  // Xử lý submit form tạo cost share
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!formData.groupId || !formData.vehicleId || !formData.title || formData.totalAmount <= 0) {
-      setError("Please fill in all required fields");
+      setError("Vui lòng điền tất cả các trường bắt buộc");
       return;
     }
 
     if (formData.costShareDetails.length === 0) {
-      setError("Please get suggestions or add cost share details");
+      setError("Vui lòng lấy gợi ý hoặc thêm chi tiết cost share");
       return;
     }
 
@@ -141,7 +144,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create cost share");
+      setError(err instanceof Error ? err.message : "Không thể tạo cost share");
     } finally {
       setLoading(false);
     }
@@ -161,10 +164,10 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
       <div className="no-scrollbar relative w-full max-w-[700px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Create Cost Share
+            Tạo Cost Share
           </h4>
           <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-            Create a new cost share for a vehicle group.
+            Tạo cost share mới cho nhóm xe.
           </p>
         </div>
 
@@ -179,7 +182,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
             <div className="space-y-5">
               <div>
                 <Label>
-                  Vehicle Group <span className="text-error-500">*</span>
+                  Nhóm Xe <span className="text-error-500">*</span>
                 </Label>
                 <Select
                   value={formData.groupId}
@@ -190,7 +193,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                   disabled={loading}
                   required
                 >
-                  <option value="">Select a group</option>
+                  <option value="">Chọn nhóm</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name} - {group.vehicleName}
@@ -202,7 +205,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
               {selectedGroup && (
                 <div>
                   <Label>
-                    Vehicle <span className="text-error-500">*</span>
+                    Xe <span className="text-error-500">*</span>
                   </Label>
                   <Select
                     value={formData.vehicleId}
@@ -212,7 +215,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                     disabled={loading}
                     required
                   >
-                    <option value="">Select a vehicle</option>
+                    <option value="">Chọn xe</option>
                     <option value={selectedGroup.id}>
                       {selectedGroup.vehicleName}
                     </option>
@@ -222,7 +225,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
 
               <div>
                 <Label>
-                  Cost Type <span className="text-error-500">*</span>
+                  Loại Chi Phí <span className="text-error-500">*</span>
                 </Label>
                 <Select
                   value={formData.costType.toString()}
@@ -242,7 +245,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
 
               <div>
                 <Label>
-                  Title <span className="text-error-500">*</span>
+                  Tiêu Đề <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="text"
@@ -252,12 +255,12 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                   }
                   disabled={loading}
                   required
-                  placeholder="Enter cost share title"
+                  placeholder="Nhập tiêu đề cost share"
                 />
               </div>
 
               <div>
-                <Label>Description</Label>
+                <Label>Mô Tả</Label>
                 <textarea
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                   value={formData.description}
@@ -266,14 +269,14 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                   }
                   disabled={loading}
                   rows={3}
-                  placeholder="Enter description"
+                  placeholder="Nhập mô tả"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>
-                    Total Amount <span className="text-error-500">*</span>
+                    Tổng Số Tiền <span className="text-error-500">*</span>
                   </Label>
                   <Input
                     type="number"
@@ -293,7 +296,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                 </div>
 
                 <div>
-                  <Label>Currency</Label>
+                  <Label>Loại Tiền Tệ</Label>
                   <Select
                     value={formData.currency}
                     onChange={(value) =>
@@ -310,7 +313,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
 
               <div>
                 <Label>
-                  Due Date <span className="text-error-500">*</span>
+                  Ngày Đến Hạn <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="date"
@@ -331,13 +334,13 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                   variant="outline"
                   size="sm"
                 >
-                  {loadingSuggestions ? "Getting Suggestions..." : "Get Suggestions"}
+                  {loadingSuggestions ? "Đang lấy gợi ý..." : "Lấy Gợi Ý"}
                 </Button>
                 <Button
                   type="button"
                   onClick={async () => {
                     if (!formData.groupId || !formData.totalAmount || formData.totalAmount <= 0) {
-                      setError("Please select a group and enter a valid total amount");
+                      setError("Vui lòng chọn nhóm và nhập tổng số tiền hợp lệ");
                       return;
                     }
 
@@ -346,14 +349,14 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                       setError(null);
                       setAiSuggestion(null);
 
-                      // Get co-owners for the group
+                      // Lấy danh sách đồng sở hữu cho nhóm
                       const coOwners = await ownershipService.getCoOwners();
                       const groupCoOwners = coOwners.filter(() => {
-                        // Filter by group membership (simplified - would need proper group membership check)
-                        return true; // For now, use all co-owners
+                        // Lọc theo thành viên nhóm (đơn giản hóa - cần kiểm tra thành viên nhóm đúng cách)
+                        return true; // Tạm thời, sử dụng tất cả đồng sở hữu
                       });
 
-                      // Get ownerships for the group to get ownership percentages
+                      // Lấy quyền sở hữu cho nhóm để lấy phần trăm sở hữu
                       const ownerships = await ownershipService.getOwnerships(formData.groupId);
                       
                       const aiRequest = {
@@ -365,7 +368,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                           return {
                             id: co.id,
                             ownership_percentage: (ownership?.ownershipPercentage || 0) / 100,
-                            usage_hours: 0, // Would need to fetch from usage history
+                            usage_hours: 0, // Cần lấy từ lịch sử sử dụng
                           };
                         }),
                       };
@@ -373,7 +376,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                       const aiData = await aiService.getCostSharingSuggestion(aiRequest);
                       if (aiData) {
                         setAiSuggestion(aiData);
-                        // Auto-populate from AI suggestions
+                        // Tự động điền từ gợi ý AI
                         const details = aiData.suggestions.map((suggestion) => ({
                           userId: suggestion.co_owner_id,
                           ownershipPercentage: 0,
@@ -383,7 +386,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                         setFormData((prev) => ({ ...prev, costShareDetails: details }));
                       }
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : "Failed to get AI suggestions");
+                      setError(err instanceof Error ? err.message : "Không thể lấy gợi ý từ AI");
                     } finally {
                       setLoadingSuggestions(false);
                     }
@@ -392,14 +395,14 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                   variant="outline"
                   size="sm"
                 >
-                  {loadingSuggestions ? "Getting AI..." : "Get AI Suggestions"}
+                  {loadingSuggestions ? "Đang lấy AI..." : "Lấy Gợi Ý AI"}
                 </Button>
               </div>
 
               {suggestions.length > 0 && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
                   <h5 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    Cost Share Suggestions (Payment Service)
+                    Gợi Ý Cost Share (Payment Service)
                   </h5>
                   <div className="space-y-2">
                     {suggestions.map((suggestion, index) => (
@@ -409,7 +412,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                       >
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-white/90">
-                            Co-owner: {suggestion.coOwnerId.substring(0, 8)}...
+                            Đồng sở hữu: {suggestion.coOwnerId.substring(0, 8)}...
                           </p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             {suggestion.reason} ({suggestion.method})
@@ -427,7 +430,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
               {aiSuggestion && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-500/40 dark:bg-blue-500/10">
                   <h5 className="mb-3 text-sm font-semibold text-blue-900 dark:text-blue-200">
-                    AI Cost Sharing Suggestions ({aiSuggestion.method})
+                    Gợi Ý Chia Sẻ Chi Phí từ AI ({aiSuggestion.method})
                   </h5>
                   <div className="space-y-2">
                     {aiSuggestion.suggestions.map((suggestion, index) => (
@@ -437,7 +440,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                       >
                         <div>
                           <p className="text-sm font-medium text-gray-900 dark:text-white/90">
-                            Co-owner: {suggestion.co_owner_id.substring(0, 8)}...
+                            Đồng sở hữu: {suggestion.co_owner_id.substring(0, 8)}...
                           </p>
                           <p className="text-xs text-blue-600 dark:text-blue-400">
                             {suggestion.reason}
@@ -450,7 +453,7 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
                     ))}
                     <div className="mt-3 flex items-center justify-between border-t border-blue-200 pt-2 dark:border-blue-700">
                       <p className="text-xs font-medium text-blue-800 dark:text-blue-200">
-                        Total Suggested
+                        Tổng Gợi Ý
                       </p>
                       <p className="text-sm font-semibold text-blue-900 dark:text-blue-200">
                         ₫{aiSuggestion.total_suggested.toLocaleString()}
@@ -470,10 +473,10 @@ const CreateCostShareModal: React.FC<CreateCostShareModalProps> = ({
               disabled={loading}
               type="button"
             >
-              Cancel
+              Hủy
             </Button>
             <Button size="sm" type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Cost Share"}
+              {loading ? "Đang tạo..." : "Tạo Cost Share"}
             </Button>
           </div>
         </form>

@@ -176,13 +176,13 @@ const VehicleSelection: React.FC<{
     e.preventDefault();
     
     if (!vehicle.vehicleId) {
-      setError("Vehicle ID not found. Cannot create booking.");
+      setError("Không tìm thấy ID xe. Không thể tạo đặt chỗ.");
       return;
     }
 
     const bookingInfo = bookingData[vehicle.id];
     if (!bookingInfo) {
-      setError("Please fill in booking details.");
+      setError("Vui lòng điền thông tin đặt chỗ.");
       return;
     }
 
@@ -192,19 +192,19 @@ const VehicleSelection: React.FC<{
 
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy người dùng. Vui lòng đăng nhập lại.");
       }
 
       const start = new Date(bookingInfo.startTime);
       const end = new Date(bookingInfo.endTime);
 
       if (end <= start) {
-        throw new Error("End time must be after start time");
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
       }
 
       const coOwnerIdNum = parseInt(userId);
       if (isNaN(coOwnerIdNum)) {
-        throw new Error("Invalid user ID");
+        throw new Error("ID người dùng không hợp lệ");
       }
 
       const data: CreateBookingRequest = {
@@ -216,6 +216,20 @@ const VehicleSelection: React.FC<{
       };
 
       const booking = await bookingService.createBooking(data);
+      
+      // Dispatch custom event để các component khác có thể refresh
+      const bookingCreatedEvent = new CustomEvent('bookingCreated', {
+        detail: {
+          bookingId: booking.id,
+          vehicleId: booking.vehicleId,
+        }
+      });
+      window.dispatchEvent(bookingCreatedEvent);
+      
+      // Set session storage flag để refresh khi quay lại trang
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bookingJustCreated', 'true');
+      }
       
       if (booking) {
         // Generate owner code

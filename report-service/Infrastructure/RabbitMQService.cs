@@ -204,3 +204,14 @@ public class OwnershipUpdatedEvent
     public DateTime UpdatedAt { get; set; }
 }
 
+public class CostShareCreatedMessage
+{
+    public Guid CostShareId { get; set; }
+    public Guid GroupId { get; set; }
+    public Guid VehicleId { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+}
+

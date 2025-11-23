@@ -1,3 +1,7 @@
+/**
+ * Dashboard Staff - Trung tâm điều khiển vận hành
+ * Theo dõi các nhiệm vụ hàng ngày, thông lượng đặt chỗ và tồn đọng bảo dưỡng
+ */
 import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -14,6 +18,7 @@ const StaffDashboard: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
 
+  // Load thống kê và tự động làm mới mỗi 60 giây
   useEffect(() => {
     loadStats();
     // Auto-refresh every 60 seconds
@@ -21,6 +26,9 @@ const StaffDashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  /**
+   * Tải thống kê từ các API
+   */
   const loadStats = async () => {
     try {
       setLoading(true);
@@ -64,7 +72,7 @@ const StaffDashboard: React.FC = () => {
         );
         openMaintenance = maintenanceRecords.filter((record) => record.isActive).length;
       } catch (err) {
-        console.error("Failed to load maintenance records:", err);
+        console.error("Không thể tải hồ sơ bảo dưỡng:", err);
       }
 
       // Pending disputes - placeholder (no API available yet)
@@ -77,7 +85,7 @@ const StaffDashboard: React.FC = () => {
         pendingDisputes,
       });
     } catch (err) {
-      console.error("Failed to load stats:", err);
+      console.error("Không thể tải thống kê:", err);
     } finally {
       setLoading(false);
     }
@@ -85,50 +93,32 @@ const StaffDashboard: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Staff | Dashboard" />
+      <PageMeta title="Staff | Bảng Điều Khiển" />
       <PageHeader
-        title="Operations Control Center"
-        description="Track daily assignments, booking throughput, and maintenance backlog for the EV fleet."
+        title="Trung Tâm Điều Khiển Vận Hành"
+        description="Theo dõi các nhiệm vụ hàng ngày, thông lượng đặt chỗ và tồn đọng bảo dưỡng cho đội xe điện."
       />
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
-          label="Scheduled Check-ins"
+          label="Check-in Đã Lên Lịch"
           value={loading ? "..." : stats.scheduledCheckIns}
-          trend={loading ? "" : stats.scheduledCheckIns > 0 ? `▲ ${stats.scheduledCheckIns}` : "No upcoming"}
+          trend={loading ? "" : stats.scheduledCheckIns > 0 ? `▲ ${stats.scheduledCheckIns}` : "Không có sắp tới"}
         />
         <StatCard
-          label="Vehicles in Service"
+          label="Xe Đang Phục Vụ"
           value={loading ? "..." : stats.vehiclesInService}
-          trend={loading ? "" : stats.vehiclesInService > 0 ? `▲ ${stats.vehiclesInService}` : "None active"}
+          trend={loading ? "" : stats.vehiclesInService > 0 ? `▲ ${stats.vehiclesInService}` : "Không có"}
         />
         <StatCard
-          label="Open Maintenance"
+          label="Bảo Dưỡng Mở"
           value={loading ? "..." : stats.openMaintenance}
-          trend={loading ? "" : stats.openMaintenance > 0 ? `▲ ${stats.openMaintenance}` : "All clear"}
+          trend={loading ? "" : stats.openMaintenance > 0 ? `▲ ${stats.openMaintenance}` : "Không có"}
         />
         <StatCard
-          label="Pending Disputes"
+          label="Tranh Chấp Chờ Xử Lý"
           value={loading ? "..." : stats.pendingDisputes}
-          trend={loading ? "" : stats.pendingDisputes > 0 ? `${stats.pendingDisputes} pending` : "None"}
+          trend={loading ? "" : stats.pendingDisputes > 0 ? `▲ ${stats.pendingDisputes}` : "Không có"}
         />
-      </div>
-      <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-            Daily Task Allocation
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Visualize staff workload distribution for proactive shift planning.
-          </p>
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-8 text-center dark:border-gray-700 dark:bg-gray-800/30">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Chart visualization will be implemented here
-          </p>
-          <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
-            Integration with analytics service pending
-          </p>
-        </div>
       </div>
     </>
   );

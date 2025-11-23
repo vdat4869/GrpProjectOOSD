@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
@@ -15,6 +16,7 @@ import Label from "../../components/form/Label";
  * Đã gộp với PaymentHistory (lịch sử thanh toán)
  */
 const TransactionHistory: React.FC = () => {
+  const location = useLocation();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,19 +26,115 @@ const TransactionHistory: React.FC = () => {
   const [walletId, setWalletId] = useState<string | null>(null);
 
   /**
-   * Tải userId từ localStorage khi component mount
+   * Tải userId và coOwnerId từ localStorage khi component mount
+   * Và refresh nếu navigate từ VNPay return
    */
   useEffect(() => {
-    const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
-    if (userId) {
-      // Sử dụng userId để lấy transactions (backend sẽ tự động tìm wallets)
-      setWalletId(userId);
-      loadTransactions(userId);
-    } else {
-      setError("Không tìm thấy User ID. Vui lòng đăng nhập lại.");
-      setLoading(false);
-    }
-  }, []);
+    const loadData = async () => {
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (userId) {
+        try {
+          // Lấy coOwnerId (GUID) từ ownership service để tìm transactions
+          const { ownershipService } = await import("../../services/ownershipService");
+          const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+          
+          if (coOwner && coOwner.id) {
+            // Sử dụng coOwnerId (GUID) để lấy transactions
+            setWalletId(coOwner.id);
+            // Nếu có refresh flag từ VNPay return, reset page về 1 và load lại
+            if (location.state?.refresh || location.state?.paymentCompleted) {
+              setPage(1);
+              // Delay một chút để đảm bảo backend đã cập nhật
+              setTimeout(() => {
+                loadTransactions(coOwner.id);
+              }, 2000); // Tăng delay để đảm bảo backend đã xử lý xong
+            } else {
+              loadTransactions(coOwner.id);
+            }
+          } else {
+            // Fallback: sử dụng userId nếu không tìm thấy coOwner
+            setWalletId(userId);
+            if (location.state?.refresh || location.state?.paymentCompleted) {
+              setPage(1);
+              setTimeout(() => {
+                loadTransactions(userId);
+              }, 2000);
+            } else {
+              loadTransactions(userId);
+            }
+          }
+        } catch (err) {
+          console.error("Không thể tải coOwner:", err);
+          // Fallback: sử dụng userId
+          setWalletId(userId);
+          if (location.state?.refresh || location.state?.paymentCompleted) {
+            setPage(1);
+            setTimeout(() => {
+              loadTransactions(userId);
+            }, 2000);
+          } else {
+            loadTransactions(userId);
+          }
+        }
+      } else {
+        setError("Không tìm thấy User ID. Vui lòng đăng nhập lại.");
+        setLoading(false);
+      }
+    };
+    
+    loadData();
+  }, [location.state]);
+  
+  /**
+   * Refresh khi window được focus lại (khi quay về từ VNPay)
+   */
+  useEffect(() => {
+    const handleFocus = async () => {
+      // Check if we just came back from payment (check sessionStorage flag)
+      const paymentJustCompleted = sessionStorage.getItem('paymentJustCompleted');
+      if (paymentJustCompleted === 'true') {
+        const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+        if (userId) {
+          try {
+            // Lấy coOwnerId mới nhất
+            const { ownershipService } = await import("../../services/ownershipService");
+            const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+            if (coOwner && coOwner.id) {
+              console.log('[TransactionHistory] Window focused after payment, refreshing...');
+              setPage(1);
+              setWalletId(coOwner.id);
+              setTimeout(() => {
+                loadTransactions(coOwner.id);
+                sessionStorage.removeItem('paymentJustCompleted');
+              }, 2000);
+            } else if (walletId) {
+              console.log('[TransactionHistory] Window focused after payment, refreshing...');
+              setPage(1);
+              setTimeout(() => {
+                loadTransactions(walletId);
+                sessionStorage.removeItem('paymentJustCompleted');
+              }, 2000);
+            }
+          } catch (err) {
+            console.error("Không thể tải coOwner:", err);
+            if (walletId) {
+              setPage(1);
+              setTimeout(() => {
+                loadTransactions(walletId);
+                sessionStorage.removeItem('paymentJustCompleted');
+              }, 2000);
+            }
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [walletId]);
 
   /**
    * Tải lại transactions khi page, filterType, hoặc walletId thay đổi
@@ -46,16 +144,72 @@ const TransactionHistory: React.FC = () => {
       loadTransactions(walletId);
     }
   }, [page, filterType, walletId]);
+  
+  /**
+   * Listen for payment completion events to refresh transactions
+   */
+  useEffect(() => {
+    const handlePaymentCompleted = async () => {
+      console.log('[TransactionHistory] Payment completed event received, refreshing transactions...');
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (userId) {
+        try {
+          // Lấy coOwnerId mới nhất
+          const { ownershipService } = await import("../../services/ownershipService");
+          const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+          if (coOwner && coOwner.id) {
+            setWalletId(coOwner.id);
+            // Reset to first page and reload with retry
+            setPage(1);
+            // Delay và retry nhiều lần để đảm bảo backend đã xử lý xong
+            setTimeout(() => {
+              loadTransactions(coOwner.id, 0); // Start with retry count 0
+            }, 2000);
+            // Retry again after 5 seconds
+            setTimeout(() => {
+              console.log('[TransactionHistory] Second retry after payment...');
+              loadTransactions(coOwner.id, 1);
+            }, 5000);
+          } else if (walletId) {
+            setPage(1);
+            setTimeout(() => {
+              loadTransactions(walletId, 0);
+            }, 2000);
+            setTimeout(() => {
+              loadTransactions(walletId, 1);
+            }, 5000);
+          }
+        } catch (err) {
+          console.error("Không thể tải coOwner:", err);
+          if (walletId) {
+            setPage(1);
+            setTimeout(() => {
+              loadTransactions(walletId, 0);
+            }, 2000);
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('paymentCompleted', handlePaymentCompleted);
+    
+    return () => {
+      window.removeEventListener('paymentCompleted', handlePaymentCompleted);
+    };
+  }, [walletId]);
 
   /**
-   * Tải danh sách giao dịch từ API
+   * Tải danh sách giao dịch từ API với retry mechanism
    * @param id - User ID hoặc Wallet ID
+   * @param retryCount - Số lần retry (mặc định 0)
    */
-  const loadTransactions = async (id: string) => {
+  const loadTransactions = async (id: string, retryCount: number = 0) => {
     try {
       setLoading(true);
       setError(null);
+      console.log(`[TransactionHistory] Loading transactions for ${id}, attempt ${retryCount + 1}`);
       const data = await paymentService.getTransactions(id, page, pageSize);
+      console.log(`[TransactionHistory] Received ${data.length} transactions`);
       
       // Lọc theo loại giao dịch nếu cần
       let filteredData = data;
@@ -66,8 +220,25 @@ const TransactionHistory: React.FC = () => {
       }
       
       setTransactions(filteredData);
+      
+      // Nếu đang retry và vẫn không có data mới, thử lại sau 3 giây
+      if (retryCount > 0 && retryCount < 3 && filteredData.length === 0) {
+        console.log(`[TransactionHistory] No transactions found, retrying in 3 seconds... (${retryCount}/3)`);
+        setTimeout(() => {
+          loadTransactions(id, retryCount + 1);
+        }, 3000);
+      }
     } catch (err) {
+      console.error('[TransactionHistory] Error loading transactions:', err);
       setError(err instanceof Error ? err.message : "Không thể tải lịch sử giao dịch");
+      
+      // Retry on error
+      if (retryCount < 2) {
+        console.log(`[TransactionHistory] Retrying after error... (${retryCount + 1}/2)`);
+        setTimeout(() => {
+          loadTransactions(id, retryCount + 1);
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }

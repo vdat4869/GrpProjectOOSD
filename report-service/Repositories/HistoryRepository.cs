@@ -14,6 +14,7 @@ public interface IHistoryRepository
     Task<List<UsageHistory>> GetUsageHistoriesByVehicleIdAsync(int vehicleId);
     Task<List<UsageHistory>> GetUsageHistoriesByCoOwnerIdAsync(int coOwnerId);
     Task<List<UsageHistory>> GetUsageHistoriesByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<List<UsageHistory>> GetUsageHistoriesByVehicleIdAndDateRangeAsync(int vehicleId, DateTime startDate, DateTime endDate);
     Task<UsageHistory> CreateUsageHistoryAsync(UsageHistory usageHistory);
     Task<UsageHistory> UpdateUsageHistoryAsync(UsageHistory usageHistory);
     Task<bool> DeleteUsageHistoryAsync(int id);
@@ -90,8 +91,26 @@ public class HistoryRepository : IHistoryRepository
 
     public async Task<List<UsageHistory>> GetUsageHistoriesByDateRangeAsync(DateTime startDate, DateTime endDate)
     {
+        // Query với điều kiện linh hoạt hơn: StartTime hoặc EndTime nằm trong khoảng thời gian
+        // Điều này đảm bảo lấy được tất cả usage histories có liên quan đến khoảng thời gian
         return await _context.UsageHistories
-            .Where(u => u.StartTime >= startDate && u.EndTime <= endDate && u.IsActive)
+            .Where(u => u.IsActive && 
+                   ((u.StartTime >= startDate && u.StartTime <= endDate) ||
+                    (u.EndTime >= startDate && u.EndTime <= endDate) ||
+                    (u.StartTime <= startDate && u.EndTime >= endDate)))
+            .OrderByDescending(u => u.StartTime)
+            .ToListAsync();
+    }
+
+    public async Task<List<UsageHistory>> GetUsageHistoriesByVehicleIdAndDateRangeAsync(int vehicleId, DateTime startDate, DateTime endDate)
+    {
+        // Query tối ưu: filter theo vehicleId và date range cùng lúc trong database
+        return await _context.UsageHistories
+            .Where(u => u.IsActive && 
+                   u.VehicleId == vehicleId &&
+                   ((u.StartTime >= startDate && u.StartTime <= endDate) ||
+                    (u.EndTime >= startDate && u.EndTime <= endDate) ||
+                    (u.StartTime <= startDate && u.EndTime >= endDate)))
             .OrderByDescending(u => u.StartTime)
             .ToListAsync();
     }

@@ -10,7 +10,6 @@ import GroupVoting from "../pages/coowner/GroupVoting";
 import UsageAnalytics from "../pages/coowner/UsageAnalytics";
 import VehicleSchedule from "../pages/coowner/VehicleSchedule";
 import TransactionHistory from "../pages/coowner/TransactionHistory";
-import PaymentMethods from "../pages/coowner/PaymentMethods";
 import KycPage from "../pages/KYC/KycPage";
 import UserProfiles from "../pages/UserProfiles";
 
@@ -21,10 +20,7 @@ const CoownerRoutes: React.FC = () => {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="bookings" element={<MyBookings />} />
         <Route path="schedule" element={<VehicleSchedule />} />
-        {/* PaymentHistory đã được gộp vào TransactionHistory */}
-        <Route path="payments" element={<TransactionHistory />} />
         <Route path="transactions" element={<TransactionHistory />} />
-        <Route path="payment-methods" element={<PaymentMethods />} />
         <Route path="cost-shares" element={<CostShares />} />
         <Route path="company-payment" element={<CompanyPayment />} />
         <Route path="common-fund" element={<CommonFund />} />

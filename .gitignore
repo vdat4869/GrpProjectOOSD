@@ -6,9 +6,7 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# ------------------------------
-# Visual Studio / .NET
-# ------------------------------
+
 .vs/
 *.user
 *.suo
@@ -87,6 +85,13 @@ pnpm-debug.log*
 *.mdf
 *.ldf
 *.ndf
+*.bak
+
+# ------------------------------
+# Database exports (backup files)
+# ------------------------------
+database/exports/
+database/backups/
 
 # ------------------------------
 # VS Code (optional keep settings if needed)

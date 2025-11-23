@@ -7,8 +7,12 @@ var builder = WebApplication.CreateBuilder(args);
 // Thêm cấu hình từ file appsettings.json
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
-// Đăng ký HttpClient cho proxy
-builder.Services.AddHttpClient();
+// Đăng ký HttpClient cho proxy (không follow redirect - gateway sẽ copy redirect response cho client)
+builder.Services.AddHttpClient("ProxyClient")
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+    {
+        AllowAutoRedirect = false // Không follow redirect, gateway sẽ copy Location header cho client
+    });
 
 // Cấu hình JWT Authentication cho Gateway
 var jwtSettings = builder.Configuration.GetSection("JWT");

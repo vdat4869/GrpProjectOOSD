@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý chi phí và thanh toán
+ * Cho phép admin giám sát chi phí chia sẻ, trạng thái thanh toán và báo cáo tài chính cho tất cả các nhóm xe
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -20,6 +24,7 @@ const ManageCosts: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
+  // Load dữ liệu và lắng nghe sự kiện cập nhật từ modals
   useEffect(() => {
     loadData();
 
@@ -34,6 +39,9 @@ const ManageCosts: React.FC = () => {
     };
   }, []);
 
+  /**
+   * Tải danh sách cost shares và vehicles từ API
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -45,17 +53,27 @@ const ManageCosts: React.FC = () => {
       setCostShares(costSharesData);
       setVehicles(vehiclesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load cost shares");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách chi phí chia sẻ");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Lấy tên xe từ vehicleId
+   * @param vehicleId - ID của nhóm xe
+   * @returns Tên xe hoặc ID ngắn nếu không tìm thấy
+   */
   const getVehicleName = (vehicleId: string) => {
     const vehicle = vehicles.find((v) => v.id === vehicleId);
     return vehicle?.vehicleName || vehicleId.substring(0, 8);
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái thanh toán
+   * @param status - Trạng thái thanh toán
+   * @returns Class CSS cho màu
+   */
   const getStatusColor = (status: PaymentStatus) => {
     switch (status) {
       case PaymentStatus.Completed:
@@ -71,31 +89,45 @@ const ManageCosts: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy nhãn hiển thị cho trạng thái thanh toán
+   * @param status - Trạng thái thanh toán
+   * @returns Nhãn trạng thái
+   */
   const getStatusLabel = (status: PaymentStatus) => {
     switch (status) {
       case PaymentStatus.Pending:
-        return "Pending";
+        return "Chờ Thanh Toán";
       case PaymentStatus.Processing:
-        return "Processing";
+        return "Đang Xử Lý";
       case PaymentStatus.Completed:
-        return "Completed";
+        return "Đã Hoàn Thành";
       case PaymentStatus.Failed:
-        return "Failed";
+        return "Thất Bại";
       case PaymentStatus.Cancelled:
-        return "Cancelled";
+        return "Đã Hủy";
       case PaymentStatus.Refunded:
-        return "Refunded";
+        return "Đã Hoàn Tiền";
       default:
-        return "Unknown";
+        return "Không Xác Định";
     }
   };
 
+  /**
+   * Kiểm tra xem cost share có quá hạn thanh toán không
+   * @param costShare - Cost share cần kiểm tra
+   * @returns true nếu quá hạn
+   */
   const isOverdue = (costShare: CostShare) => {
     const dueDate = new Date(costShare.dueDate);
     const now = new Date();
     return costShare.status === PaymentStatus.Pending && now > dueDate;
   };
 
+  /**
+   * Lọc cost shares theo filter và date range
+   * @returns Danh sách cost shares đã lọc
+   */
   const filteredCostShares = () => {
     let filtered = costShares;
     
@@ -119,6 +151,10 @@ const ManageCosts: React.FC = () => {
     return filtered;
   };
 
+  /**
+   * Tính tổng số tiền theo các trạng thái
+   * @returns Object chứa tổng, pending, completed
+   */
   const calculateTotals = () => {
     const filtered = filteredCostShares();
     const total = filtered.reduce((sum, cs) => sum + cs.totalAmount, 0);
@@ -131,10 +167,20 @@ const ManageCosts: React.FC = () => {
     return { total, pending, completed };
   };
 
+  /**
+   * Định dạng số tiền theo định dạng Việt Nam
+   * @param amount - Số tiền cần định dạng
+   * @returns Chuỗi số tiền đã định dạng
+   */
   const formatAmount = (amount: number) => {
     return `₫${amount.toLocaleString()}`;
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -143,21 +189,36 @@ const ManageCosts: React.FC = () => {
     });
   };
 
+  /**
+   * Mở modal xem chi tiết cost share
+   * @param costShare - Cost share cần xem
+   */
   const handleViewDetails = (costShare: CostShare) => {
     setSelectedCostShare(costShare);
     setIsViewModalOpen(true);
   };
 
+  /**
+   * Mở modal chỉnh sửa cost share
+   * @param costShare - Cost share cần chỉnh sửa
+   */
   const handleEdit = (costShare: CostShare) => {
     setSelectedCostShare(costShare);
     setIsEditModalOpen(true);
   };
 
+  /**
+   * Mở modal xóa cost share
+   * @param costShare - Cost share cần xóa
+   */
   const handleDelete = (costShare: CostShare) => {
     setSelectedCostShare(costShare);
     setIsDeleteModalOpen(true);
   };
 
+  /**
+   * Xử lý khi modal thành công (reload data)
+   */
   const handleModalSuccess = () => {
     loadData();
   };
@@ -166,64 +227,64 @@ const ManageCosts: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Admin | Manage Costs" />
+      <PageMeta title="Admin | Quản Lý Chi Phí" />
       <PageHeader
-        title="Cost & Payment Management"
-        description="Monitor shared costs, payment status, and financial reports for all vehicle groups."
-        actions={<Button size="sm" onClick={loadData} disabled={loading}>Refresh</Button>}
+        title="Quản Lý Chi Phí & Thanh Toán"
+        description="Giám sát chi phí chia sẻ, trạng thái thanh toán và báo cáo tài chính cho tất cả các nhóm xe."
+        actions={<Button size="sm" onClick={loadData} disabled={loading}>Làm Mới</Button>}
       />
 
-      {/* Summary Cards */}
+      {/* Thẻ Tóm Tắt */}
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Total Amount</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Tổng Số Tiền</p>
           <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white/90">
             {formatAmount(totals.total)}
           </p>
         </div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-theme-xs dark:border-amber-500/40 dark:bg-amber-500/10">
-          <p className="text-sm text-amber-600 dark:text-amber-300">Pending</p>
+          <p className="text-sm text-amber-600 dark:text-amber-300">Chờ Thanh Toán</p>
           <p className="mt-1 text-2xl font-semibold text-amber-700 dark:text-amber-200">
             {formatAmount(totals.pending)}
           </p>
         </div>
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-theme-xs dark:border-emerald-500/40 dark:bg-emerald-500/10">
-          <p className="text-sm text-emerald-600 dark:text-emerald-300">Completed</p>
+          <p className="text-sm text-emerald-600 dark:text-emerald-300">Đã Hoàn Thành</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-700 dark:text-emerald-200">
             {formatAmount(totals.completed)}
           </p>
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Bộ Lọc */}
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
-          All
+          Tất Cả
         </Button>
         <Button
           size="sm"
           variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
-          Pending
+          Chờ Thanh Toán
         </Button>
         <Button
           size="sm"
           variant={filter === "completed" ? "primary" : "outline"}
           onClick={() => setFilter("completed")}
         >
-          Completed
+          Đã Hoàn Thành
         </Button>
         <Button
           size="sm"
           variant={filter === "overdue" ? "primary" : "outline"}
           onClick={() => setFilter("overdue")}
         >
-          Overdue
+          Quá Hạn
         </Button>
         <div className="flex gap-2">
           <input
@@ -231,19 +292,21 @@ const ManageCosts: React.FC = () => {
             value={dateRange.start}
             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-700 dark:bg-gray-800"
+            placeholder="Từ ngày"
           />
           <input
             type="date"
             value={dateRange.end}
             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
             className="rounded-lg border border-gray-300 bg-white px-3 py-1 text-sm dark:border-gray-700 dark:bg-gray-800"
+            placeholder="Đến ngày"
           />
         </div>
       </div>
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading cost shares...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải chi phí chia sẻ...</p>
         </div>
       )}
 
@@ -257,7 +320,7 @@ const ManageCosts: React.FC = () => {
         <div className="grid gap-4">
           {filteredCostShares().length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No cost shares found.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy chi phí chia sẻ nào.</p>
             </div>
           ) : (
             filteredCostShares().map((costShare) => {
@@ -283,15 +346,15 @@ const ManageCosts: React.FC = () => {
                           </span>
                           {overdue && (
                             <span className="rounded-full bg-error-500 px-3 py-1 text-xs font-semibold text-white">
-                              OVERDUE
+                              QUÁ HẠN
                             </span>
                           )}
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          Vehicle: {getVehicleName(costShare.vehicleId)} • Amount: {formatAmount(costShare.totalAmount)}
+                          Xe: {getVehicleName(costShare.vehicleId)} • Số tiền: {formatAmount(costShare.totalAmount)}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Due: {formatDate(costShare.dueDate)} • Created: {formatDate(costShare.createdAt)}
+                          Hạn thanh toán: {formatDate(costShare.dueDate)} • Tạo lúc: {formatDate(costShare.createdAt)}
                         </p>
                       </div>
                     </div>
@@ -303,7 +366,7 @@ const ManageCosts: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Action Buttons */}
+                  {/* Nút Thao Tác */}
                   <div className="border-t border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
                     <div className="flex items-center justify-end gap-2">
                       <Button
@@ -311,7 +374,7 @@ const ManageCosts: React.FC = () => {
                         variant="outline"
                         onClick={() => handleViewDetails(costShare)}
                       >
-                        View Details
+                        Xem Chi Tiết
                       </Button>
                       <Button
                         size="xs"
@@ -319,7 +382,7 @@ const ManageCosts: React.FC = () => {
                         onClick={() => handleEdit(costShare)}
                         disabled={costShare.status === PaymentStatus.Completed}
                       >
-                        Edit
+                        Chỉnh Sửa
                       </Button>
                       <Button
                         size="xs"
@@ -327,7 +390,7 @@ const ManageCosts: React.FC = () => {
                         onClick={() => handleDelete(costShare)}
                         className="text-error-600 hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
                       >
-                        Delete
+                        Xóa
                       </Button>
                     </div>
                   </div>
@@ -372,4 +435,3 @@ const ManageCosts: React.FC = () => {
 };
 
 export default ManageCosts;
-

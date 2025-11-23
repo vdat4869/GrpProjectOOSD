@@ -41,6 +41,14 @@ export default function VNPayReturn() {
         });
 
         console.log('[VNPay Return] Payment successful');
+        
+        // Set flag in sessionStorage to trigger refresh when user returns
+        sessionStorage.setItem('paymentJustCompleted', 'true');
+        
+        // Dispatch custom event to notify other components about payment completion
+        window.dispatchEvent(new CustomEvent('paymentCompleted', {
+          detail: { orderId, amount, transactionNo }
+        }));
       } else {
         // Failed
         setStatus('failed');
@@ -135,7 +143,7 @@ export default function VNPayReturn() {
           </div>
 
           <button
-            onClick={() => navigate('/coowner/transactions')}
+            onClick={() => navigate('/coowner/transactions', { state: { refresh: true, paymentCompleted: true } })}
             className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transform hover:scale-[1.02] transition-all duration-200"
           >
             Xem lịch sử thanh toán

@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý hợp đồng cho Staff
+ * Xem hợp đồng, hỗ trợ đồng sở hữu ký và theo dõi trạng thái hợp đồng
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -11,16 +15,25 @@ const ManageContracts: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
 
+  /**
+   * Tải dữ liệu khi component mount
+   */
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Tải hợp đồng khi selectedGroupId thay đổi
+   */
   useEffect(() => {
     if (selectedGroupId) {
       loadContracts(selectedGroupId);
     }
   }, [selectedGroupId]);
 
+  /**
+   * Tải danh sách nhóm xe
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -31,21 +44,30 @@ const ManageContracts: React.FC = () => {
         setSelectedGroupId(data[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      setError(err instanceof Error ? err.message : "Không thể tải dữ liệu");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Tải danh sách hợp đồng cho một nhóm
+   * @param groupId - ID của nhóm
+   */
   const loadContracts = async (groupId: string) => {
     try {
       const data = await ownershipService.getContracts(groupId);
       setContracts(data);
     } catch (err) {
-      console.error("Failed to load contracts:", err);
+      console.error("Không thể tải hợp đồng:", err);
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái hợp đồng
+   * @param status - Trạng thái hợp đồng
+   * @returns CSS classes cho màu
+   */
   const getStatusColor = (status: string) => {
     const s = status.toLowerCase();
     if (s === "signed" || s === "completed")
@@ -57,6 +79,11 @@ const ManageContracts: React.FC = () => {
     return "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300";
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng
+   * @returns Ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -67,17 +94,17 @@ const ManageContracts: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Staff | Manage Contracts" />
+      <PageMeta title="Nhân viên | Quản Lý Hợp Đồng" />
       <PageHeader
-        title="Contract Management"
-        description="View contracts, assist co-owners with signing, and track contract status."
-        actions={<Button size="sm" onClick={loadData} disabled={loading}>Refresh</Button>}
+        title="Quản Lý Hợp Đồng"
+        description="Xem hợp đồng, hỗ trợ đồng sở hữu ký và theo dõi trạng thái hợp đồng."
+        actions={<Button size="sm" onClick={loadData} disabled={loading}>Làm Mới</Button>}
       />
 
-      {/* Group Selector */}
+      {/* Chọn Nhóm Xe */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Select Vehicle Group
+          Chọn Nhóm Xe
         </label>
         <select
           value={selectedGroupId}
@@ -94,7 +121,7 @@ const ManageContracts: React.FC = () => {
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading contracts...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải hợp đồng...</p>
         </div>
       )}
 
@@ -108,7 +135,7 @@ const ManageContracts: React.FC = () => {
         <div className="grid gap-4">
           {contracts.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No contracts found for this group.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy hợp đồng nào cho nhóm này.</p>
             </div>
           ) : (
             contracts.map((contract) => (
@@ -128,11 +155,11 @@ const ManageContracts: React.FC = () => {
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Created: {formatDate(contract.createdAt)}
+                        Tạo: {formatDate(contract.createdAt)}
                       </p>
                       {contract.signedAt && (
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          Signed: {formatDate(contract.signedAt)}
+                          Đã ký: {formatDate(contract.signedAt)}
                         </p>
                       )}
                     </div>
@@ -142,14 +169,14 @@ const ManageContracts: React.FC = () => {
                 {contract.coOwnerName && (
                   <div className="p-4">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Co-Owner: {contract.coOwnerName}
+                      Đồng Sở Hữu: {contract.coOwnerName}
                     </p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Ownership: {contract.ownershipPercentage}%
+                      Quyền Sở Hữu: {contract.ownershipPercentage}%
                     </p>
                     {contract.notes && (
                       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                        Notes: {contract.notes}
+                        Ghi chú: {contract.notes}
                       </p>
                     )}
                   </div>

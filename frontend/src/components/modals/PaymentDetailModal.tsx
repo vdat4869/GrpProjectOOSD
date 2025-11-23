@@ -3,6 +3,7 @@ import { Modal } from "../ui/modal";
 import Button from "../ui/button/Button";
 import { paymentService, Payment, PaymentStatus } from "../../services/paymentService";
 
+// Props cho modal chi tiết thanh toán
 interface PaymentDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,6 +11,7 @@ interface PaymentDetailModalProps {
   onRefresh: () => void;
 }
 
+// Modal để xem chi tiết thanh toán
 const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   isOpen,
   onClose,
@@ -20,8 +22,9 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Định dạng ngày tháng
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -30,26 +33,28 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     });
   };
 
+  // Định dạng số tiền
   const formatAmount = (amount: number) => {
     return `₫${amount.toLocaleString()}`;
   };
 
+  // Lấy nhãn trạng thái thanh toán
   const getStatusLabel = (status: PaymentStatus) => {
     switch (status) {
       case PaymentStatus.Pending:
-        return "Pending";
+        return "Chờ thanh toán";
       case PaymentStatus.Processing:
-        return "Processing";
+        return "Đang xử lý";
       case PaymentStatus.Completed:
-        return "Completed";
+        return "Đã hoàn thành";
       case PaymentStatus.Failed:
-        return "Failed";
+        return "Thất bại";
       case PaymentStatus.Cancelled:
-        return "Cancelled";
+        return "Đã hủy";
       case PaymentStatus.Refunded:
-        return "Refunded";
+        return "Đã hoàn tiền";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
@@ -70,29 +75,31 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
     }
   };
 
+  // Lấy nhãn phương thức thanh toán
   const getMethodLabel = (method: number) => {
     switch (method) {
       case 2:
-        return "Banking";
+        return "Ngân hàng";
       case 3:
-        return "E-Wallet";
+        return "Ví điện tử";
       case 4:
-        return "Cash";
+        return "Tiền mặt";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
+  // Xử lý hủy thanh toán
   const handleCancel = async () => {
     if (
       payment.status !== PaymentStatus.Pending &&
       payment.status !== PaymentStatus.Processing
     ) {
-      setError("Only pending or processing payments can be cancelled");
+      setError("Chỉ có thể hủy thanh toán đang chờ hoặc đang xử lý");
       return;
     }
 
-    if (!confirm("Are you sure you want to cancel this payment?")) {
+    if (!confirm("Bạn có chắc chắn muốn hủy thanh toán này?")) {
       return;
     }
 
@@ -102,28 +109,29 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
       setSuccess(null);
       const result = await paymentService.cancelPayment(payment.id);
       if (result) {
-        setSuccess("Payment cancelled successfully");
+        setSuccess("Hủy thanh toán thành công");
         setTimeout(() => {
           onRefresh();
           onClose();
         }, 1500);
       } else {
-        setError("Failed to cancel payment");
+        setError("Không thể hủy thanh toán");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to cancel payment");
+      setError(err instanceof Error ? err.message : "Không thể hủy thanh toán");
     } finally {
       setLoading(false);
     }
   };
 
+  // Xử lý hoàn tiền
   const handleRefund = async () => {
     if (payment.status !== PaymentStatus.Completed) {
-      setError("Only completed payments can be refunded");
+      setError("Chỉ có thể hoàn tiền cho thanh toán đã hoàn thành");
       return;
     }
 
-    if (!confirm("Are you sure you want to refund this payment?")) {
+    if (!confirm("Bạn có chắc chắn muốn hoàn tiền cho thanh toán này?")) {
       return;
     }
 
@@ -133,16 +141,16 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
       setSuccess(null);
       const result = await paymentService.refundPayment(payment.id);
       if (result) {
-        setSuccess("Refund request submitted successfully");
+        setSuccess("Yêu cầu hoàn tiền đã được gửi thành công");
         setTimeout(() => {
           onRefresh();
           onClose();
         }, 1500);
       } else {
-        setError("Failed to refund payment");
+        setError("Không thể hoàn tiền");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refund payment");
+      setError(err instanceof Error ? err.message : "Không thể hoàn tiền");
     } finally {
       setLoading(false);
     }
@@ -251,35 +259,35 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
         </head>
         <body>
           <div class="header">
-            <h1>PAYMENT RECEIPT</h1>
-            <p>EV Co-ownership & Cost-sharing System</p>
-            <p>Receipt Date: ${formatDate(payment.createdAt)}</p>
+            <h1>HÓA ĐƠN THANH TOÁN</h1>
+            <p>Hệ Thống Đồng Sở Hữu Xe Điện & Chia Sẻ Chi Phí</p>
+            <p>Ngày Hóa Đơn: ${formatDate(payment.createdAt)}</p>
           </div>
           
           <div class="receipt-info">
-            <h2>Payment Information</h2>
+            <h2>Thông Tin Thanh Toán</h2>
             <div class="info-row">
-              <span class="info-label">Payment ID:</span>
+              <span class="info-label">Mã Thanh Toán:</span>
               <span class="info-value">${payment.id}</span>
             </div>
             ${payment.transactionId ? `
             <div class="info-row">
-              <span class="info-label">Transaction ID:</span>
+              <span class="info-label">Mã Giao Dịch:</span>
               <span class="info-value">${payment.transactionId}</span>
             </div>
             ` : ''}
             ${payment.externalTransactionId ? `
             <div class="info-row">
-              <span class="info-label">External Transaction ID:</span>
+              <span class="info-label">Mã Giao Dịch Ngoài:</span>
               <span class="info-value">${payment.externalTransactionId}</span>
             </div>
             ` : ''}
             <div class="info-row">
-              <span class="info-label">Payment Method:</span>
+              <span class="info-label">Phương Thức Thanh Toán:</span>
               <span class="info-value">${getMethodLabel(payment.method)}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Status:</span>
+              <span class="info-label">Trạng Thái:</span>
               <span class="info-value">
                 <span class="status ${getStatusLabel(payment.status).toLowerCase()}">
                   ${getStatusLabel(payment.status)}
@@ -287,30 +295,30 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               </span>
             </div>
             <div class="info-row">
-              <span class="info-label">Created At:</span>
+              <span class="info-label">Ngày Tạo:</span>
               <span class="info-value">${formatDate(payment.createdAt)}</span>
             </div>
             ${payment.processedAt ? `
             <div class="info-row">
-              <span class="info-label">Processed At:</span>
+              <span class="info-label">Ngày Xử Lý:</span>
               <span class="info-value">${formatDate(payment.processedAt)}</span>
             </div>
             ` : ''}
           </div>
           
           <div class="amount">
-            Amount: ${formatAmount(payment.amount)} ${payment.currency}
+            Số Tiền: ${formatAmount(payment.amount)} ${payment.currency}
           </div>
           
           ${payment.errorMessage ? `
           <div style="margin-top: 20px; padding: 15px; background-color: #fee2e2; border-radius: 5px;">
-            <strong>Error:</strong> ${payment.errorMessage}
+            <strong>Lỗi:</strong> ${payment.errorMessage}
           </div>
           ` : ''}
           
           <div class="footer">
-            <p>This is an electronic receipt generated by the EV Co-ownership & Cost-sharing System.</p>
-            <p>For inquiries, please contact support.</p>
+            <p>Đây là hóa đơn điện tử được tạo bởi Hệ Thống Đồng Sở Hữu Xe Điện & Chia Sẻ Chi Phí.</p>
+            <p>Để được hỗ trợ, vui lòng liên hệ bộ phận hỗ trợ.</p>
           </div>
         </body>
       </html>
@@ -333,10 +341,10 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
       <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Payment Details
+            Chi Tiết Thanh Toán
           </h4>
           <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-            View payment information and manage payment actions.
+            Xem thông tin thanh toán và quản lý các hành động thanh toán.
           </p>
         </div>
 
@@ -358,7 +366,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Payment ID
+                    Mã Thanh Toán
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
                     {payment.id.substring(0, 8)}...
@@ -366,7 +374,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Status
+                    Trạng Thái
                   </p>
                   <span
                     className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(
@@ -378,7 +386,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Amount
+                    Số Tiền
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
                     {formatAmount(payment.amount)}
@@ -386,7 +394,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Currency
+                    Loại Tiền Tệ
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
                     {payment.currency}
@@ -394,7 +402,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Payment Method
+                    Phương Thức Thanh Toán
                   </p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white/90">
                     {getMethodLabel(payment.method)}
@@ -402,7 +410,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 </div>
                 <div>
                   <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                    Created At
+                    Ngày Tạo
                   </p>
                   <p className="mt-1 text-sm text-gray-900 dark:text-white/90">
                     {formatDate(payment.createdAt)}
@@ -411,7 +419,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 {payment.processedAt && (
                   <div>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Processed At
+                      Ngày Xử Lý
                     </p>
                     <p className="mt-1 text-sm text-gray-900 dark:text-white/90">
                       {formatDate(payment.processedAt)}
@@ -421,7 +429,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 {payment.transactionId && (
                   <div>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      Transaction ID
+                      Mã Giao Dịch
                     </p>
                     <p className="mt-1 text-sm text-gray-900 dark:text-white/90">
                       {payment.transactionId}
@@ -431,7 +439,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 {payment.externalTransactionId && (
                   <div>
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                      External Transaction ID
+                      Mã Giao Dịch Ngoài
                     </p>
                     <p className="mt-1 text-sm text-gray-900 dark:text-white/90">
                       {payment.externalTransactionId}
@@ -441,7 +449,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                 {payment.errorMessage && (
                   <div className="col-span-2">
                     <p className="text-xs font-medium text-red-500 dark:text-red-400">
-                      Error Message
+                      Thông Báo Lỗi
                     </p>
                     <p className="mt-1 text-sm text-red-600 dark:text-red-300">
                       {payment.errorMessage}
@@ -458,7 +466,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   onClick={handleOpenPaymentUrl}
                   className="w-full"
                 >
-                  Open Payment URL
+                  Mở URL Thanh Toán
                 </Button>
               </div>
             )}
@@ -471,7 +479,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   variant="outline"
                   className="w-full"
                 >
-                  Download Receipt
+                  Tải Hóa Đơn
                 </Button>
               </div>
             )}
@@ -486,7 +494,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   variant="outline"
                   className="flex-1"
                 >
-                  {loading ? "Cancelling..." : "Cancel Payment"}
+                  {loading ? "Đang hủy..." : "Hủy Thanh Toán"}
                 </Button>
               )}
               {payment.status === PaymentStatus.Completed && (
@@ -497,7 +505,7 @@ const PaymentDetailModal: React.FC<PaymentDetailModalProps> = ({
                   variant="outline"
                   className="flex-1"
                 >
-                  {loading ? "Processing..." : "Request Refund"}
+                  {loading ? "Đang xử lý..." : "Yêu Cầu Hoàn Tiền"}
                 </Button>
               )}
             </div>

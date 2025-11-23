@@ -5,11 +5,13 @@ import Input from "../form/input/InputField";
 import Label from "../form/Label";
 import { authService } from "../../services/authService";
 
+// Props cho modal đổi mật khẩu
 interface ChangePasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+// Modal để đổi mật khẩu
 const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   isOpen,
   onClose,
@@ -21,29 +23,30 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Xử lý submit form đổi mật khẩu
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(false);
 
-    // Validation
+    // Xác thực
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setError("All fields are required");
+      setError("Tất cả các trường đều bắt buộc");
       return;
     }
 
     if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters");
+      setError("Mật khẩu mới phải có ít nhất 6 ký tự");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("New password and confirm password do not match");
+      setError("Mật khẩu mới và xác nhận mật khẩu không khớp");
       return;
     }
 
     if (currentPassword === newPassword) {
-      setError("New password must be different from current password");
+      setError("Mật khẩu mới phải khác mật khẩu hiện tại");
       return;
     }
 
@@ -57,7 +60,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       setSuccess(true);
       setTimeout(() => {
         onClose();
-        // Reset form
+        // Đặt lại form
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
@@ -65,12 +68,13 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         setSuccess(false);
       }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to change password");
+      setError(err instanceof Error ? err.message : "Không thể đổi mật khẩu");
     } finally {
       setLoading(false);
     }
   };
 
+  // Xử lý đóng modal
   const handleClose = () => {
     if (!loading) {
       setCurrentPassword("");
@@ -87,10 +91,10 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       <div className="no-scrollbar relative w-full max-w-[500px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Change Password
+            Đổi Mật Khẩu
           </h4>
           <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-            Enter your current password and choose a new password.
+            Nhập mật khẩu hiện tại và chọn mật khẩu mới.
           </p>
         </div>
 
@@ -104,13 +108,13 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
             {success && (
               <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-600 dark:border-green-500/40 dark:bg-green-500/10 dark:text-green-200">
-                Password changed successfully!
+                Đổi mật khẩu thành công!
               </div>
             )}
 
             <div className="space-y-5">
               <div>
-                <Label>Current Password</Label>
+                <Label>Mật Khẩu Hiện Tại</Label>
                 <Input
                   type="password"
                   value={currentPassword}
@@ -121,7 +125,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               </div>
 
               <div>
-                <Label>New Password</Label>
+                <Label>Mật Khẩu Mới</Label>
                 <Input
                   type="password"
                   value={newPassword}
@@ -131,12 +135,12 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                   minLength={6}
                 />
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Must be at least 6 characters
+                  Phải có ít nhất 6 ký tự
                 </p>
               </div>
 
               <div>
-                <Label>Confirm New Password</Label>
+                <Label>Xác Nhận Mật Khẩu Mới</Label>
                 <Input
                   type="password"
                   value={confirmPassword}
@@ -156,10 +160,10 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               disabled={loading}
               type="button"
             >
-              Cancel
+              Hủy
             </Button>
             <Button size="sm" type="submit" disabled={loading}>
-              {loading ? "Changing..." : "Change Password"}
+              {loading ? "Đang đổi..." : "Đổi Mật Khẩu"}
             </Button>
           </div>
         </form>

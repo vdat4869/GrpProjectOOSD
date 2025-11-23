@@ -49,6 +49,23 @@ const CommonFund: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    
+    // Listen for payment completion events to refresh cost shares
+    const handlePaymentCompleted = () => {
+      console.log('[CommonFund] Payment completed, refreshing cost shares...');
+      if (selectedGroupId) {
+        // Delay a bit to ensure backend has updated
+        setTimeout(() => {
+          loadCostShares(selectedGroupId);
+        }, 1500);
+      }
+    };
+    
+    window.addEventListener('paymentCompleted', handlePaymentCompleted);
+    
+    return () => {
+      window.removeEventListener('paymentCompleted', handlePaymentCompleted);
+    };
   }, []);
 
   useEffect(() => {
@@ -68,10 +85,31 @@ const CommonFund: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await ownershipService.getGroups();
-      setGroups(data);
-      if (data.length > 0) {
-        setSelectedGroupId(data[0].id);
+      
+      // Lấy co-owner hiện tại
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
+      }
+      
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        throw new Error("Tài khoản chưa được đăng ký làm co-owner. Vui lòng hoàn thành KYC trước.");
+      }
+      
+      // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Lấy danh sách group IDs từ ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Lấy tất cả groups và lọc chỉ những groups mà co-owner có quyền
+      const allGroups = await ownershipService.getGroups();
+      const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+      
+      setGroups(userGroups);
+      if (userGroups.length > 0) {
+        setSelectedGroupId(userGroups[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải nhóm xe");
@@ -108,7 +146,7 @@ const CommonFund: React.FC = () => {
         balance: totalContributions - totalExpenses,
       });
     } catch (err) {
-      console.error("Failed to load cost shares:", err);
+      console.error("Không thể tải chia sẻ chi phí:", err);
     }
   };
 
@@ -120,7 +158,7 @@ const CommonFund: React.FC = () => {
         setSelectedFundId(funds[0].id);
       }
     } catch (err) {
-      console.error("Failed to load group funds:", err);
+      console.error("Không thể tải quỹ nhóm:", err);
     }
   };
 
@@ -129,7 +167,7 @@ const CommonFund: React.FC = () => {
       const transactions = await ownershipService.getFundTransactions(fundId);
       setFundTransactions(transactions);
     } catch (err) {
-      console.error("Failed to load fund transactions:", err);
+      console.error("Không thể tải giao dịch quỹ:", err);
     }
   };
 
@@ -153,7 +191,7 @@ const CommonFund: React.FC = () => {
   const handleSaveTransaction = async () => {
     try {
       if (!transactionFormData.fundId || !transactionFormData.amount || transactionFormData.amount <= 0) {
-        setError("Please fill in all required fields");
+        setError("Vui lòng điền đầy đủ các trường bắt buộc");
         return;
       }
       await ownershipService.createFundTransaction(transactionFormData.fundId, {
@@ -217,14 +255,14 @@ const CommonFund: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Co-owner | Common Fund" />
+      <PageMeta title="Đồng sở hữu | Quỹ Chung" />
       <PageHeader
-        title="Common Fund Management"
-        description="View and manage maintenance fund, reserve fund, and transparent fund history for your vehicle group."
+        title="Quản Lý Quỹ Chung"
+        description="Xem và quản lý quỹ bảo dưỡng, quỹ dự trữ và lịch sử quỹ minh bạch cho nhóm xe của bạn."
         actions={
           selectedGroupId && groupFunds.length > 0 ? (
             <Button size="sm" onClick={handleCreateTransaction}>
-              Add Transaction
+              Thêm Giao Dịch
             </Button>
           ) : null
         }
@@ -234,7 +272,7 @@ const CommonFund: React.FC = () => {
       {groups.length > 1 && (
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Select Vehicle Group
+            Chọn Nhóm Xe
           </label>
           <select
             value={selectedGroupId}
@@ -252,7 +290,7 @@ const CommonFund: React.FC = () => {
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading fund information...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải thông tin quỹ...</p>
         </div>
       )}
 
@@ -267,25 +305,25 @@ const CommonFund: React.FC = () => {
           {/* Fund Summary Cards */}
           <div className="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-theme-xs dark:border-blue-500/40 dark:bg-blue-500/10">
-              <p className="text-sm text-blue-600 dark:text-blue-300">Maintenance Fund</p>
+              <p className="text-sm text-blue-600 dark:text-blue-300">Quỹ Bảo Dưỡng</p>
               <p className="mt-1 text-2xl font-semibold text-blue-700 dark:text-blue-200">
                 {formatAmount(fundSummary.maintenanceFund)}
               </p>
             </div>
             <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4 shadow-theme-xs dark:border-purple-500/40 dark:bg-purple-500/10">
-              <p className="text-sm text-purple-600 dark:text-purple-300">Reserve Fund</p>
+              <p className="text-sm text-purple-600 dark:text-purple-300">Quỹ Dự Trữ</p>
               <p className="mt-1 text-2xl font-semibold text-purple-700 dark:text-purple-200">
                 {formatAmount(fundSummary.reserveFund)}
               </p>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-theme-xs dark:border-emerald-500/40 dark:bg-emerald-500/10">
-              <p className="text-sm text-emerald-600 dark:text-emerald-300">Total Contributions</p>
+              <p className="text-sm text-emerald-600 dark:text-emerald-300">Tổng Đóng Góp</p>
               <p className="mt-1 text-2xl font-semibold text-emerald-700 dark:text-emerald-200">
                 {formatAmount(fundSummary.totalContributions)}
               </p>
             </div>
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-theme-xs dark:border-amber-500/40 dark:bg-amber-500/10">
-              <p className="text-sm text-amber-600 dark:text-amber-300">Balance</p>
+              <p className="text-sm text-amber-600 dark:text-amber-300">Số Dư</p>
               <p className="mt-1 text-2xl font-semibold text-amber-700 dark:text-amber-200">
                 {formatAmount(fundSummary.balance)}
               </p>
@@ -297,10 +335,10 @@ const CommonFund: React.FC = () => {
             <div className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                  Group Funds
+                  Quỹ Nhóm
                 </h3>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Select a fund to view transactions
+                  Chọn một quỹ để xem giao dịch
                 </p>
               </div>
               <div className="p-4">
@@ -308,10 +346,10 @@ const CommonFund: React.FC = () => {
                   value={selectedFundId}
                   onChange={(value) => setSelectedFundId(value)}
                 >
-                  <option value="">Select a fund</option>
+                  <option value="">Chọn quỹ</option>
                   {groupFunds.map((fund) => (
                     <option key={fund.id} value={fund.id}>
-                      {fund.name} - Balance: {formatAmount(fund.balance)}
+                      {fund.name} - Số dư: {formatAmount(fund.balance)}
                     </option>
                   ))}
                 </Select>
@@ -326,21 +364,21 @@ const CommonFund: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                      Fund Transactions
+                      Giao Dịch Quỹ
                     </h3>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      Contributions and expenses for selected fund
+                      Đóng góp và chi phí cho quỹ đã chọn
                     </p>
                   </div>
                   <Button size="sm" onClick={handleCreateTransaction}>
-                    Add Transaction
+                    Thêm Giao Dịch
                   </Button>
                 </div>
               </div>
               <div className="p-4">
                 {fundTransactions.length === 0 ? (
                   <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                    No transactions found.
+                    Không tìm thấy giao dịch nào.
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -367,22 +405,22 @@ const CommonFund: React.FC = () => {
                             </span>
                             {transaction.status === "Pending" && (
                               <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
-                                Pending Approval
+                                Chờ Phê Duyệt
                               </span>
                             )}
                           </div>
                           {transaction.category && (
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                              Category: {transaction.category}
+                              Danh mục: {transaction.category}
                             </p>
                           )}
                           {transaction.receiptNumber && (
                             <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                              Receipt: {transaction.receiptNumber}
+                              Hóa đơn: {transaction.receiptNumber}
                             </p>
                           )}
                           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            {formatDate(transaction.transactionDate || transaction.createdAt)} • By: {transaction.coOwnerName || transaction.coOwnerId.substring(0, 8)}
+                            {formatDate(transaction.transactionDate || transaction.createdAt)} • Bởi: {transaction.coOwnerName || transaction.coOwnerId.substring(0, 8)}
                           </p>
                         </div>
                         <div className="text-right">
@@ -403,12 +441,12 @@ const CommonFund: React.FC = () => {
                                   await ownershipService.approveFundTransaction(transaction.id);
                                   await loadFundTransactions(selectedFundId);
                                 } catch (err) {
-                                  setError(err instanceof Error ? err.message : "Failed to approve");
+                                  setError(err instanceof Error ? err.message : "Không thể phê duyệt");
                                 }
                               }}
                               className="mt-2"
                             >
-                              Approve
+                              Phê Duyệt
                             </Button>
                           )}
                         </div>
@@ -424,17 +462,17 @@ const CommonFund: React.FC = () => {
           <div className="rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                Cost Shares History
+                Lịch Sử Chia Sẻ Chi Phí
               </h3>
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                Transparent history of all contributions and expenses
+                Lịch sử minh bạch của tất cả đóng góp và chi phí
               </p>
             </div>
 
             <div className="p-4">
               {costShares.length === 0 ? (
                 <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                  No fund transactions found.
+                  Không tìm thấy giao dịch quỹ nào.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -453,10 +491,10 @@ const CommonFund: React.FC = () => {
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          {costShare.description || "No description"}
+                          {costShare.description || "Không có mô tả"}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          {formatDate(costShare.createdAt)} • Due: {formatDate(costShare.dueDate)}
+                          {formatDate(costShare.createdAt)} • Hạn: {formatDate(costShare.dueDate)}
                         </p>
                       </div>
                       <div className="text-right">
@@ -464,7 +502,7 @@ const CommonFund: React.FC = () => {
                           {formatAmount(costShare.totalAmount)}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {costShare.status === 2 ? "Paid" : "Pending"}
+                          {costShare.status === 2 ? "Đã Thanh Toán" : "Chờ Thanh Toán"}
                         </p>
                       </div>
                     </div>
@@ -488,10 +526,10 @@ const CommonFund: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Add Fund Transaction
+              Thêm Giao Dịch Quỹ
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Record a contribution or expense for the group fund.
+              Ghi lại một đóng góp hoặc chi phí cho quỹ nhóm.
             </p>
           </div>
 
@@ -509,78 +547,78 @@ const CommonFund: React.FC = () => {
             )}
 
             <div>
-              <Label>Fund <span className="text-error-500">*</span></Label>
+              <Label>Quỹ <span className="text-error-500">*</span></Label>
               <Select
                 value={transactionFormData.fundId}
                 onChange={(value) => setTransactionFormData({ ...transactionFormData, fundId: value })}
                 required
               >
-                <option value="">Select a fund</option>
+                <option value="">Chọn quỹ</option>
                 {groupFunds.map((fund) => (
                   <option key={fund.id} value={fund.id}>
-                    {fund.name} - Balance: {formatAmount(fund.balance)}
+                    {fund.name} - Số dư: {formatAmount(fund.balance)}
                   </option>
                 ))}
               </Select>
             </div>
 
             <div>
-              <Label>Transaction Type <span className="text-error-500">*</span></Label>
+              <Label>Loại Giao Dịch <span className="text-error-500">*</span></Label>
               <Select
                 value={transactionFormData.type}
                 onChange={(value) => setTransactionFormData({ ...transactionFormData, type: value })}
                 required
               >
-                <option value="Contribution">Contribution</option>
-                <option value="Expense">Expense</option>
+                <option value="Contribution">Đóng Góp</option>
+                <option value="Expense">Chi Phí</option>
               </Select>
             </div>
 
             <div>
-              <Label>Amount <span className="text-error-500">*</span></Label>
+              <Label>Số Tiền <span className="text-error-500">*</span></Label>
               <Input
                 type="number"
                 step="0.01"
                 min="0.01"
                 value={transactionFormData.amount === 0 ? "" : transactionFormData.amount}
                 onChange={(e) => setTransactionFormData({ ...transactionFormData, amount: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter amount"
+                placeholder="Nhập số tiền"
                 required
               />
             </div>
 
             <div>
-              <Label>Description</Label>
+              <Label>Mô Tả</Label>
               <Input
                 type="text"
                 value={transactionFormData.description}
                 onChange={(e) => setTransactionFormData({ ...transactionFormData, description: e.target.value })}
-                placeholder="Enter description"
+                placeholder="Nhập mô tả"
               />
             </div>
 
             <div>
-              <Label>Category</Label>
+              <Label>Danh Mục</Label>
               <Input
                 type="text"
                 value={transactionFormData.category}
                 onChange={(e) => setTransactionFormData({ ...transactionFormData, category: e.target.value })}
-                placeholder="e.g., Maintenance, Insurance, etc."
+                placeholder="Ví dụ: Bảo dưỡng, Bảo hiểm, v.v."
               />
             </div>
 
             <div>
-              <Label>Receipt Number</Label>
+              <Label>Số Hóa Đơn</Label>
               <Input
                 type="text"
                 value={transactionFormData.receiptNumber}
                 onChange={(e) => setTransactionFormData({ ...transactionFormData, receiptNumber: e.target.value })}
-                placeholder="Enter receipt number (if any)"
+                placeholder="Nhập số hóa đơn (nếu có)"
               />
             </div>
 
             <div>
-              <Label>Transaction Date</Label>
+              <Label>Ngày Giao Dịch</Label>
               <Input
                 type="date"
                 value={transactionFormData.transactionDate}
@@ -599,10 +637,10 @@ const CommonFund: React.FC = () => {
                 }}
                 type="button"
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" type="submit">
-                Create Transaction
+                Tạo Giao Dịch
               </Button>
             </div>
           </form>

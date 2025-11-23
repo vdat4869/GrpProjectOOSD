@@ -47,7 +47,37 @@ namespace PaymentService.Controllers
             {
                 if (Guid.TryParse(walletId, out var walletGuid))
                 {
-                    walletGuids.Add(walletGuid);
+                    // First, try to find wallet by ID
+                    var walletById = await _context.Wallets
+                        .FirstOrDefaultAsync(w => w.Id == walletGuid && w.IsActive);
+                    
+                    if (walletById != null)
+                    {
+                        // Found wallet by ID, use it
+                        walletGuids.Add(walletGuid);
+                        _logger.LogInformation("Found wallet by ID: {WalletId}", walletGuid);
+                    }
+                    else
+                    {
+                        // Not found by ID, try to find wallets by UserId (CoOwnerId)
+                        // This handles the case where frontend sends coOwnerId as walletId
+                        var walletsByUserId = await _context.Wallets
+                            .Where(w => w.UserId == walletGuid && w.IsActive)
+                            .Select(w => w.Id)
+                            .ToListAsync();
+                        
+                        if (walletsByUserId.Count > 0)
+                        {
+                            walletGuids.AddRange(walletsByUserId);
+                            _logger.LogInformation("Found {Count} wallets by UserId (CoOwnerId): {UserId}", walletsByUserId.Count, walletGuid);
+                        }
+                        else
+                        {
+                            // No wallets found, return empty list
+                            _logger.LogInformation("No wallets found for walletId/UserId: {WalletId}", walletGuid);
+                            return Ok(new List<TransactionDto>());
+                        }
+                    }
                 }
                 else
                 {
@@ -60,7 +90,7 @@ namespace PaymentService.Controllers
                 Guid userGuid;
                 if (Guid.TryParse(userId, out userGuid))
                 {
-                    // Get all wallets for this user
+                    // Get all wallets for this user (GUID)
                     var wallets = await _context.Wallets
                         .Where(w => w.UserId == userGuid && w.IsActive)
                         .Select(w => w.Id)
@@ -79,8 +109,9 @@ namespace PaymentService.Controllers
                 else
                 {
                     // userId is not a GUID (might be a numeric ID from auth service)
-                    // Return empty list as we cannot find wallets without GUID
-                    _logger.LogWarning("userId is not a valid GUID: {UserId}. Cannot find wallets. Returning empty transactions list.", userId);
+                    // Frontend should send coOwnerId (GUID) instead of userId (numeric)
+                    // For now, return empty list and log warning
+                    _logger.LogWarning("userId is not a valid GUID: {UserId}. Frontend should send coOwnerId (GUID) instead. Returning empty transactions list.", userId);
                     return Ok(new List<TransactionDto>());
                 }
             }

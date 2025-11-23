@@ -62,7 +62,7 @@ export default function CreateBookingModal({
           }
         } catch (err) {
           console.error("Error loading data:", err);
-          setError("Failed to load vehicles");
+          setError("Không thể tải danh sách xe");
         } finally {
           setLoadingVehicles(false);
         }
@@ -79,22 +79,22 @@ export default function CreateBookingModal({
     try {
       const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
       if (!userId) {
-        throw new Error("User not found. Please login again.");
+        throw new Error("Không tìm thấy người dùng. Vui lòng đăng nhập lại.");
       }
 
       if (vehicleId <= 0) {
-        throw new Error("Please select a vehicle group");
+        throw new Error("Vui lòng chọn nhóm xe");
       }
 
       if (!startTime || !endTime) {
-        throw new Error("Please select start and end times");
+        throw new Error("Vui lòng chọn thời gian bắt đầu và kết thúc");
       }
 
       const start = new Date(startTime);
       const end = new Date(endTime);
 
       if (end <= start) {
-        throw new Error("End time must be after start time");
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
       }
 
       const coOwnerIdNum = userId ? parseInt(userId) : 1;
@@ -108,6 +108,20 @@ export default function CreateBookingModal({
       };
 
       const booking = await bookingService.createBooking(data);
+      
+      // Dispatch custom event để các component khác có thể refresh
+      const bookingCreatedEvent = new CustomEvent('bookingCreated', {
+        detail: {
+          bookingId: booking.id,
+          vehicleId: booking.vehicleId,
+        }
+      });
+      window.dispatchEvent(bookingCreatedEvent);
+      
+      // Set session storage flag để refresh khi quay lại trang
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bookingJustCreated', 'true');
+      }
       
       // Generate owner code if needType and vehicle info available
       if (needType && booking) {
@@ -146,21 +160,22 @@ export default function CreateBookingModal({
       
       onSuccess();
       onClose();
-      // Reset form
+      // Đặt lại form
       setVehicleId(0);
       setStartTime("");
       setEndTime("");
       setNote("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create booking");
+      setError(err instanceof Error ? err.message : "Không thể tạo booking");
     } finally {
       setLoading(false);
     }
   };
 
+  // Lấy gợi ý từ AI
   const handleGetAISuggestion = async () => {
     if (!vehicleId || !startTime || !endTime) {
-      setError("Please select vehicle and time range first");
+      setError("Vui lòng chọn xe và khoảng thời gian trước");
       return;
     }
 
@@ -177,18 +192,18 @@ export default function CreateBookingModal({
       // Find vehicle group for this vehicle
       const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
       if (!selectedVehicle) {
-        throw new Error("Selected vehicle not found");
+        throw new Error("Không tìm thấy xe đã chọn");
       }
 
-      // Try to find group by vehicle name or ID
+      // Thử tìm nhóm theo tên xe hoặc ID
       let group = groups.find((g) => g.vehicleName === selectedVehicle.name);
       if (!group && groups.length > 0) {
-        // If no exact match, use first group (fallback)
+        // Nếu không có khớp chính xác, sử dụng nhóm đầu tiên (dự phòng)
         group = groups[0];
       }
       
       if (!group) {
-        throw new Error("Vehicle group not found. Please ensure you are part of a vehicle group.");
+        throw new Error("Không tìm thấy nhóm xe. Vui lòng đảm bảo bạn là thành viên của một nhóm xe.");
       }
 
       // Get ownership percentage for current user
@@ -206,14 +221,14 @@ export default function CreateBookingModal({
 
       if (suggestion) {
         setAiSuggestion(suggestion);
-        // Auto-apply suggestion if fairness score is good
+        // Tự động áp dụng gợi ý nếu điểm công bằng tốt
         if (suggestion.fairness_score >= 0.7) {
           setStartTime(new Date(suggestion.suggested_start).toISOString().slice(0, 16));
           setEndTime(new Date(suggestion.suggested_end).toISOString().slice(0, 16));
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get AI suggestion");
+      setError(err instanceof Error ? err.message : "Không thể lấy gợi ý từ AI");
     } finally {
       setLoadingSuggestion(false);
     }
@@ -251,13 +266,13 @@ export default function CreateBookingModal({
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-            Create New Booking
+            Tạo Booking Mới
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            aria-label="Close"
+            aria-label="Đóng"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -267,7 +282,7 @@ export default function CreateBookingModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>Vehicle *</Label>
+            <Label>Xe *</Label>
             <select
               className="h-12 w-full rounded-lg border border-gray-200 bg-white px-4 text-sm text-gray-700 focus:border-brand-400 focus:outline-hidden focus:ring-2 focus:ring-brand-300/40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               value={vehicleId}
@@ -276,7 +291,7 @@ export default function CreateBookingModal({
               disabled={loadingVehicles}
             >
               <option value={0}>
-                {loadingVehicles ? "Loading..." : "Select a vehicle"}
+                {loadingVehicles ? "Đang tải..." : "Chọn xe"}
               </option>
               {vehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
@@ -287,7 +302,7 @@ export default function CreateBookingModal({
           </div>
 
           <div>
-            <Label>Start Time *</Label>
+            <Label>Thời Gian Bắt Đầu *</Label>
             <Input
               type="datetime-local"
               value={startTime}
@@ -298,7 +313,7 @@ export default function CreateBookingModal({
           </div>
 
           <div>
-            <Label>End Time *</Label>
+            <Label>Thời Gian Kết Thúc *</Label>
             <Input
               type="datetime-local"
               value={endTime}
@@ -318,7 +333,7 @@ export default function CreateBookingModal({
                 disabled={loadingSuggestion}
                 className="w-full"
               >
-                {loadingSuggestion ? "Getting AI Suggestion..." : "Get AI Fairness Suggestion"}
+                {loadingSuggestion ? "Đang lấy gợi ý AI..." : "Lấy Gợi ý Công Bằng từ AI"}
               </Button>
             </div>
           )}
@@ -328,18 +343,18 @@ export default function CreateBookingModal({
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-200">
-                    AI Fairness Suggestion
+                    Gợi ý Công Bằng từ AI
                   </h4>
                   <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">
                     {aiSuggestion.reason}
                   </p>
                   <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-                    Fairness Score: {(aiSuggestion.fairness_score * 100).toFixed(1)}%
+                    Điểm Công Bằng: {(aiSuggestion.fairness_score * 100).toFixed(1)}%
                   </p>
                   {aiSuggestion.fairness_score < 0.7 && aiSuggestion.alternative_slots && (
                     <div className="mt-3">
                       <p className="text-xs font-medium text-blue-800 dark:text-blue-200">
-                        Alternative Slots:
+                        Khung Giờ Thay Thế:
                       </p>
                       {aiSuggestion.alternative_slots.slice(0, 2).map((slot, idx) => (
                         <button
@@ -371,12 +386,12 @@ export default function CreateBookingModal({
           )}
 
           <div>
-            <Label>Note (Optional)</Label>
+            <Label>Ghi Chú (Tùy chọn)</Label>
             <textarea
               className="h-24 w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:border-brand-400 focus:outline-hidden focus:ring-2 focus:ring-brand-300/40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Add any additional notes..."
+              placeholder="Thêm ghi chú bổ sung..."
             />
           </div>
 
@@ -389,7 +404,7 @@ export default function CreateBookingModal({
           {createdBooking ? (
             <div className="space-y-4">
               <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-600 dark:border-green-500/40 dark:bg-green-500/10 dark:text-green-200">
-                Booking created successfully!
+                Tạo booking thành công!
               </div>
               <OwnerCodeDisplay
                 ownerCode={createdBooking.ownerCode}
@@ -404,7 +419,7 @@ export default function CreateBookingModal({
                   setCreatedBooking(null);
                   onSuccess();
                   onClose();
-                  // Reset form
+                  // Đặt lại form
                   setVehicleId(0);
                   setStartTime("");
                   setEndTime("");
@@ -412,7 +427,7 @@ export default function CreateBookingModal({
                 }}
                 className="w-full"
               >
-                Done
+                Hoàn Tất
               </Button>
             </div>
           ) : (
@@ -424,10 +439,10 @@ export default function CreateBookingModal({
                 className="flex-1"
                 variant="outline"
               >
-                Cancel
+                Hủy
               </Button>
               <Button type="submit" size="sm" className="flex-1" disabled={loading || loadingVehicles}>
-                {loading ? "Creating..." : "Create Booking"}
+                {loading ? "Đang tạo..." : "Tạo Booking"}
               </Button>
             </div>
           )}

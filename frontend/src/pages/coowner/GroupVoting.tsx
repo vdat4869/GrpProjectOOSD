@@ -50,19 +50,41 @@ const GroupVoting: React.FC = () => {
         setCurrentCoOwnerId(currentCoOwner.id);
       }
     } catch (err) {
-      console.error("Failed to load current co-owner:", err);
+      console.error("Không thể tải co-owner hiện tại:", err);
     }
   };
 
   const loadGroups = async () => {
     try {
-      const data = await ownershipService.getGroups();
-      setGroups(data);
-      if (data.length > 0 && !selectedGroupId) {
-        setSelectedGroupId(data[0].id);
+      // Lấy co-owner hiện tại
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        console.error("Không tìm thấy user. Vui lòng đăng nhập lại.");
+        return;
+      }
+      
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        console.error("Tài khoản chưa được đăng ký làm co-owner.");
+        return;
+      }
+      
+      // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Lấy danh sách group IDs từ ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Lấy tất cả groups và lọc chỉ những groups mà co-owner có quyền
+      const allGroups = await ownershipService.getGroups();
+      const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+      
+      setGroups(userGroups);
+      if (userGroups.length > 0 && !selectedGroupId) {
+        setSelectedGroupId(userGroups[0].id);
       }
     } catch (err) {
-      console.error("Failed to load groups:", err);
+      console.error("Không thể tải nhóm:", err);
     }
   };
 
@@ -71,6 +93,14 @@ const GroupVoting: React.FC = () => {
       setLoading(true);
       setError(null);
       const data = await ownershipService.getProposals(groupId);
+      
+      // Log votingEndDate for debugging
+      if (data && data.length > 0) {
+        data.forEach(p => {
+          console.log(`[GroupVoting] Proposal ${p.id}: votingEndDate = ${p.votingEndDate}`);
+        });
+      }
+      
       setProposals(data || []);
       
       // Ensure currentCoOwnerId is loaded before loading votes
@@ -106,7 +136,7 @@ const GroupVoting: React.FC = () => {
             setCurrentCoOwnerId(coOwnerId);
           }
         } catch (err) {
-          console.error("Failed to load co-owner for votes:", err);
+          console.error("Không thể tải co-owner để biểu quyết:", err);
           return;
         }
       } else {
@@ -127,7 +157,7 @@ const GroupVoting: React.FC = () => {
           votesMap.set(proposal.id, userVote);
         }
       } catch (err) {
-        console.error(`Failed to load votes for proposal ${proposal.id}:`, err);
+        console.error(`Không thể tải phiếu bầu cho đề xuất ${proposal.id}:`, err);
       }
     });
 
@@ -137,13 +167,24 @@ const GroupVoting: React.FC = () => {
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    try {
+      // Parse date string and ensure consistent formatting
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "N/A";
+      
+      // Format consistently using Vietnam timezone
+      return date.toLocaleDateString("vi-VN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Asia/Ho_Chi_Minh",
+      });
+    } catch (err) {
+      console.error("Error formatting date:", dateString, err);
+      return "N/A";
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -183,7 +224,12 @@ const GroupVoting: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      await ownershipService.startVoting(proposal.id);
+      // Preserve existing votingEndDate if it exists, otherwise let backend set default
+      await ownershipService.startVoting(
+        proposal.id,
+        proposal.votingStartDate || undefined,
+        proposal.votingEndDate || undefined
+      );
       // Reload proposals after starting voting
       if (selectedGroupId) {
         await loadProposals(selectedGroupId);
@@ -254,7 +300,7 @@ const GroupVoting: React.FC = () => {
           {proposals.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <p className="text-gray-600 dark:text-gray-400">
-                No proposals found. Create one to get started!
+                Không tìm thấy đề xuất nào. Tạo một đề xuất để bắt đầu!
               </p>
             </div>
           ) : (
@@ -287,20 +333,20 @@ const GroupVoting: React.FC = () => {
                     )}
                     {proposal.estimatedCost && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        Estimated Cost: {proposal.currency || "VND"}{" "}
+                        Chi phí ước tính: {proposal.currency || "VND"}{" "}
                         {proposal.estimatedCost.toLocaleString()}
                       </p>
                     )}
                     {proposal.votingEndDate && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        Closes: {formatDate(proposal.votingEndDate)}
+                        Kết thúc: {formatDate(proposal.votingEndDate)}
                       </p>
                     )}
                     {proposal.totalVotes !== undefined && (
                       <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        Votes: {proposal.totalVotes} (
-                        {proposal.approveVotes || 0} Approve, {proposal.rejectVotes || 0} Reject,{" "}
-                        {proposal.abstainVotes || 0} Abstain)
+                        Phiếu bầu: {proposal.totalVotes} (
+                        {proposal.approveVotes || 0} Đồng ý, {proposal.rejectVotes || 0} Từ chối,{" "}
+                        {proposal.abstainVotes || 0} Không ý kiến)
                       </p>
                     )}
                   </div>
@@ -311,16 +357,19 @@ const GroupVoting: React.FC = () => {
                         onClick={() => handleStartVoting(proposal)}
                         disabled={loading}
                       >
-                        Start Voting
+                        Bắt Đầu Biểu Quyết
                       </Button>
                     )}
                     {canVote(proposal) && (
                       <>
                         {hasUserVoted(proposal) ? (
                           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">You voted:</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Bạn đã bầu:</p>
                             <p className="font-medium text-gray-700 dark:text-gray-300">
-                              {getUserVote(proposal)?.choice || "Unknown"}
+                              {getUserVote(proposal)?.choice === "Approve" ? "Đồng ý" : 
+                               getUserVote(proposal)?.choice === "Reject" ? "Từ chối" :
+                               getUserVote(proposal)?.choice === "Abstain" ? "Không ý kiến" :
+                               getUserVote(proposal)?.choice || "Không xác định"}
                             </p>
                           </div>
                         ) : (
@@ -329,7 +378,7 @@ const GroupVoting: React.FC = () => {
                             variant="outline"
                             onClick={() => handleVote(proposal)}
                           >
-                            Vote
+                            Biểu Quyết
                           </Button>
                         )}
                       </>
@@ -339,7 +388,7 @@ const GroupVoting: React.FC = () => {
                       variant="outline"
                       onClick={() => handleViewDetails(proposal)}
                     >
-                      View Details
+                      Xem Chi Tiết
                     </Button>
                   </div>
                 </div>

@@ -4,6 +4,7 @@ import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
 
+// Props cho modal cập nhật booking
 interface UpdateBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,6 +12,7 @@ interface UpdateBookingModalProps {
   booking: Booking;
 }
 
+// Modal để cập nhật thông tin booking
 export default function UpdateBookingModal({
   isOpen,
   onClose,
@@ -25,7 +27,7 @@ export default function UpdateBookingModal({
 
   useEffect(() => {
     if (isOpen && booking) {
-      // Convert ISO strings to datetime-local format
+      // Chuyển đổi chuỗi ISO sang định dạng datetime-local
       const start = new Date(booking.startTime);
       const end = new Date(booking.endTime);
       
@@ -44,6 +46,7 @@ export default function UpdateBookingModal({
     }
   }, [isOpen, booking]);
 
+  // Xử lý submit form cập nhật booking
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -51,14 +54,14 @@ export default function UpdateBookingModal({
 
     try {
       if (!startTime || !endTime) {
-        throw new Error("Please select start and end times");
+        throw new Error("Vui lòng chọn thời gian bắt đầu và kết thúc");
       }
 
       const start = new Date(startTime);
       const end = new Date(endTime);
 
       if (end <= start) {
-        throw new Error("End time must be after start time");
+        throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu");
       }
 
       const data: UpdateBookingRequest = {
@@ -71,12 +74,13 @@ export default function UpdateBookingModal({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update booking");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật booking");
     } finally {
       setLoading(false);
     }
   };
 
+  // Xử lý click vào backdrop để đóng modal
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -98,13 +102,13 @@ export default function UpdateBookingModal({
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-            Update Booking #{booking.id}
+            Cập Nhật Booking #{booking.id}
           </h2>
           <button
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            aria-label="Close"
+            aria-label="Đóng"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -114,7 +118,7 @@ export default function UpdateBookingModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>Start Time *</Label>
+            <Label>Thời Gian Bắt Đầu *</Label>
             <Input
               type="datetime-local"
               value={startTime}
@@ -124,7 +128,7 @@ export default function UpdateBookingModal({
           </div>
 
           <div>
-            <Label>End Time *</Label>
+            <Label>Thời Gian Kết Thúc *</Label>
             <Input
               type="datetime-local"
               value={endTime}
@@ -135,12 +139,12 @@ export default function UpdateBookingModal({
           </div>
 
           <div>
-            <Label>Note (Optional)</Label>
+            <Label>Ghi Chú (Tùy chọn)</Label>
             <textarea
               className="h-24 w-full rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 focus:border-brand-400 focus:outline-hidden focus:ring-2 focus:ring-brand-300/40 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Add any additional notes..."
+              placeholder="Thêm ghi chú bổ sung..."
             />
           </div>
 
@@ -158,10 +162,10 @@ export default function UpdateBookingModal({
               className="flex-1"
               variant="outline"
             >
-              Cancel
+              Hủy
             </Button>
             <Button type="submit" size="sm" className="flex-1" disabled={loading}>
-              {loading ? "Updating..." : "Update Booking"}
+              {loading ? "Đang cập nhật..." : "Cập Nhật Booking"}
             </Button>
           </div>
         </form>

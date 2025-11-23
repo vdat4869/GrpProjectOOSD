@@ -331,7 +331,7 @@ const MyBookings: React.FC = () => {
 
       const coOwnerIdNum = parseInt(userId);
       if (isNaN(coOwnerIdNum)) {
-        throw new Error("Invalid user ID");
+        throw new Error("ID người dùng không hợp lệ");
       }
 
       const data: CreateBookingRequest = {
@@ -342,7 +342,21 @@ const MyBookings: React.FC = () => {
         note: note || undefined,
       };
 
-      await bookingService.createBooking(data);
+      const booking = await bookingService.createBooking(data);
+      
+      // Dispatch custom event để các component khác có thể refresh
+      const bookingCreatedEvent = new CustomEvent('bookingCreated', {
+        detail: {
+          bookingId: booking.id,
+          vehicleId: booking.vehicleId,
+        }
+      });
+      window.dispatchEvent(bookingCreatedEvent);
+      
+      // Set session storage flag để refresh khi quay lại trang
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('bookingJustCreated', 'true');
+      }
       
       // Reset form and close modal
       setSelectedVehicleId("");
@@ -353,7 +367,7 @@ const MyBookings: React.FC = () => {
       setShowCreateModal(false);
       await loadBookings();
     } catch (err) {
-      setBookingError(err instanceof Error ? err.message : "Failed to create booking");
+      setBookingError(err instanceof Error ? err.message : "Không thể tạo đặt chỗ");
     } finally {
       setCreatingBooking(false);
     }
@@ -461,7 +475,25 @@ const MyBookings: React.FC = () => {
    * @returns true nếu có thể check-out
    */
   const canCheckOut = (booking: Booking) => {
-    return !!booking.checkInTime && !booking.checkOutTime;
+    // Đã check-out rồi thì không thể check-out nữa
+    if (booking.checkOutTime) {
+      return false;
+    }
+    
+    // Phải đã check-in hoặc status là completed (có thể check-out sau khi complete)
+    const hasCheckIn = !!booking.checkInTime;
+    const status = booking.status?.toLowerCase() || "";
+    const isCompleted = status.includes("completed") || status.includes("hoàn thành");
+    
+    // Có thể check-out nếu:
+    // 1. Đã check-in và chưa check-out, hoặc
+    // 2. Status là completed nhưng chưa check-out (cho phép check-out sau khi complete)
+    if (hasCheckIn || isCompleted) {
+      const allowedStatuses = ["confirmed", "in-progress", "inprogress", "checked-in", "checkedin", "completed", "hoàn thành"];
+      return allowedStatuses.some(s => status.includes(s));
+    }
+    
+    return false;
   };
 
   /**

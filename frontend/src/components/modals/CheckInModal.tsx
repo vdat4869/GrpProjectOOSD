@@ -4,6 +4,7 @@ import Button from "../ui/button/Button";
 import Input from "../form/input/InputField";
 import Label from "../form/Label";
 
+// Props cho modal Check-in
 interface CheckInModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,6 +12,7 @@ interface CheckInModalProps {
   booking: Booking;
 }
 
+// Modal để thực hiện check-in cho booking
 export default function CheckInModal({
   isOpen,
   onClose,
@@ -24,7 +26,7 @@ export default function CheckInModal({
   const [error, setError] = useState<string | null>(null);
   const [qrCodeError, setQrCodeError] = useState<string | null>(null);
 
-  // Check if booking is confirmed (can generate QR code)
+  // Kiểm tra xem booking đã được xác nhận chưa (có thể tạo QR code)
   const isBookingConfirmed = () => {
     const status = booking.status.toLowerCase();
     return (
@@ -36,24 +38,25 @@ export default function CheckInModal({
 
   useEffect(() => {
     if (isOpen && booking) {
-      // Reset states when modal opens
+      // Đặt lại trạng thái khi modal mở
       setQrCodeError(null);
       
-      // If booking already has QR code, use it
+      // Nếu booking đã có QR code, sử dụng nó
       if (booking.qrCode) {
         setQrCode(booking.qrCode);
       } else if (isBookingConfirmed()) {
-        // Only try to load QR code if booking is confirmed
+        // Chỉ thử tải QR code nếu booking đã được xác nhận
         loadQrCode();
       } else {
-        // Booking not confirmed yet
+        // Booking chưa được xác nhận
         setQrCodeError("Booking chưa được xác nhận. Vui lòng chờ xác nhận trước khi check-in.");
       }
     }
   }, [isOpen, booking]);
 
+  // Tải QR code từ server
   const loadQrCode = async () => {
-    // Don't load if booking is not confirmed
+    // Không tải nếu booking chưa được xác nhận
     if (!isBookingConfirmed()) {
       setQrCodeError("Booking chưa được xác nhận. Không thể tạo QR code.");
       return;
@@ -69,7 +72,7 @@ export default function CheckInModal({
         setQrCodeError("QR code không có trong response");
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load QR code";
+      const errorMessage = err instanceof Error ? err.message : "Không thể tải QR code";
       setQrCodeError(errorMessage);
       console.error("Failed to load QR code:", err);
     } finally {
@@ -77,6 +80,7 @@ export default function CheckInModal({
     }
   };
 
+  // Xử lý submit form check-in
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -84,7 +88,7 @@ export default function CheckInModal({
 
     try {
       if (!qrCode && !digitalSignature) {
-        throw new Error("Please provide QR code or digital signature");
+        throw new Error("Vui lòng cung cấp QR code hoặc chữ ký số");
       }
 
       await bookingService.checkIn(booking.id, {
@@ -94,12 +98,13 @@ export default function CheckInModal({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to check in");
+      setError(err instanceof Error ? err.message : "Không thể thực hiện check-in");
     } finally {
       setLoading(false);
     }
   };
 
+  // Xử lý click vào backdrop để đóng modal
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -127,7 +132,7 @@ export default function CheckInModal({
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            aria-label="Close"
+            aria-label="Đóng"
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -145,7 +150,7 @@ export default function CheckInModal({
                 onChange={(e) => setQrCode(e.target.value)}
                 placeholder={
                   isBookingConfirmed()
-                    ? "QR code will be loaded automatically"
+                    ? "QR code sẽ được tải tự động"
                     : "Booking chưa được xác nhận"
                 }
                 disabled={loadingQr || !isBookingConfirmed()}
@@ -157,13 +162,13 @@ export default function CheckInModal({
                 onClick={loadQrCode}
                 disabled={loadingQr || !isBookingConfirmed()}
               >
-                {loadingQr ? "Loading..." : "Load QR"}
+                {loadingQr ? "Đang tải..." : "Tải QR"}
               </Button>
             </div>
             {qrCode && (
               <div className="mt-2">
                 <p className="mb-2 text-xs text-green-600 dark:text-green-400">
-                  QR Code loaded successfully
+                  QR Code đã được tải thành công
                 </p>
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800">
                   <p className="break-all text-xs font-mono text-gray-700 dark:text-gray-300">
@@ -184,21 +189,21 @@ export default function CheckInModal({
             )}
             {!isBookingConfirmed() && (
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Booking status: {booking.status}. Cần xác nhận trước khi check-in.
+                Trạng thái booking: {booking.status}. Cần xác nhận trước khi check-in.
               </p>
             )}
           </div>
 
           <div>
-            <Label>Digital Signature</Label>
+            <Label>Chữ Ký Số</Label>
             <Input
               type="text"
               value={digitalSignature}
               onChange={(e) => setDigitalSignature(e.target.value)}
-              placeholder="Enter your digital signature"
+              placeholder="Nhập chữ ký số của bạn"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Provide either QR code or digital signature
+              Cung cấp QR code hoặc chữ ký số
             </p>
           </div>
 
@@ -216,10 +221,10 @@ export default function CheckInModal({
               className="flex-1"
               variant="outline"
             >
-              Cancel
+              Hủy
             </Button>
             <Button type="submit" size="sm" className="flex-1" disabled={loading || loadingQr}>
-              {loading ? "Checking In..." : "Check In"}
+              {loading ? "Đang check-in..." : "Check In"}
             </Button>
           </div>
         </form>

@@ -33,13 +33,13 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
-        // Validate vehicleId is reasonable (not a parsed GUID)
-        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        // Validate vehicleId - allow any positive integer within int range
+        if (vehicleId <= 0)
         {
             return Ok(new ApiResponse<UsageStatisticsDto>
             {
                 Success = false,
-                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Message = "Invalid vehicleId. Vehicle ID must be a positive number.",
                 Data = null
             });
         }
@@ -73,13 +73,13 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
-        // Validate vehicleId is reasonable (not a parsed GUID)
-        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        // Validate vehicleId - allow any positive integer within int range
+        if (vehicleId <= 0)
         {
             return Ok(new ApiResponse<CostStatisticsDto>
             {
                 Success = false,
-                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Message = "Invalid vehicleId. Vehicle ID must be a positive number.",
                 Data = null
             });
         }
@@ -113,13 +113,13 @@ public class AnalyticsController : ControllerBase
         [FromQuery] DateTime? startDate = null, 
         [FromQuery] DateTime? endDate = null)
     {
-        // Validate vehicleId
-        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        // Validate vehicleId - allow any positive integer within int range
+        if (vehicleId <= 0)
         {
             return BadRequest(new ApiResponse<AnalyticsReportDto>
             {
                 Success = false,
-                Message = "Invalid vehicleId. Please use a valid vehicle ID."
+                Message = "Invalid vehicleId. Vehicle ID must be a positive number."
             });
         }
 
@@ -223,13 +223,13 @@ public class AnalyticsController : ControllerBase
     [HttpGet("reports/vehicle/{vehicleId}")]
     public async Task<ActionResult<ApiResponse<List<AnalyticsReportDto>>>> GetAnalyticsReportsByVehicleId(int vehicleId)
     {
-        // Validate vehicleId is reasonable (not a parsed GUID)
-        if (vehicleId <= 0 || vehicleId > int.MaxValue / 1000)
+        // Validate vehicleId - allow any positive integer within int range
+        if (vehicleId <= 0)
         {
             return Ok(new ApiResponse<List<AnalyticsReportDto>>
             {
                 Success = true,
-                Message = "Invalid vehicleId. Please use a valid vehicle ID.",
+                Message = "Invalid vehicleId. Vehicle ID must be a positive number.",
                 Data = new List<AnalyticsReportDto>()
             });
         }

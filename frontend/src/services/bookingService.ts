@@ -181,5 +181,16 @@ export const bookingService = {
     }
     return response.data;
   },
+
+  async syncCoOwnersFromOwnership(): Promise<{ message: string; created: number; updated: number; skipped: number; errors?: string[] }> {
+    const response = await apiClient.post<{ message: string; created: number; updated: number; skipped: number; errors?: string[] }>(
+      API_ENDPOINTS.BOOKING.SYNC_COOWNERS,
+      {}
+    );
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to sync co-owners");
+    }
+    return response.data;
+  },
 };
 

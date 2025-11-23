@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý hợp đồng điện tử
+ * Cho phép admin tạo, chỉnh sửa, phê duyệt và hủy hợp đồng cho các nhóm đồng sở hữu
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -27,10 +31,12 @@ const ManageContracts: React.FC = () => {
     notes: "",
   });
 
+  // Load dữ liệu khi component mount
   useEffect(() => {
     loadData();
   }, []);
 
+  // Load hợp đồng và quyền sở hữu khi chọn nhóm xe
   useEffect(() => {
     if (selectedGroupId) {
       loadContracts(selectedGroupId);
@@ -38,15 +44,22 @@ const ManageContracts: React.FC = () => {
     }
   }, [selectedGroupId]);
 
+  /**
+   * Tải danh sách quyền sở hữu của một nhóm xe
+   * @param groupId - ID của nhóm xe
+   */
   const loadOwnerships = async (groupId: string) => {
     try {
       const data = await ownershipService.getOwnerships(groupId);
       setOwnerships(data.filter(o => o.isActive));
     } catch (err) {
-      console.error("Failed to load ownerships:", err);
+      console.error("Không thể tải quyền sở hữu:", err);
     }
   };
 
+  /**
+   * Tải danh sách nhóm xe từ API
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -57,21 +70,28 @@ const ManageContracts: React.FC = () => {
         setSelectedGroupId(data[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      setError(err instanceof Error ? err.message : "Không thể tải dữ liệu");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Tải danh sách hợp đồng của một nhóm xe
+   * @param groupId - ID của nhóm xe
+   */
   const loadContracts = async (groupId: string) => {
     try {
       const data = await ownershipService.getContracts(groupId);
       setContracts(data);
     } catch (err) {
-      console.error("Failed to load contracts:", err);
+      console.error("Không thể tải hợp đồng:", err);
     }
   };
 
+  /**
+   * Mở modal tạo hợp đồng mới và reset form
+   */
   const handleCreate = () => {
     setFormData({
       vehicleGroupId: selectedGroupId || "",
@@ -84,6 +104,10 @@ const ManageContracts: React.FC = () => {
     setIsCreateModalOpen(true);
   };
 
+  /**
+   * Mở modal chỉnh sửa hợp đồng và điền dữ liệu hiện tại vào form
+   * @param contract - Hợp đồng cần chỉnh sửa
+   */
   const handleEdit = (contract: EContract) => {
     setSelectedContract(contract);
     setFormData({
@@ -97,8 +121,12 @@ const ManageContracts: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
+  /**
+   * Phê duyệt hợp đồng
+   * @param contractId - ID của hợp đồng cần phê duyệt
+   */
   const handleApprove = async (contractId: string) => {
-    if (!confirm("Approve this contract?")) return;
+    if (!confirm("Phê duyệt hợp đồng này?")) return;
     try {
       setError(null);
       await ownershipService.approveContract(contractId);
@@ -106,12 +134,16 @@ const ManageContracts: React.FC = () => {
         await loadContracts(selectedGroupId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to approve contract");
+      setError(err instanceof Error ? err.message : "Không thể phê duyệt hợp đồng");
     }
   };
 
+  /**
+   * Hủy hợp đồng (xóa vĩnh viễn)
+   * @param contractId - ID của hợp đồng cần hủy
+   */
   const handleCancel = async (contractId: string) => {
-    if (!confirm("Cancel this contract? This will delete the contract permanently.")) return;
+    if (!confirm("Hủy hợp đồng này? Hành động này sẽ xóa hợp đồng vĩnh viễn.")) return;
     try {
       setError(null);
       await ownershipService.deleteContract(contractId);
@@ -119,26 +151,42 @@ const ManageContracts: React.FC = () => {
         await loadContracts(selectedGroupId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to cancel contract");
+      setError(err instanceof Error ? err.message : "Không thể hủy hợp đồng");
     }
   };
 
+  /**
+   * Lưu hợp đồng mới hoặc cập nhật hợp đồng hiện có
+   * Khi tạo mới, tự động tạo hợp đồng cho tất cả thành viên active trong nhóm
+   */
   const handleSave = async () => {
     try {
-      if (!formData.vehicleGroupId || !formData.coOwnerId || !formData.contractTitle || !formData.contractContent || !formData.ownershipPercentage) {
-        setError("Please fill in all required fields");
+      if (!formData.vehicleGroupId || !formData.contractTitle || !formData.contractContent) {
+        setError("Vui lòng điền đầy đủ các trường bắt buộc");
         return;
       }
 
       if (isCreateModalOpen) {
-        await ownershipService.createContract({
-          vehicleGroupId: formData.vehicleGroupId,
-          coOwnerId: formData.coOwnerId,
-          contractTitle: formData.contractTitle,
-          contractContent: formData.contractContent,
-          ownershipPercentage: formData.ownershipPercentage,
-          notes: formData.notes || undefined,
-        });
+        // Tự động tạo hợp đồng cho tất cả thành viên trong nhóm
+        const activeOwnerships = ownerships.filter(o => o.isActive);
+        if (activeOwnerships.length === 0) {
+          setError("Không tìm thấy thành viên active trong nhóm này. Vui lòng thêm thành viên trước.");
+          return;
+        }
+
+        // Tạo hợp đồng cho từng thành viên
+        const contractPromises = activeOwnerships.map(ownership =>
+          ownershipService.createContract({
+            vehicleGroupId: formData.vehicleGroupId,
+            coOwnerId: ownership.coOwnerId,
+            contractTitle: formData.contractTitle,
+            contractContent: formData.contractContent,
+            ownershipPercentage: ownership.ownershipPercentage,
+            notes: formData.notes || undefined,
+          })
+        );
+
+        await Promise.all(contractPromises);
       } else if (_selectedContract) {
         await ownershipService.updateContract(_selectedContract.id, {
           contractTitle: formData.contractTitle,
@@ -156,10 +204,15 @@ const ManageContracts: React.FC = () => {
         await loadContracts(selectedGroupId);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save contract");
+      setError(err instanceof Error ? err.message : "Không thể lưu hợp đồng");
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái hợp đồng
+   * @param status - Trạng thái hợp đồng
+   * @returns Class CSS cho màu
+   */
   const getStatusColor = (status: string) => {
     const s = status.toLowerCase();
     if (s === "signed" || s === "completed")
@@ -171,6 +224,11 @@ const ManageContracts: React.FC = () => {
     return "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300";
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -181,17 +239,17 @@ const ManageContracts: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Admin | Manage Contracts" />
+      <PageMeta title="Admin | Quản Lý Hợp Đồng" />
       <PageHeader
-        title="Contract Lifecycle Management"
-        description="Oversee digital agreements, renewal schedules, and compliance checkpoints for every co-ownership contract."
-        actions={<Button size="sm" onClick={handleCreate}>Create Contract</Button>}
+        title="Quản Lý Vòng Đời Hợp Đồng"
+        description="Giám sát các thỏa thuận kỹ thuật số, lịch gia hạn và các điểm kiểm tra tuân thủ cho mỗi hợp đồng đồng sở hữu."
+        actions={<Button size="sm" onClick={handleCreate}>Tạo Hợp Đồng</Button>}
       />
 
-      {/* Group Selector */}
+      {/* Bộ chọn nhóm xe */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Select Vehicle Group
+          Chọn Nhóm Xe
         </label>
         <select
           value={selectedGroupId}
@@ -208,7 +266,7 @@ const ManageContracts: React.FC = () => {
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading contracts...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải hợp đồng...</p>
         </div>
       )}
 
@@ -222,7 +280,7 @@ const ManageContracts: React.FC = () => {
         <div className="grid gap-4">
           {contracts.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No contracts found for this group.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy hợp đồng nào cho nhóm này.</p>
             </div>
           ) : (
             contracts.map((contract) => (
@@ -242,27 +300,27 @@ const ManageContracts: React.FC = () => {
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Created: {formatDate(contract.createdAt)}
+                        Tạo lúc: {formatDate(contract.createdAt)}
                       </p>
                       {contract.signedAt && (
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          Signed: {formatDate(contract.signedAt)}
+                          Ký lúc: {formatDate(contract.signedAt)}
                         </p>
                       )}
                     </div>
                     <div className="flex gap-2">
                       {contract.contractStatus.toLowerCase() === "pending" && (
                         <Button size="sm" variant="outline" onClick={() => handleApprove(contract.id)}>
-                          Approve
+                          Phê Duyệt
                         </Button>
                       )}
                       {contract.contractStatus.toLowerCase() !== "cancelled" && contract.contractStatus.toLowerCase() !== "signed" && (
                         <>
                           <Button size="sm" variant="outline" onClick={() => handleEdit(contract)}>
-                            Edit
+                            Chỉnh Sửa
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => handleCancel(contract.id)}>
-                            Cancel
+                            Hủy
                           </Button>
                         </>
                       )}
@@ -276,7 +334,7 @@ const ManageContracts: React.FC = () => {
                       Co-Owner: {contract.coOwnerName}
                     </p>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Ownership: {contract.ownershipPercentage}%
+                      Quyền sở hữu: {contract.ownershipPercentage}%
                     </p>
                   </div>
                 )}
@@ -286,7 +344,7 @@ const ManageContracts: React.FC = () => {
         </div>
       )}
 
-      {/* Create Contract Modal */}
+      {/* Modal Tạo Hợp Đồng */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
@@ -295,16 +353,16 @@ const ManageContracts: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Create Contract
+              Tạo Hợp Đồng
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Create a new e-contract for the selected vehicle group.
+              Tạo hợp đồng điện tử mới cho nhóm xe đã chọn.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Vehicle Group <span className="text-error-500">*</span></Label>
+              <Label>Nhóm Xe <span className="text-error-500">*</span></Label>
               <Select
                 value={formData.vehicleGroupId}
                 onChange={(value) => {
@@ -312,7 +370,7 @@ const ManageContracts: React.FC = () => {
                   loadOwnerships(value);
                 }}
               >
-                <option value="">Select vehicle group</option>
+                <option value="">Chọn nhóm xe</option>
                 {vehicles.map((vehicle) => (
                   <option key={vehicle.id} value={vehicle.id}>
                     {vehicle.name} - {vehicle.vehicleName}
@@ -321,68 +379,39 @@ const ManageContracts: React.FC = () => {
               </Select>
             </div>
 
-            <div>
-              <Label>Co-Owner <span className="text-error-500">*</span></Label>
-              <Select
-                value={formData.coOwnerId}
-                onChange={(value) => {
-                  const ownership = ownerships.find(o => o.coOwnerId === value);
-                  setFormData({ 
-                    ...formData, 
-                    coOwnerId: value,
-                    ownershipPercentage: ownership ? ownership.ownershipPercentage : formData.ownershipPercentage
-                  });
-                }}
-              >
-                <option value="">Select co-owner</option>
-                {ownerships.map((ownership) => (
-                  <option key={ownership.coOwnerId} value={ownership.coOwnerId}>
-                    {ownership.coOwnerName || ownership.coOwnerId} ({ownership.ownershipPercentage}%)
-                  </option>
-                ))}
-              </Select>
+            <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
+              <p className="font-medium">Lưu ý:</p>
+              <p>Hợp đồng này sẽ được tự động tạo cho tất cả thành viên active trong nhóm xe đã chọn.</p>
+              <p className="mt-1">Thành viên active: {ownerships.length}</p>
             </div>
 
             <div>
-              <Label>Contract Title <span className="text-error-500">*</span></Label>
+              <Label>Tiêu Đề Hợp Đồng <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.contractTitle}
                 onChange={(e) => setFormData({ ...formData, contractTitle: e.target.value })}
-                placeholder="Enter contract title"
+                placeholder="Nhập tiêu đề hợp đồng"
               />
             </div>
 
             <div>
-              <Label>Contract Content <span className="text-error-500">*</span></Label>
+              <Label>Nội Dung Hợp Đồng <span className="text-error-500">*</span></Label>
               <textarea
                 value={formData.contractContent}
                 onChange={(e) => setFormData({ ...formData, contractContent: e.target.value })}
-                placeholder="Enter contract content"
+                placeholder="Nhập nội dung hợp đồng"
                 rows={6}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
               />
             </div>
 
             <div>
-              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
-              <Input
-                type="number"
-                value={formData.ownershipPercentage || ""}
-                onChange={(e) => setFormData({ ...formData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter ownership percentage (0.01-100)"
-                min="0.01"
-                max="100"
-                step="0.01"
-              />
-            </div>
-
-            <div>
-              <Label>Notes</Label>
+              <Label>Ghi Chú</Label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Optional notes"
+                placeholder="Ghi chú tùy chọn"
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
               />
@@ -394,17 +423,17 @@ const ManageContracts: React.FC = () => {
                 variant="outline"
                 onClick={() => setIsCreateModalOpen(false)}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Create Contract
+                Tạo Hợp Đồng
               </Button>
             </div>
           </div>
         </div>
       </Modal>
 
-      {/* Edit Contract Modal */}
+      {/* Modal Chỉnh Sửa Hợp Đồng */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -416,42 +445,42 @@ const ManageContracts: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Contract
+              Chỉnh Sửa Hợp Đồng
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Update contract information.
+              Cập nhật thông tin hợp đồng.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Contract Title <span className="text-error-500">*</span></Label>
+              <Label>Tiêu Đề Hợp Đồng <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.contractTitle}
                 onChange={(e) => setFormData({ ...formData, contractTitle: e.target.value })}
-                placeholder="Enter contract title"
+                placeholder="Nhập tiêu đề hợp đồng"
               />
             </div>
 
             <div>
-              <Label>Contract Content <span className="text-error-500">*</span></Label>
+              <Label>Nội Dung Hợp Đồng <span className="text-error-500">*</span></Label>
               <textarea
                 value={formData.contractContent}
                 onChange={(e) => setFormData({ ...formData, contractContent: e.target.value })}
-                placeholder="Enter contract content"
+                placeholder="Nhập nội dung hợp đồng"
                 rows={6}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
               />
             </div>
 
             <div>
-              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Label>Tỷ Lệ Sở Hữu <span className="text-error-500">*</span></Label>
               <Input
                 type="number"
                 value={formData.ownershipPercentage || ""}
                 onChange={(e) => setFormData({ ...formData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter ownership percentage (0.01-100)"
+                placeholder="Nhập tỷ lệ sở hữu (0.01-100)"
                 min="0.01"
                 max="100"
                 step="0.01"
@@ -459,11 +488,11 @@ const ManageContracts: React.FC = () => {
             </div>
 
             <div>
-              <Label>Notes</Label>
+              <Label>Ghi Chú</Label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Optional notes"
+                placeholder="Ghi chú tùy chọn"
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
               />
@@ -478,10 +507,10 @@ const ManageContracts: React.FC = () => {
                   setSelectedContract(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Save Changes
+                Lưu Thay Đổi
               </Button>
             </div>
           </div>

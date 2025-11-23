@@ -35,7 +35,7 @@ module.exports = {
   // Additional config for convenience
   config: {
     tmnCode: process.env.VNP_TMN_CODE,
-    returnUrl: process.env.VNP_RETURN_URL || 'http://localhost/vnpay-return',
+    returnUrl: process.env.VNP_RETURN_URL || 'http://localhost:8000/api/vnpay/return',
     ipnUrl: process.env.VNP_IPN_URL || 'http://localhost:3001/api/vnpay/ipn',
     paymentServiceUrl: process.env.PAYMENT_SERVICE_URL || 'http://localhost:5004',
   }

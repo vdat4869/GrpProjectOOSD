@@ -146,4 +146,3 @@ Trigger →
 - High error rate (> 5%)
 - Processing latency > 10 seconds
 - Dead letter queue size > 100
-

@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý nhân viên
+ * Cho phép admin quản lý tài khoản staff, phân quyền và theo dõi trách nhiệm
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -7,16 +11,22 @@ import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Select from "../../components/form/Select";
 
+/**
+ * Interface cho quyền của staff
+ */
 interface StaffPermission {
   id: string;
   name: string;
   description: string;
 }
 
+/**
+ * Danh sách các mức quyền của staff
+ */
 const PERMISSIONS: StaffPermission[] = [
-  { id: "full", name: "Full Access", description: "Complete access to all staff functions" },
-  { id: "limited", name: "Limited Access", description: "Restricted access to basic operations only" },
-  { id: "readonly", name: "Read Only", description: "View-only access, no modifications allowed" },
+  { id: "full", name: "Quyền Truy Cập Đầy Đủ", description: "Truy cập đầy đủ vào tất cả các chức năng của staff" },
+  { id: "limited", name: "Quyền Truy Cập Hạn Chế", description: "Chỉ truy cập các thao tác cơ bản" },
+  { id: "readonly", name: "Chỉ Đọc", description: "Chỉ xem thông tin, không được phép chỉnh sửa" },
 ];
 
 const ManageStaff: React.FC = () => {
@@ -27,10 +37,14 @@ const ManageStaff: React.FC = () => {
   const [selectedStaff, setSelectedStaff] = useState<UserSummary | null>(null);
   const [permission, setPermission] = useState<string>("full");
 
+  // Load danh sách staff khi component mount
   useEffect(() => {
     loadStaff();
   }, []);
 
+  /**
+   * Tải danh sách staff từ API (lọc users có role Staff)
+   */
   const loadStaff = async () => {
     try {
       setLoading(true);
@@ -42,12 +56,16 @@ const ManageStaff: React.FC = () => {
       );
       setStaff(staffUsers);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load staff");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách staff");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Mở modal chỉnh sửa quyền của staff
+   * @param staffMember - Staff member cần chỉnh sửa
+   */
   const handleEdit = (staffMember: UserSummary) => {
     setSelectedStaff(staffMember);
     // Get current permission from localStorage or default to "full"
@@ -56,6 +74,11 @@ const ManageStaff: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
+  /**
+   * Lưu quyền mới cho staff
+   * Lưu vào localStorage (giải pháp tạm thời)
+   * TODO: Implement backend API to store permission in database
+   */
   const handleSavePermission = async () => {
     if (!selectedStaff) return;
     try {
@@ -77,35 +100,39 @@ const ManageStaff: React.FC = () => {
       setSelectedStaff(null);
       
       // Show success message
-      alert(`Permission updated successfully for ${selectedStaff.firstName} ${selectedStaff.lastName}`);
+      alert(`Đã cập nhật quyền thành công cho ${selectedStaff.firstName} ${selectedStaff.lastName}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update permission");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật quyền");
     }
   };
 
+  /**
+   * Vô hiệu hóa tài khoản staff
+   * @param _userId - ID của user (chưa implement)
+   */
   const handleDeactivate = async (_userId: number) => {
-    if (!confirm("Are you sure you want to deactivate this staff member?")) return;
+    if (!confirm("Bạn có chắc chắn muốn vô hiệu hóa nhân viên này không?")) return;
     try {
       // TODO: Implement deactivate user API call
       loadStaff();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to deactivate staff");
+      setError(err instanceof Error ? err.message : "Không thể vô hiệu hóa staff");
     }
   };
 
 
   return (
     <>
-      <PageMeta title="Admin | Manage Staff" />
+      <PageMeta title="Admin | Quản Lý Nhân Viên" />
       <PageHeader
-        title="Staff Administration"
-        description="Provision and audit internal staff accounts who coordinate bookings, maintenance, and dispute resolution."
-        actions={<Button size="sm" onClick={loadStaff} disabled={loading}>Refresh</Button>}
+        title="Quản Lý Nhân Viên"
+        description="Cung cấp và kiểm tra các tài khoản nhân viên nội bộ, những người điều phối đặt chỗ, bảo dưỡng và giải quyết tranh chấp."
+        actions={<Button size="sm" onClick={loadStaff} disabled={loading}>Làm Mới</Button>}
       />
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading staff...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách nhân viên...</p>
         </div>
       )}
 
@@ -120,7 +147,7 @@ const ManageStaff: React.FC = () => {
           <div className="mb-6 grid gap-4">
             {staff.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-gray-600 dark:text-gray-400">No staff members found.</p>
+                <p className="text-gray-600 dark:text-gray-400">Không tìm thấy nhân viên nào.</p>
               </div>
             ) : (
               staff.map((staffMember) => {
@@ -143,7 +170,7 @@ const ManageStaff: React.FC = () => {
                               ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
                               : "bg-gray-50 text-gray-600 dark:bg-gray-500/10 dark:text-gray-300"
                           }`}>
-                            {staffMember.isActive ? "Active" : "Inactive"}
+                            {staffMember.isActive ? "Hoạt Động" : "Không Hoạt Động"}
                           </span>
                           <span className="rounded-full px-3 py-1 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
                             {permissionInfo.name}
@@ -154,17 +181,17 @@ const ManageStaff: React.FC = () => {
                         </p>
                         {staffMember.roles && staffMember.roles.length > 0 && (
                           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            Roles: {staffMember.roles.join(", ")} • Permission: {permissionInfo.name}
+                            Quyền: {staffMember.roles.join(", ")} • Mức quyền: {permissionInfo.name}
                           </p>
                         )}
                       </div>
                       <div className="flex flex-col gap-2">
                         <Button size="sm" variant="outline" onClick={() => handleEdit(staffMember)}>
-                          Manage Permissions
+                          Quản Lý Quyền
                         </Button>
                         {staffMember.isActive && (
                           <Button size="sm" variant="outline" onClick={() => handleDeactivate(staffMember.id)}>
-                            Deactivate
+                            Vô Hiệu Hóa
                           </Button>
                         )}
                       </div>
@@ -176,32 +203,32 @@ const ManageStaff: React.FC = () => {
             )}
           </div>
 
-          {/* Staff Responsibilities Info */}
+          {/* Thông tin trách nhiệm của Staff */}
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white/90 mb-4">
-              Staff Responsibilities
+              Trách Nhiệm Của Nhân Viên
             </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               {[
                 {
-                  title: "Operations",
+                  title: "Vận Hành",
                   details:
-                    "Manage on-site check-ins, coordinate charging schedules, and keep vehicles in optimal condition.",
+                    "Quản lý check-in tại chỗ, điều phối lịch sạc điện và duy trì xe ở trạng thái tối ưu.",
                 },
                 {
-                  title: "Member Support",
+                  title: "Hỗ Trợ Thành Viên",
                   details:
-                    "Resolve booking issues, triage disputes, and ensure co-owners remain compliant with group policies.",
+                    "Giải quyết các vấn đề đặt chỗ, xử lý tranh chấp và đảm bảo co-owners tuân thủ chính sách nhóm.",
                 },
                 {
-                  title: "Data Quality",
+                  title: "Chất Lượng Dữ Liệu",
                   details:
-                    "Verify ownership records, update maintenance logs, and sync reports with the analytics service.",
+                    "Xác minh hồ sơ quyền sở hữu, cập nhật nhật ký bảo dưỡng và đồng bộ báo cáo với dịch vụ phân tích.",
                 },
                 {
-                  title: "Security",
+                  title: "Bảo Mật",
                   details:
-                    "Monitor login activity, enforce MFA policies, and collaborate with admins on escalations.",
+                    "Giám sát hoạt động đăng nhập, thực thi chính sách MFA và hợp tác với admin về các vấn đề cần xử lý.",
                 },
               ].map(({ title, details }) => (
                 <div key={title} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
@@ -216,7 +243,7 @@ const ManageStaff: React.FC = () => {
         </>
       )}
 
-      {/* Edit Permission Modal */}
+      {/* Modal Chỉnh Sửa Quyền */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -228,7 +255,7 @@ const ManageStaff: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[500px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Manage Permissions
+              Quản Lý Quyền
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
               {selectedStaff && `${selectedStaff.firstName} ${selectedStaff.lastName}`}
@@ -237,7 +264,7 @@ const ManageStaff: React.FC = () => {
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Permission Level <span className="text-error-500">*</span></Label>
+              <Label>Mức Quyền <span className="text-error-500">*</span></Label>
               <Select
                 value={permission}
                 onChange={(value) => setPermission(value)}
@@ -257,13 +284,13 @@ const ManageStaff: React.FC = () => {
 
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-500/40 dark:bg-blue-500/10">
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                <strong>Full Access:</strong> Can manage vehicles, bookings, contracts, and disputes.
+                <strong>Quyền Truy Cập Đầy Đủ:</strong> Có thể quản lý xe, đặt chỗ, hợp đồng và tranh chấp.
               </p>
               <p className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                <strong>Limited Access:</strong> Can only check-in/out vehicles and view bookings.
+                <strong>Quyền Truy Cập Hạn Chế:</strong> Chỉ có thể check-in/out xe và xem đặt chỗ.
               </p>
               <p className="mt-2 text-sm text-blue-700 dark:text-blue-300">
-                <strong>Read Only:</strong> Can only view information, no modifications allowed.
+                <strong>Chỉ Đọc:</strong> Chỉ có thể xem thông tin, không được phép chỉnh sửa.
               </p>
             </div>
 
@@ -276,10 +303,10 @@ const ManageStaff: React.FC = () => {
                   setSelectedStaff(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSavePermission}>
-                Save Changes
+                Lưu Thay Đổi
               </Button>
             </div>
           </div>

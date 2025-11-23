@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý tài khoản người dùng
+ * Cho phép admin tạo, chỉnh sửa, xóa tài khoản và phân quyền
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -7,12 +11,18 @@ import Input from "../../components/form/input/InputField";
 import Label from "../../components/form/Label";
 import { UserCircleIcon } from "../../icons";
 
+/**
+ * Props cho modal tạo tài khoản mới
+ */
 interface CreateUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
 }
 
+/**
+ * Modal tạo tài khoản mới
+ */
 const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     email: "",
@@ -24,6 +34,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onSu
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Xử lý submit form tạo tài khoản
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -45,12 +58,16 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onSu
       onClose();
       setFormData({ email: "", password: "", firstName: "", lastName: "", roles: [] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create user");
+      setError(err instanceof Error ? err.message : "Không thể tạo tài khoản");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Đặt role cho tài khoản (chỉ cho phép 1 role)
+   * @param role - Role cần đặt (CoOwner hoặc Staff)
+   */
   const setRole = (role: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -155,6 +172,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({ isOpen, onClose, onSu
   );
 };
 
+/**
+ * Props cho modal chỉnh sửa tài khoản
+ */
 interface EditUserModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -162,6 +182,9 @@ interface EditUserModalProps {
   user: UserSummary | null;
 }
 
+/**
+ * Modal chỉnh sửa thông tin tài khoản
+ */
 const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onSuccess, user }) => {
   const [formData, setFormData] = useState({
     email: "",
@@ -171,6 +194,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onSucces
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Load dữ liệu user vào form khi user thay đổi
   useEffect(() => {
     if (user) {
       setFormData({
@@ -181,6 +205,9 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onSucces
     }
   }, [user]);
 
+  /**
+   * Xử lý submit form cập nhật tài khoản
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -197,7 +224,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onSucces
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update user");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật tài khoản");
     } finally {
       setLoading(false);
     }
@@ -259,6 +286,9 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, onSucces
   );
 };
 
+/**
+ * Component chính quản lý tài khoản
+ */
 const ManageUsers: React.FC = () => {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -270,10 +300,14 @@ const ManageUsers: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserSummary | null>(null);
 
+  // Load danh sách users khi page hoặc search thay đổi
   useEffect(() => {
     loadUsers();
   }, [page, search]);
 
+  /**
+   * Tải danh sách users từ API với phân trang và tìm kiếm
+   */
   const loadUsers = async () => {
     try {
       setLoading(true);
@@ -282,12 +316,16 @@ const ManageUsers: React.FC = () => {
       setUsers(response.users);
       setTotal(response.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách tài khoản");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Xóa tài khoản vĩnh viễn
+   * @param userId - ID của tài khoản cần xóa
+   */
   const handleDelete = async (userId: number) => {
     if (!confirm("Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản này? Hành động này không thể hoàn tác!")) return;
 
@@ -295,10 +333,16 @@ const ManageUsers: React.FC = () => {
       await authService.deleteUser(userId);
       await loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete user");
+      alert(err instanceof Error ? err.message : "Không thể xóa tài khoản");
     }
   };
 
+  /**
+   * Chuyển đổi role của user (chỉ cho phép 1 role tại một thời điểm)
+   * @param userId - ID của user
+   * @param roleName - Tên role cần gán (CoOwner hoặc Staff)
+   * @param hasRole - User đã có role này chưa
+   */
   const handleToggleRole = async (userId: number, roleName: string, hasRole: boolean) => {
     try {
       // Nếu đang bật role này, không làm gì (vì chỉ có thể có 1 role)
@@ -309,10 +353,15 @@ const ManageUsers: React.FC = () => {
       await authService.assignRole(userId, roleName);
       await loadUsers();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update role");
+      alert(err instanceof Error ? err.message : "Không thể cập nhật quyền");
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho role
+   * @param role - Tên role
+   * @returns Class CSS cho màu
+   */
   const getRoleColor = (role: string) => {
     switch (role.toLowerCase()) {
       case "admin":
@@ -329,7 +378,7 @@ const ManageUsers: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Manage Users | Admin" />
+      <PageMeta title="Admin | Quản Lý Tài Khoản" />
       <PageHeader
         title="Quản Lý Tài Khoản"
         description="Quản lý tất cả tài khoản và phân quyền trong hệ thống"
@@ -358,7 +407,7 @@ const ManageUsers: React.FC = () => {
         {/* Users Table */}
         {loading ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-            <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+            <p className="text-gray-600 dark:text-gray-400">Đang tải...</p>
           </div>
         ) : error ? (
           <div className="rounded-2xl border border-error-200 bg-error-50 p-6 shadow-theme-xs dark:border-error-500/40 dark:bg-error-500/10">

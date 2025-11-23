@@ -15,10 +15,20 @@ namespace AuthService.Controllers;
 public class KycController : ControllerBase
 {
     private readonly AuthDbContext _db;
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly IConfiguration? _configuration;
+    private readonly ILogger<KycController>? _logger;
 
-    public KycController(AuthDbContext db)
+    public KycController(
+        AuthDbContext db,
+        IHttpClientFactory? httpClientFactory = null,
+        IConfiguration? configuration = null,
+        ILogger<KycController>? logger = null)
     {
         _db = db;
+        _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
+        _logger = logger;
     }
 
     /// <summary>
@@ -430,6 +440,20 @@ public class KycController : ControllerBase
             document.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
+            // Nếu được approve, cập nhật co-owner trong ownership-service
+            if (request.Status == "Approved" && _httpClientFactory != null && _configuration != null)
+            {
+                try
+                {
+                    await UpdateCoOwnerAfterKycApprovalAsync(user.Id.ToString(), document.DocumentNumber, null);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to update co-owner in ownership-service after KYC approval for user {UserId}", user.Id);
+                    // Không throw exception để không block KYC verification
+                }
+            }
+
             return Ok(new ApiResponse<object> { Success = true, Message = "Xác thực thành công" });
         }
         catch (Exception ex)
@@ -486,6 +510,20 @@ public class KycController : ControllerBase
             license.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
+            // Nếu được approve, cập nhật co-owner trong ownership-service
+            if (request.Status == "Approved" && _httpClientFactory != null && _configuration != null)
+            {
+                try
+                {
+                    await UpdateCoOwnerAfterKycApprovalAsync(user.Id.ToString(), null, license.LicenseNumber);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to update co-owner in ownership-service after driving license approval for user {UserId}", user.Id);
+                    // Không throw exception để không block KYC verification
+                }
+            }
+
             return Ok(new ApiResponse<object> { Success = true, Message = "Xác thực thành công" });
         }
         catch (Exception ex)
@@ -520,6 +558,110 @@ public class KycController : ControllerBase
         if (userIdClaim != null && int.TryParse(userIdClaim.Value, out int userId))
             return userId;
         return null;
+    }
+
+    /// <summary>
+    /// Cập nhật co-owner trong ownership-service sau khi KYC được approve
+    /// </summary>
+    private async Task UpdateCoOwnerAfterKycApprovalAsync(string userId, string? identityCardNumber, string? drivingLicenseNumber)
+    {
+        if (_httpClientFactory == null || _configuration == null)
+            return;
+
+        try
+        {
+            var gatewayUrl = _configuration["GatewayUrl"] ?? "http://localhost:8000";
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(10);
+
+            // Lấy co-owner theo userId
+            var getCoOwnerResponse = await httpClient.GetAsync($"{gatewayUrl}/api/ownership/coowners/user/{userId}");
+            if (!getCoOwnerResponse.IsSuccessStatusCode)
+            {
+                _logger?.LogWarning("Co-owner not found in ownership-service for user {UserId}", userId);
+                return;
+            }
+
+            var coOwnerJson = await getCoOwnerResponse.Content.ReadAsStringAsync();
+            using var coOwnerDoc = JsonDocument.Parse(coOwnerJson);
+            var coOwnerRoot = coOwnerDoc.RootElement;
+            
+            // Lấy coOwnerId từ response
+            string? coOwnerId = null;
+            if (coOwnerRoot.TryGetProperty("data", out var dataProp))
+            {
+                if (dataProp.TryGetProperty("id", out var idProp))
+                {
+                    coOwnerId = idProp.GetString();
+                }
+            }
+            else if (coOwnerRoot.TryGetProperty("id", out var directIdProp))
+            {
+                coOwnerId = directIdProp.GetString();
+            }
+
+            if (string.IsNullOrEmpty(coOwnerId))
+            {
+                _logger?.LogWarning("Could not extract co-owner ID from response for user {UserId}", userId);
+                return;
+            }
+
+            // Cập nhật co-owner
+            var updateDto = new Dictionary<string, object?>();
+            if (!string.IsNullOrEmpty(identityCardNumber))
+            {
+                updateDto["identityCardNumber"] = identityCardNumber;
+            }
+            if (!string.IsNullOrEmpty(drivingLicenseNumber))
+            {
+                updateDto["drivingLicenseNumber"] = drivingLicenseNumber;
+            }
+
+            if (updateDto.Count > 0)
+            {
+                var updateContent = new StringContent(JsonSerializer.Serialize(updateDto), System.Text.Encoding.UTF8, "application/json");
+                var updateResponse = await httpClient.PutAsync($"{gatewayUrl}/api/ownership/coowners/{coOwnerId}", updateContent);
+                
+                if (updateResponse.IsSuccessStatusCode)
+                {
+                    _logger?.LogInformation("Updated co-owner {CoOwnerId} in ownership-service after KYC approval", coOwnerId);
+                    
+                    // Verify co-owner nếu identity document đã được approve (identity là bắt buộc)
+                    // Driving license là tùy chọn, không bắt buộc để verify co-owner
+                    var identityDoc = await _db.IdentityDocuments
+                        .FirstOrDefaultAsync(d => d.UserId == int.Parse(userId) && d.IsActive && d.VerificationStatus == VerificationStatus.Approved);
+                    
+                    if (identityDoc != null)
+                    {
+                        // Identity đã được approve, verify co-owner
+                        var verifyResponse = await httpClient.PostAsync($"{gatewayUrl}/api/ownership/coowners/{coOwnerId}/verify", null);
+                        if (verifyResponse.IsSuccessStatusCode)
+                        {
+                            _logger?.LogInformation("Verified co-owner {CoOwnerId} in ownership-service after identity document approved", coOwnerId);
+                        }
+                        else
+                        {
+                            var errorContent = await verifyResponse.Content.ReadAsStringAsync();
+                            _logger?.LogWarning("Failed to verify co-owner {CoOwnerId}: {StatusCode} - {Error}", coOwnerId, verifyResponse.StatusCode, errorContent);
+                        }
+                    }
+                    else
+                    {
+                        _logger?.LogWarning("Identity document not approved yet for user {UserId}, skipping co-owner verification", userId);
+                    }
+                }
+                else
+                {
+                    var errorContent = await updateResponse.Content.ReadAsStringAsync();
+                    _logger?.LogWarning("Failed to update co-owner {CoOwnerId}: {StatusCode} - {Error}", coOwnerId, updateResponse.StatusCode, errorContent);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error updating co-owner in ownership-service for user {UserId}", userId);
+            throw;
+        }
     }
 }
 
