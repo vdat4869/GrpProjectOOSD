@@ -145,35 +145,39 @@ const handleReturn = async (req, res) => {
       paymentStore.set(orderId, paymentInfo);
     }
 
-    // Notify C# Payment Service
+    // Notify C# Payment Service (non-blocking - don't wait for it to complete)
     if (verify.isSuccess && paymentInfo) {
-      try {
-        await notifyPaymentService({
-          orderId,
-          amount,
-          status: 'success',
-          transactionNo,
-          paymentMethod: 'VNPay',
-          costShareDetailId: paymentInfo.costShareDetailId,
-          walletId: paymentInfo.walletId
-        });
-      } catch (error) {
-        console.error('[VNPay Return] Failed to notify payment service:', error.message);
-      }
-    }
-
-    res.json({
-      success: true,
-      data: {
+      console.log(`[VNPay Return] Attempting to notify payment service for order: ${orderId}`);
+      console.log(`[VNPay Return] Payment info:`, JSON.stringify(paymentInfo, null, 2));
+      // Don't await - let it run in background, redirect immediately
+      notifyPaymentService({
         orderId,
         amount,
-        status: verify.isSuccess ? 'success' : 'failed',
-        responseCode,
+        status: 'success',
         transactionNo,
-        bankCode,
-        message: verify.message || getResponseMessage(responseCode)
-      }
-    });
+        paymentMethod: 'VNPay',
+        costShareDetailId: paymentInfo.costShareDetailId,
+        walletId: paymentInfo.walletId
+      }).then(result => {
+        console.log(`[VNPay Return] Successfully notified payment service:`, JSON.stringify(result, null, 2));
+      }).catch(error => {
+        console.error('[VNPay Return] Failed to notify payment service:', error.message);
+        console.error('[VNPay Return] Error stack:', error.stack);
+        if (error.response) {
+          console.error('[VNPay Return] Response status:', error.response.status);
+          console.error('[VNPay Return] Response data:', JSON.stringify(error.response.data, null, 2));
+        }
+      });
+    } else {
+      console.log(`[VNPay Return] Skipping notification - verify.isSuccess: ${verify.isSuccess}, paymentInfo exists: ${!!paymentInfo}`);
+    }
+
+    // Redirect to frontend with payment result (always redirect, even if notification fails)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost';
+    const redirectUrl = `${frontendUrl}/vnpay-return?${new URLSearchParams(vnpParams).toString()}`;
+    
+    console.log(`[VNPay Return] Redirecting to frontend: ${redirectUrl}`);
+    res.redirect(302, redirectUrl);
 
   } catch (error) {
     console.error('[VNPay Return] Handler error:', error);
@@ -443,23 +447,33 @@ const getPaymentStatus = async (req, res) => {
 async function notifyPaymentService(paymentData) {
   const url = `${config.paymentServiceUrl}/api/VNPay/callback`;
   
-  console.log(`[VNPay] Notifying C# Payment Service: ${url}`);
+  console.log(`[VNPay] ========== NOTIFYING PAYMENT SERVICE ==========`);
+  console.log(`[VNPay] URL: ${url}`);
+  console.log(`[VNPay] Payment Service URL from config: ${config.paymentServiceUrl}`);
   console.log(`[VNPay] Payload:`, JSON.stringify(paymentData, null, 2));
   
   try {
     const response = await axios.post(url, paymentData, {
       headers: { 'Content-Type': 'application/json' },
-      timeout: 10000
+      timeout: 30000 // Increase timeout to 30 seconds
     });
 
-    console.log(`[VNPay] C# Payment Service response:`, response.data);
+    console.log(`[VNPay] ========== PAYMENT SERVICE RESPONSE ==========`);
+    console.log(`[VNPay] Status: ${response.status}`);
+    console.log(`[VNPay] Data:`, JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error) {
-    console.error(`[VNPay] Failed to notify C# Payment Service:`, error.message);
+    console.error(`[VNPay] ========== PAYMENT SERVICE ERROR ==========`);
+    console.error(`[VNPay] Error message:`, error.message);
+    console.error(`[VNPay] Error code:`, error.code);
     if (error.response) {
       console.error(`[VNPay] Response status:`, error.response.status);
-      console.error(`[VNPay] Response data:`, error.response.data);
+      console.error(`[VNPay] Response headers:`, JSON.stringify(error.response.headers, null, 2));
+      console.error(`[VNPay] Response data:`, JSON.stringify(error.response.data, null, 2));
+    } else if (error.request) {
+      console.error(`[VNPay] No response received. Request:`, JSON.stringify(error.request, null, 2));
     }
+    console.error(`[VNPay] Error stack:`, error.stack);
     throw error;
   }
 }

@@ -64,6 +64,28 @@ namespace PaymentService.Controllers
             }
         }
 
+        /// <summary>
+        /// Internal endpoint for service-to-service calls (e.g., from ownership-service when proposal is approved)
+        /// </summary>
+        [HttpPost("internal")]
+        [Microsoft.AspNetCore.Authorization.AllowAnonymous] // Allow internal service calls without authentication
+        public async Task<ActionResult<CostShareDto>> CreateCostShareInternal([FromBody] CreateCostShareDto dto)
+        {
+            var validationResult = await _createCostShareValidator.ValidateAsync(dto);
+            if (!validationResult.IsValid)
+                return BadRequest(validationResult.Errors);
+
+            try
+            {
+                var costShare = await _costSharingService.CreateCostShareAsync(dto);
+                return CreatedAtAction(nameof(GetCostShare), new { id = costShare.Id }, costShare);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         [HttpPut("{id}")]
         public async Task<ActionResult<CostShareDto>> UpdateCostShare(Guid id, [FromBody] UpdateCostShareDto dto)
         {
