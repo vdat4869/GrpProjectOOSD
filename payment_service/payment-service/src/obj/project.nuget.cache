@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "OJPMZTSsN/E=",
+  "dgSpecHash": "314eE0JpZ6w=",
   "success": true,
-  "projectFilePath": "C:\\payment_service\\payment-service\\src\\PaymentService.csproj",
+  "projectFilePath": "C:\\GrpProjectOOSD\\payment_service\\payment-service\\src\\PaymentService.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\brohu\\.nuget\\packages\\automapper\\12.0.1\\automapper.12.0.1.nupkg.sha512",
     "C:\\Users\\brohu\\.nuget\\packages\\automapper.extensions.microsoft.dependencyinjection\\12.0.1\\automapper.extensions.microsoft.dependencyinjection.12.0.1.nupkg.sha512",
