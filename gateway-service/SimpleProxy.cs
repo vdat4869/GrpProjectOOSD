@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Http;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
 
 public class SimpleProxyMiddleware
 {
     private readonly RequestDelegate _next;
-    private readonly HttpClient _httpClient;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<SimpleProxyMiddleware> _logger;
 
@@ -43,10 +44,10 @@ public class SimpleProxyMiddleware
         { "/api/vnpay", ("vnpay-service", "/api/vnpay") }
     };
 
-    public SimpleProxyMiddleware(RequestDelegate next, HttpClient httpClient, IConfiguration configuration, ILogger<SimpleProxyMiddleware> logger)
+    public SimpleProxyMiddleware(RequestDelegate next, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILogger<SimpleProxyMiddleware> logger)
     {
         _next = next;
-        _httpClient = httpClient;
+        _httpClientFactory = httpClientFactory;
         _configuration = configuration;
         _logger = logger;
     }
@@ -86,6 +87,7 @@ public class SimpleProxyMiddleware
         // Debug logging
         _logger.LogInformation("[Gateway] Proxying {Method} {Path} -> {TargetUrl}", context.Request.Method, context.Request.Path, targetUrl);
 
+        var httpClient = _httpClientFactory.CreateClient("ProxyClient");
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
 
         // Copy headers (including Authorization)
@@ -131,13 +133,26 @@ public class SimpleProxyMiddleware
 
         try
         {
-            var response = await _httpClient.SendAsync(
+            var response = await httpClient.SendAsync(
                 request,
                 HttpCompletionOption.ResponseHeadersRead,
                 context.RequestAborted
             );
 
             context.Response.StatusCode = (int)response.StatusCode;
+            
+            // Log redirect responses for debugging
+            if (response.StatusCode == System.Net.HttpStatusCode.Redirect || 
+                response.StatusCode == System.Net.HttpStatusCode.MovedPermanently ||
+                response.StatusCode == System.Net.HttpStatusCode.Found ||
+                response.StatusCode == System.Net.HttpStatusCode.TemporaryRedirect)
+            {
+                _logger.LogInformation($"[Gateway] Received redirect response: {response.StatusCode}");
+                if (response.Headers.Location != null)
+                {
+                    _logger.LogInformation($"[Gateway] Redirect Location: {response.Headers.Location}");
+                }
+            }
 
             // Add CORS headers FIRST (before copying other headers)
             WriteCorsHeaders(context);
@@ -149,6 +164,7 @@ public class SimpleProxyMiddleware
                 {
                     continue; // Skip CORS headers from backend, use our own
                 }
+                _logger.LogInformation($"[Gateway] Copying header: {header.Key} = {string.Join(", ", header.Value)}");
                 context.Response.Headers[header.Key] = header.Value.ToArray();
             }
 

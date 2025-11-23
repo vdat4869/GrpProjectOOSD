@@ -5,6 +5,7 @@ import Label from "../form/Label";
 import Input from "../form/input/InputField";
 import { paymentService, CostShare, UpdateCostShareRequest } from "../../services/paymentService";
 
+// Props cho modal chỉnh sửa cost share
 interface EditCostShareModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -12,6 +13,7 @@ interface EditCostShareModalProps {
   onSuccess: () => void;
 }
 
+// Modal để chỉnh sửa cost share
 export default function EditCostShareModal({
   isOpen,
   onClose,
@@ -41,6 +43,7 @@ export default function EditCostShareModal({
     }
   }, [isOpen, costShare]);
 
+  // Xử lý submit form chỉnh sửa cost share
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!costShare) return;
@@ -61,7 +64,7 @@ export default function EditCostShareModal({
       onSuccess();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update cost share");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật cost share");
     } finally {
       setLoading(false);
     }
@@ -74,10 +77,10 @@ export default function EditCostShareModal({
       <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Edit Cost Share
+            Chỉnh Sửa Cost Share
           </h4>
           <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-            Update cost share information.
+            Cập nhật thông tin cost share.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="px-2 space-y-4">
@@ -88,29 +91,29 @@ export default function EditCostShareModal({
         )}
 
         <div>
-          <Label>Title *</Label>
+          <Label>Tiêu Đề *</Label>
           <Input
             type="text"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
-            placeholder="Cost share title"
+            placeholder="Tiêu đề cost share"
           />
         </div>
 
         <div>
-          <Label>Description</Label>
+          <Label>Mô Tả</Label>
           <textarea
             className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             rows={3}
-            placeholder="Cost share description"
+            placeholder="Mô tả cost share"
           />
         </div>
 
         <div>
-          <Label>Total Amount *</Label>
+          <Label>Tổng Số Tiền *</Label>
           <Input
             type="number"
             value={formData.totalAmount}
@@ -123,7 +126,7 @@ export default function EditCostShareModal({
         </div>
 
         <div>
-          <Label>Due Date *</Label>
+          <Label>Ngày Đến Hạn *</Label>
           <Input
             type="date"
             value={formData.dueDate}
@@ -133,7 +136,7 @@ export default function EditCostShareModal({
         </div>
 
         <div>
-          <Label>Receipt URL</Label>
+          <Label>URL Hóa Đơn</Label>
           <Input
             type="url"
             value={formData.receiptUrl}
@@ -144,10 +147,10 @@ export default function EditCostShareModal({
 
         <div className="flex items-center gap-3 lg:justify-end mt-6">
           <Button size="sm" variant="outline" type="button" onClick={onClose} disabled={loading}>
-            Cancel
+            Hủy
           </Button>
           <Button size="sm" type="submit" disabled={loading}>
-            {loading ? "Saving..." : "Save Changes"}
+            {loading ? "Đang lưu..." : "Lưu Thay Đổi"}
           </Button>
         </div>
       </form>

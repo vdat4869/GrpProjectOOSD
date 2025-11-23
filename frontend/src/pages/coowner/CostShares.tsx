@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import {
@@ -11,19 +10,16 @@ import {
 import { ownershipService } from "../../services/ownershipService";
 import CreateCostShareModal from "../../components/modals/CreateCostShareModal";
 import CreatePaymentModal from "../../components/modals/CreatePaymentModal";
-import PaymentTypeModal from "../../components/modals/PaymentTypeModal";
 
 /**
  * Trang quản lý cost shares - xem và quản lý chi phí chia sẻ cho các nhóm xe
  */
 const CostShares: React.FC = () => {
-  const navigate = useNavigate();
   const [costShares, setCostShares] = useState<CostShare[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [showPaymentTypeModal, setShowPaymentTypeModal] = useState(false);
   const [selectedCostShareDetailId, setSelectedCostShareDetailId] = useState<
     string | null
   >(null);
@@ -53,20 +49,68 @@ const CostShares: React.FC = () => {
     
     loadCoOwnerId();
     loadCostShares();
-    // Hiển thị modal chọn loại thanh toán khi lần đầu truy cập
-    const hasSeenModal = sessionStorage.getItem("payment-type-selected");
-    if (!hasSeenModal) {
-      setShowPaymentTypeModal(true);
-    }
+    // Mặc định là thanh toán cá nhân, không hiển thị popup
+    sessionStorage.setItem("payment-type-selected", "true");
+    sessionStorage.setItem("payment-type", "personal");
+    
+    // Listen for payment completion events to refresh cost shares
+    const handlePaymentCompleted = () => {
+      console.log('[CostShares] Payment completed event received, refreshing cost shares...');
+      // Delay và retry nhiều lần để đảm bảo backend đã xử lý xong
+      setTimeout(() => {
+        loadCostShares(0); // Start with retry count 0
+      }, 2000);
+      // Retry again after 5 seconds
+      setTimeout(() => {
+        console.log('[CostShares] Second retry after payment...');
+        loadCostShares(1);
+      }, 5000);
+    };
+    
+    // Also check sessionStorage flag when component mounts
+    const checkPaymentFlag = () => {
+      const paymentJustCompleted = sessionStorage.getItem('paymentJustCompleted');
+      if (paymentJustCompleted === 'true') {
+        console.log('[CostShares] Payment flag detected, refreshing...');
+        setTimeout(() => {
+          loadCostShares();
+          sessionStorage.removeItem('paymentJustCompleted');
+        }, 2000);
+      }
+    };
+    
+    window.addEventListener('paymentCompleted', handlePaymentCompleted);
+    checkPaymentFlag(); // Check immediately on mount
+    
+    // Also listen for window focus (when user returns from VNPay)
+    const handleFocus = () => {
+      const paymentJustCompleted = sessionStorage.getItem('paymentJustCompleted');
+      if (paymentJustCompleted === 'true') {
+        console.log('[CostShares] Window focused after payment, refreshing...');
+        setTimeout(() => {
+          loadCostShares();
+          sessionStorage.removeItem('paymentJustCompleted');
+        }, 2000);
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('paymentCompleted', handlePaymentCompleted);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [userId]);
 
   /**
-   * Tải danh sách cost shares cho user
+   * Tải danh sách cost shares cho user với retry mechanism
+   * @param retryCount - Số lần retry (mặc định 0)
    */
-  const loadCostShares = async () => {
+  const loadCostShares = async (retryCount: number = 0) => {
     try {
       setLoading(true);
       setError(null);
+      console.log(`[CostShares] Loading cost shares, attempt ${retryCount + 1}`);
       
       // Lấy danh sách nhóm xe của user trước
       let userGroupIds: string[] = [];
@@ -97,11 +141,14 @@ const CostShares: React.FC = () => {
         allCostShares = data;
       }
       
+      console.log(`[CostShares] Found ${allCostShares.length} cost shares`);
+      
       // Tải chi tiết cho từng cost share
       const costSharesWithDetails = await Promise.all(
         allCostShares.map(async (costShare) => {
           try {
             const details = await paymentService.getCostShareDetails(costShare.id);
+            console.log(`[CostShares] Cost share ${costShare.id} has ${details.length} details, paid: ${details.filter(d => d.status === 2).length}`);
             return { ...costShare, costShareDetails: details };
           } catch (err) {
             console.error(`Không thể tải chi tiết cho cost share ${costShare.id}:`, err);
@@ -111,7 +158,7 @@ const CostShares: React.FC = () => {
       );
       
       setCostShares(costSharesWithDetails);
-
+      
       // Tính toán số tiền chờ thanh toán cho user hiện tại
       // Sử dụng coOwnerId (GUID) thay vì userId (number) để khớp với detail.userId
       let pending = 0;
@@ -125,29 +172,43 @@ const CostShares: React.FC = () => {
             // Chuẩn hóa status thành number (PaymentStatus enum)
             let detailStatus: PaymentStatus;
             if (typeof detail.status === 'number') {
-              detailStatus = detail.status as PaymentStatus;
-            } else if (typeof detail.status === 'string') {
-              // Chuyển string thành enum
-              detailStatus = (detail.status === 'Pending' || detail.status === '0') 
-                ? PaymentStatus.Pending 
-                : PaymentStatus.Completed; // Fallback mặc định
-            } else {
               detailStatus = detail.status;
+            } else if (typeof detail.status === 'string') {
+              const statusStr = detail.status as string;
+              detailStatus = statusStr.toLowerCase().includes('paid') || statusStr === '2' ? PaymentStatus.Completed : PaymentStatus.Pending;
+            } else {
+              detailStatus = PaymentStatus.Pending;
             }
-            const isPending = detailStatus === PaymentStatus.Pending;
             
-            // So sánh với coOwnerId (GUID) thay vì userId (number)
-            if (currentCoOwnerId && detailUserId === currentCoOwnerId && isPending) {
+            if (currentCoOwnerId && detailUserId === currentCoOwnerId && detailStatus === PaymentStatus.Pending) {
               pending++;
               totalPending += detail.amount;
             }
           });
         }
       });
+      
       setPendingCount(pending);
       setTotalPendingAmount(totalPending);
+      
+      // Nếu đang retry và vẫn không có data mới, thử lại sau 3 giây
+      if (retryCount > 0 && retryCount < 3 && costSharesWithDetails.length === 0) {
+        console.log(`[CostShares] No cost shares found, retrying in 3 seconds... (${retryCount}/3)`);
+        setTimeout(() => {
+          loadCostShares(retryCount + 1);
+        }, 3000);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải cost shares");
+      console.error('[CostShares] Error loading cost shares:', err);
+      setError(err instanceof Error ? err.message : "Không thể tải chia sẻ chi phí");
+      
+      // Retry on error
+      if (retryCount < 2) {
+        console.log(`[CostShares] Retrying after error... (${retryCount + 1}/2)`);
+        setTimeout(() => {
+          loadCostShares(retryCount + 1);
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
@@ -258,11 +319,12 @@ const CostShares: React.FC = () => {
   /**
    * Xử lý khi thanh toán thành công
    */
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async () => {
     setIsPaymentModalOpen(false);
     setSelectedCostShareDetailId(null);
     setSelectedAmount(0);
-    loadCostShares();
+    // Reload data để cập nhật lịch sử thanh toán
+    await loadCostShares();
   };
 
   return (
@@ -383,12 +445,22 @@ const CostShares: React.FC = () => {
                           if (typeof detail.status === 'number') {
                             detailStatus = detail.status as PaymentStatus;
                           } else if (typeof detail.status === 'string') {
-                            // Convert string to enum
-                            detailStatus = (detail.status === 'Pending' || detail.status === '0') 
-                              ? PaymentStatus.Pending 
-                              : PaymentStatus.Completed; // Default fallback
+                            // Convert string to enum - kiểm tra nhiều trường hợp
+                            const statusLower = (detail.status as string).toLowerCase().trim();
+                            if (statusLower === 'pending' || statusLower === '0' || statusLower === 'chờ thanh toán' || statusLower === 'unpaid') {
+                              detailStatus = PaymentStatus.Pending;
+                            } else if (statusLower === 'completed' || statusLower === 'paid' || statusLower === '2' || statusLower === 'đã thanh toán' || statusLower === 'completed') {
+                              detailStatus = PaymentStatus.Completed;
+                            } else {
+                              // Kiểm tra nếu có paidDate thì coi như đã thanh toán
+                              detailStatus = detail.paidDate ? PaymentStatus.Completed : PaymentStatus.Pending;
+                            }
                           } else {
-                            detailStatus = detail.status;
+                            detailStatus = detail.status as PaymentStatus;
+                          }
+                          // Double check: nếu có paidDate thì chắc chắn đã thanh toán
+                          if (detail.paidDate) {
+                            detailStatus = PaymentStatus.Completed;
                           }
                           const isPending = detailStatus === PaymentStatus.Pending;
                           
@@ -452,24 +524,6 @@ const CostShares: React.FC = () => {
         onSuccess={() => {
           setIsCreateModalOpen(false);
           loadCostShares();
-        }}
-      />
-
-      <PaymentTypeModal
-        isOpen={showPaymentTypeModal}
-        onClose={() => {
-          setShowPaymentTypeModal(false);
-          sessionStorage.setItem("payment-type-selected", "true");
-        }}
-        onSelectCompany={() => {
-          setShowPaymentTypeModal(false);
-          navigate("/coowner/company-payment");
-          sessionStorage.setItem("payment-type-selected", "true");
-        }}
-        onSelectPersonal={() => {
-          setShowPaymentTypeModal(false);
-          sessionStorage.setItem("payment-type-selected", "true");
-          // Stay on this page for personal payment
         }}
       />
 

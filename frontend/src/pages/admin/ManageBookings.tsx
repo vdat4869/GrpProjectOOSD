@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý đặt chỗ
+ * Cho phép admin giám sát lịch sử đặt chỗ, phát hiện xung đột và can thiệp trong các trường hợp đặc biệt
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -12,10 +16,14 @@ const ManageBookings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "conflicts" | "pending">("all");
 
+  // Load dữ liệu khi component mount
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Tải danh sách bookings và vehicles từ API
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -27,17 +35,26 @@ const ManageBookings: React.FC = () => {
       setBookings(bookingsData);
       setVehicles(vehiclesData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load bookings");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách đặt chỗ");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Lấy tên xe từ vehicleId
+   * @param vehicleId - ID của xe
+   * @returns Tên xe hoặc ID ngắn nếu không tìm thấy
+   */
   const getVehicleName = (vehicleId: string | number) => {
     const vehicle = vehicles.find((v) => v.id === vehicleId.toString());
     return vehicle?.vehicleName || vehicleId.toString().substring(0, 8);
   };
 
+  /**
+   * Phát hiện các booking xung đột (trùng lịch)
+   * @returns Danh sách các booking có xung đột
+   */
   const detectConflicts = (): Booking[] => {
     const conflicts: Booking[] = [];
     // Backend statuses: "Pending", "Confirmed", "Approved", "Đã đặt", "InProgress", "Completed", "Cancelled", "NoShow"
@@ -67,6 +84,10 @@ const ManageBookings: React.FC = () => {
     return conflicts;
   };
 
+  /**
+   * Lọc bookings theo filter
+   * @returns Danh sách bookings đã lọc
+   */
   const filteredBookings = () => {
     switch (filter) {
       case "active": {
@@ -91,6 +112,11 @@ const ManageBookings: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái booking
+   * @param status - Trạng thái booking
+   * @returns Class CSS cho màu
+   */
   const getStatusColor = (status: string) => {
     const s = status.toLowerCase();
     if (s === "confirmed" || s === "in-progress")
@@ -102,6 +128,11 @@ const ManageBookings: React.FC = () => {
     return "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300";
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
@@ -112,40 +143,44 @@ const ManageBookings: React.FC = () => {
     });
   };
 
+  /**
+   * Can thiệp vào booking (hủy booking)
+   * @param bookingId - ID của booking cần can thiệp
+   */
   const handleIntervene = async (bookingId: number) => {
-    if (!confirm("Are you sure you want to cancel this booking?")) return;
+    if (!confirm("Bạn có chắc chắn muốn hủy đặt chỗ này không?")) return;
     try {
       await bookingService.cancelBooking(bookingId);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to cancel booking");
+      setError(err instanceof Error ? err.message : "Không thể hủy đặt chỗ");
     }
   };
 
   return (
     <>
-      <PageMeta title="Admin | Manage Bookings" />
+      <PageMeta title="Admin | Quản Lý Đặt Chỗ" />
       <PageHeader
-        title="Booking Management"
-        description="Monitor booking history, detect conflicts, and intervene in special cases."
-        actions={<Button size="sm" onClick={loadData} disabled={loading}>Refresh</Button>}
+        title="Quản Lý Đặt Chỗ"
+        description="Giám sát lịch sử đặt chỗ, phát hiện xung đột và can thiệp trong các trường hợp đặc biệt."
+        actions={<Button size="sm" onClick={loadData} disabled={loading}>Làm Mới</Button>}
       />
 
-      {/* Filters */}
+      {/* Bộ lọc */}
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
-          All ({bookings.length})
+          Tất Cả ({bookings.length})
         </Button>
         <Button
           size="sm"
           variant={filter === "active" ? "primary" : "outline"}
           onClick={() => setFilter("active")}
         >
-          Active ({bookings.filter((b) => {
+          Đang Hoạt Động ({bookings.filter((b) => {
             const statusLower = b.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
             return ["confirmed", "approved", "inprogress", "in-progress", "đã đặt"].some(s => statusLower.includes(s));
           }).length})
@@ -155,20 +190,20 @@ const ManageBookings: React.FC = () => {
           variant={filter === "conflicts" ? "primary" : "outline"}
           onClick={() => setFilter("conflicts")}
         >
-          Conflicts ({detectConflicts().length})
+          Xung Đột ({detectConflicts().length})
         </Button>
         <Button
           size="sm"
           variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
-          Pending ({bookings.filter((b) => b.status.toLowerCase().trim() === "pending").length})
+          Chờ Xử Lý ({bookings.filter((b) => b.status.toLowerCase().trim() === "pending").length})
         </Button>
       </div>
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading bookings...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách đặt chỗ...</p>
         </div>
       )}
 
@@ -182,7 +217,7 @@ const ManageBookings: React.FC = () => {
         <div className="grid gap-4">
           {filteredBookings().length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No bookings found.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy đặt chỗ nào.</p>
             </div>
           ) : (
             filteredBookings().map((booking) => {
@@ -201,24 +236,24 @@ const ManageBookings: React.FC = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                            Booking #{booking.id}
+                            Đặt Chỗ #{booking.id}
                           </h3>
                           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusColor(booking.status)}`}>
                             {booking.status}
                           </span>
                           {isConflict && (
                             <span className="rounded-full bg-error-500 px-3 py-1 text-xs font-semibold text-white">
-                              CONFLICT
+                              XUNG ĐỘT
                             </span>
                           )}
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          Vehicle: {getVehicleName(booking.vehicleId.toString())} • CoOwner: {booking.coOwnerId || "Unknown"}
+                          Xe: {getVehicleName(booking.vehicleId.toString())} • CoOwner: {booking.coOwnerId || "Không xác định"}
                         </p>
                       </div>
                       {isConflict && (
                         <Button size="sm" variant="outline" onClick={() => handleIntervene(booking.id)}>
-                          Intervene
+                          Can Thiệp
                         </Button>
                       )}
                     </div>
@@ -228,22 +263,22 @@ const ManageBookings: React.FC = () => {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Time Schedule
+                          Lịch Trình
                         </h4>
                         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          <p>Start: {formatDate(booking.startTime)}</p>
-                          <p>End: {formatDate(booking.endTime)}</p>
+                          <p>Bắt đầu: {formatDate(booking.startTime)}</p>
+                          <p>Kết thúc: {formatDate(booking.endTime)}</p>
                           {booking.checkInTime && <p>Check-in: {formatDate(booking.checkInTime)}</p>}
                           {booking.checkOutTime && <p>Check-out: {formatDate(booking.checkOutTime)}</p>}
                         </div>
                       </div>
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Details
+                          Chi Tiết
                         </h4>
                         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          <p>Created: {formatDate(booking.createdAt || booking.startTime)}</p>
-                          {booking.note && <p>Note: {booking.note}</p>}
+                          <p>Tạo lúc: {formatDate(booking.createdAt || booking.startTime)}</p>
+                          {booking.note && <p>Ghi chú: {booking.note}</p>}
                         </div>
                       </div>
                     </div>
@@ -259,4 +294,3 @@ const ManageBookings: React.FC = () => {
 };
 
 export default ManageBookings;
-

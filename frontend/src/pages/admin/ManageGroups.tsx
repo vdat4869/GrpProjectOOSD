@@ -1,8 +1,13 @@
+/**
+ * Trang quản lý nhóm đồng sở hữu xe
+ * Cho phép admin tạo, chỉnh sửa, xóa nhóm xe và quản lý thành viên
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
 import { ownershipService, VehicleGroup, Ownership, CoOwner, GroupMember } from "../../services/ownershipService";
+import { authService, UserSummary } from "../../services/authService";
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
@@ -28,6 +33,7 @@ const ManageGroups: React.FC = () => {
     licensePlate: "",
     vehicleModel: "",
     vehicleYear: "",
+    imageUrl: "",
     status: 1,
   });
   const [memberFormData, setMemberFormData] = useState({
@@ -35,10 +41,14 @@ const ManageGroups: React.FC = () => {
     ownershipPercentage: 0,
   });
 
+  // Load dữ liệu khi component mount
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Tải danh sách nhóm và co-owners từ API
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -54,12 +64,16 @@ const ManageGroups: React.FC = () => {
       setCoOwners(coOwnersData);
       console.log("Loaded co-owners in loadData:", coOwnersData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load groups");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách nhóm");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Tải danh sách quyền sở hữu và thành viên của một nhóm
+   * @param groupId - ID của nhóm cần tải
+   */
   const loadGroupOwnerships = async (groupId: string) => {
     try {
       const ownerships = await ownershipService.getOwnerships(groupId);
@@ -68,10 +82,13 @@ const ManageGroups: React.FC = () => {
       const members = await ownershipService.getGroupMembers(groupId);
       setGroupMembers(members);
     } catch (err) {
-      console.error("Failed to load ownerships:", err);
+      console.error("Không thể tải quyền sở hữu:", err);
     }
   };
 
+  /**
+   * Mở modal tạo nhóm mới và reset form
+   */
   const handleCreate = () => {
     setFormData({
       name: "",
@@ -80,11 +97,16 @@ const ManageGroups: React.FC = () => {
       licensePlate: "",
       vehicleModel: "",
       vehicleYear: "",
+      imageUrl: "",
       status: 1,
     });
     setIsCreateModalOpen(true);
   };
 
+  /**
+   * Mở modal chỉnh sửa nhóm và điền dữ liệu hiện tại vào form
+   * @param group - Nhóm cần chỉnh sửa
+   */
   const handleEdit = (group: VehicleGroup) => {
     setSelectedGroup(group);
     // Map status: Backend returns "Active" (1), "Inactive" (2), "Dissolved" (3)
@@ -106,17 +128,31 @@ const ManageGroups: React.FC = () => {
       licensePlate: group.licensePlate || "",
       vehicleModel: group.vehicleModel || "",
       vehicleYear: group.vehicleYear || "",
+      imageUrl: group.imageUrl || "",
       status: statusValue,
     });
     setIsEditModalOpen(true);
   };
 
+  /**
+   * Mở modal quản lý thành viên của nhóm
+   * @param group - Nhóm cần xem thành viên
+   */
   const handleViewMembers = async (group: VehicleGroup) => {
     setSelectedGroup(group);
     await loadGroupOwnerships(group.id);
     setIsMembersModalOpen(true);
   };
 
+  /**
+   * Mở modal thêm thành viên mới vào nhóm
+   * Lọc danh sách co-owners để chỉ hiển thị những người:
+   * - Đã verified
+   * - Có role CoOwner (không phải Staff)
+   * - Có tài khoản active
+   * - Chưa có trong nhóm
+   * @param group - Nhóm cần thêm thành viên
+   */
   const handleAddMember = async (group: VehicleGroup) => {
     setSelectedGroup(group);
     setMemberFormData({
@@ -124,26 +160,173 @@ const ManageGroups: React.FC = () => {
       ownershipPercentage: 0,
     });
     
+    // Load group ownerships to get existing members - reload fresh data to ensure we have latest state
+    await loadGroupOwnerships(group.id);
+    
+    // Also load all group members (including Removed) to check for previously removed members
+    let allGroupMembers: GroupMember[] = [];
+    try {
+      allGroupMembers = await ownershipService.getGroupMembers(group.id, true); // includeRemoved = true
+    } catch (err) {
+      console.warn("Failed to load all group members:", err);
+    }
+    
     // Reload coOwners to ensure we have the latest list
     try {
       setError(null);
       const coOwnersData = await ownershipService.getCoOwners();
       console.log("Loaded co-owners in handleAddMember:", coOwnersData);
-      setCoOwners(coOwnersData);
       
-      if (coOwnersData.length === 0) {
-        console.warn("No co-owners loaded from API");
-        setError("No co-owners found. Please ensure you have Admin role and there are co-owners in the system.");
+      // Get fresh ownerships directly from API to ensure we have the latest data
+      // This is important because state might not be updated yet after removing a member
+      // Only get active ownerships to exclude removed/inactive ones
+      const freshOwnerships = await ownershipService.getOwnerships(group.id, undefined, true);
+      console.log("Fresh ownerships loaded (active only):", freshOwnerships);
+      
+      // Get all users from auth service to check roles and active status
+      let allUsers: UserSummary[] = [];
+      try {
+        const usersResponse = await authService.getUsers("", 1, 1000); // Get all users
+        allUsers = usersResponse.users || [];
+      } catch (err) {
+        console.warn("Failed to load users from auth service:", err);
+      }
+      
+      // Create a map of userId -> user info for quick lookup
+      const userMap = new Map<number, UserSummary>();
+      allUsers.forEach(user => {
+        userMap.set(user.id, user);
+      });
+      
+      // Filter: only verified co-owners who:
+      // 1. Are not already active members of this group (check both ownerships and active group members)
+      // 2. Have CoOwner role (not Staff)
+      // 3. Have active user account (IsActive = true)
+      // Note: We allow previously removed members to be re-added (backend will reactivate them)
+      // Use freshOwnerships instead of state to ensure we have the latest data
+      const existingActiveCoOwnerIds = new Set(freshOwnerships.map(o => o.coOwnerId));
+      // Also check active group members
+      const activeMemberCoOwnerIds = new Set(
+        allGroupMembers
+          .filter(m => m.status.toLowerCase() === 'active')
+          .map(m => m.coOwnerId)
+      );
+      // Get all co-owners who have ever been members (including removed) - these can be re-added without verified check
+      const previousMemberCoOwnerIds = new Set(
+        allGroupMembers.map(m => m.coOwnerId)
+      );
+      // Combine both sets for active members check
+      const allExistingActiveCoOwnerIds = new Set([
+        ...Array.from(existingActiveCoOwnerIds),
+        ...Array.from(activeMemberCoOwnerIds)
+      ]);
+      
+      console.log("Debug filter co-owners:", {
+        totalCoOwners: coOwnersData.length,
+        freshOwnerships: freshOwnerships.length,
+        existingActiveCoOwnerIds: Array.from(existingActiveCoOwnerIds),
+        activeGroupMembers: allGroupMembers.filter(m => m.status.toLowerCase() === 'active').length,
+        activeMemberCoOwnerIds: Array.from(activeMemberCoOwnerIds),
+        allExistingActiveCoOwnerIds: Array.from(allExistingActiveCoOwnerIds),
+        previousMemberCoOwnerIds: Array.from(previousMemberCoOwnerIds),
+        totalUsers: allUsers.length
+      });
+      
+      // Track filter reasons for debugging
+      const filterStats = {
+        total: coOwnersData.length,
+        notVerified: 0,
+        alreadyInGroup: 0,
+        userIdInvalid: 0,
+        userNotFound: 0,
+        userInactive: 0,
+        hasStaffRole: 0,
+        noCoOwnerRole: 0,
+        passed: 0
+      };
+      
+      const filteredCoOwners = coOwnersData.filter(coOwner => {
+        // Check if already active in group (don't filter out removed members - backend will reactivate them)
+        if (allExistingActiveCoOwnerIds.has(coOwner.id)) {
+          filterStats.alreadyInGroup++;
+          return false;
+        }
+        
+        // If co-owner was previously a member (including removed), allow re-adding without verified check
+        // This is because they were already verified when first added
+        const wasPreviousMember = previousMemberCoOwnerIds.has(coOwner.id);
+        
+        // Check if verified (skip this check for previous members)
+        if (!wasPreviousMember && !coOwner.isVerified) {
+          filterStats.notVerified++;
+          return false;
+        }
+        
+        // Check user account status and role
+        // Convert userId from string to number for lookup
+        const userIdNumber = parseInt(coOwner.userId, 10);
+        if (isNaN(userIdNumber)) {
+          filterStats.userIdInvalid++;
+          return false;
+        }
+        const user = userMap.get(userIdNumber);
+        if (!user) {
+          // If user not found in auth service, skip (might be deleted)
+          filterStats.userNotFound++;
+          return false;
+        }
+        
+        // Check if user is active
+        if (!user.isActive) {
+          filterStats.userInactive++;
+          return false;
+        }
+        
+        // Check if user has Staff role (exclude them)
+        if (user.roles && user.roles.some(role => role.toLowerCase() === "staff")) {
+          filterStats.hasStaffRole++;
+          return false;
+        }
+        
+        // Must have CoOwner role
+        if (!user.roles || !user.roles.some(role => role.toLowerCase() === "coowner")) {
+          filterStats.noCoOwnerRole++;
+          return false;
+        }
+        
+        filterStats.passed++;
+        return true;
+      });
+      
+      console.log("Filter statistics:", filterStats);
+      console.log("Filtered co-owners:", filteredCoOwners.map(c => ({ id: c.id, name: c.fullName, email: c.email })));
+      
+      setCoOwners(filteredCoOwners);
+      
+      if (filteredCoOwners.length === 0) {
+        console.warn("No available co-owners to add", filterStats);
+        const reasons = [];
+        if (filterStats.notVerified > 0) reasons.push(`${filterStats.notVerified} chưa verified`);
+        if (filterStats.alreadyInGroup > 0) reasons.push(`${filterStats.alreadyInGroup} đã là thành viên`);
+        if (filterStats.userNotFound > 0) reasons.push(`${filterStats.userNotFound} không tìm thấy user`);
+        if (filterStats.userInactive > 0) reasons.push(`${filterStats.userInactive} tài khoản không hoạt động`);
+        if (filterStats.hasStaffRole > 0) reasons.push(`${filterStats.hasStaffRole} có role Staff`);
+        if (filterStats.noCoOwnerRole > 0) reasons.push(`${filterStats.noCoOwnerRole} không có role CoOwner`);
+        
+        setError(`Không tìm thấy co-owner nào khả dụng. ${reasons.length > 0 ? `Lý do: ${reasons.join(', ')}.` : ''} Tất cả co-owners đã verified có thể đã là thành viên của nhóm này, hoặc họ có role Staff hoặc tài khoản không hoạt động.`);
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to load co-owners";
       console.error("Failed to load co-owners:", err);
-      setError(`Cannot load co-owners: ${errorMessage}. Please check your permissions (Admin/Staff role required).`);
+      setError(`Không thể tải danh sách co-owners: ${errorMessage}. Vui lòng kiểm tra quyền truy cập của bạn (yêu cầu role Admin/Staff).`);
     }
     
     setIsAddMemberModalOpen(true);
   };
 
+  /**
+   * Lưu nhóm mới hoặc cập nhật nhóm hiện có
+   */
   const handleSave = async () => {
     try {
       if (isCreateModalOpen) {
@@ -155,6 +338,7 @@ const ManageGroups: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
+          imageUrl: formData.imageUrl || undefined,
         });
       } else if (isEditModalOpen && selectedGroup) {
         // Update existing group
@@ -170,6 +354,7 @@ const ManageGroups: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
+          imageUrl: formData.imageUrl || undefined,
           status: statusMap[formData.status] || "Active",
         });
       }
@@ -178,12 +363,16 @@ const ManageGroups: React.FC = () => {
       setSelectedGroup(null);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save group");
+      setError(err instanceof Error ? err.message : "Không thể lưu nhóm");
     }
   };
 
+  /**
+   * Xóa nhóm khỏi hệ thống
+   * @param groupId - ID của nhóm cần xóa
+   */
   const handleDelete = async (groupId: string) => {
-    if (!confirm("Are you sure you want to delete this group?")) return;
+    if (!confirm("Bạn có chắc chắn muốn xóa nhóm này không?")) return;
     try {
       setError(null);
       // Call API to delete group from database
@@ -191,21 +380,25 @@ const ManageGroups: React.FC = () => {
       // Reload groups from database
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete group");
+      setError(err instanceof Error ? err.message : "Không thể xóa nhóm");
     }
   };
 
+  /**
+   * Lưu thành viên mới vào nhóm
+   * Tạo ownership record và thêm vào group members
+   */
   const handleSaveMember = async () => {
     if (!selectedGroup) return;
     
     // Validate form data
     if (!memberFormData.coOwnerId) {
-      setError("Please select a co-owner");
+      setError("Vui lòng chọn một co-owner");
       return;
     }
     
     if (memberFormData.ownershipPercentage <= 0 || memberFormData.ownershipPercentage > 100) {
-      setError("Ownership percentage must be between 0.01 and 100");
+      setError("Tỷ lệ sở hữu phải nằm trong khoảng từ 0.01 đến 100");
       return;
     }
 
@@ -241,12 +434,17 @@ const ManageGroups: React.FC = () => {
       // Reload ownerships and members to show new member
       await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add member");
+      setError(err instanceof Error ? err.message : "Không thể thêm thành viên");
     }
   };
 
+  /**
+   * Xóa thành viên khỏi nhóm
+   * Xóa ownership record và group member record
+   * @param ownershipId - ID của ownership record cần xóa
+   */
   const handleRemoveMember = async (ownershipId: string) => {
-    if (!confirm("Are you sure you want to remove this member?")) return;
+    if (!confirm("Bạn có chắc chắn muốn xóa thành viên này không?")) return;
     if (!selectedGroup) return;
     
     try {
@@ -283,12 +481,16 @@ const ManageGroups: React.FC = () => {
         console.error("Failed to reload group members:", err);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove member");
+      setError(err instanceof Error ? err.message : "Không thể xóa thành viên");
     }
   };
 
+  /**
+   * Đặt một thành viên làm admin của nhóm
+   * @param ownershipId - ID của ownership record
+   */
   const handleSetGroupAdmin = async (ownershipId: string) => {
-    if (!confirm("Set this member as group admin?")) return;
+    if (!confirm("Đặt thành viên này làm admin của nhóm?")) return;
     if (!selectedGroup) return;
     
     try {
@@ -296,14 +498,14 @@ const ManageGroups: React.FC = () => {
       // Find the ownership to get coOwnerId
       const ownership = groupOwnerships.find(o => o.id === ownershipId);
       if (!ownership) {
-        setError("Ownership not found");
+        setError("Không tìm thấy quyền sở hữu");
         return;
       }
       
       // Find the corresponding group member
       const member = groupMembers.find(m => m.coOwnerId === ownership.coOwnerId);
       if (!member) {
-        setError("Group member not found. Please add the member to the group first.");
+        setError("Không tìm thấy thành viên nhóm. Vui lòng thêm thành viên vào nhóm trước.");
         return;
       }
       
@@ -313,10 +515,15 @@ const ManageGroups: React.FC = () => {
       // Reload data
       await loadGroupOwnerships(selectedGroup.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set group admin");
+      setError(err instanceof Error ? err.message : "Không thể đặt admin nhóm");
     }
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -327,6 +534,9 @@ const ManageGroups: React.FC = () => {
 
   const totalOwnership = groupOwnerships.reduce((sum, o) => sum + o.ownershipPercentage, 0);
 
+  /**
+   * Đồng bộ danh sách co-owners từ Auth Service
+   */
   const handleSyncCoOwners = async () => {
     try {
       setError(null);
@@ -335,29 +545,29 @@ const ManageGroups: React.FC = () => {
       // Reload co-owners after sync
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync co-owners");
+      setError(err instanceof Error ? err.message : "Không thể đồng bộ co-owners");
     }
   };
 
   return (
     <>
-      <PageMeta title="Admin | Manage Groups" />
+      <PageMeta title="Admin | Quản Lý Nhóm" />
       <PageHeader
-        title="Manage Co-ownership Groups"
-        description="Review onboarding requests, ownership ratios, and compliance states for every EV sharing group."
+        title="Quản Lý Nhóm Đồng Sở Hữu"
+        description="Xem xét yêu cầu tham gia, tỷ lệ sở hữu và trạng thái tuân thủ cho mỗi nhóm chia sẻ xe điện."
         actions={
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={handleSyncCoOwners}>
-              Sync Co-owners
+              Đồng Bộ Co-owners
             </Button>
-            <Button size="sm" onClick={handleCreate}>Create New Group</Button>
+            <Button size="sm" onClick={handleCreate}>Tạo Nhóm Mới</Button>
           </div>
         }
       />
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading groups...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách nhóm...</p>
         </div>
       )}
 
@@ -371,7 +581,7 @@ const ManageGroups: React.FC = () => {
         <div className="grid gap-4">
           {groups.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No groups found.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy nhóm nào.</p>
             </div>
           ) : (
             groups.map((group) => (
@@ -380,44 +590,58 @@ const ManageGroups: React.FC = () => {
                 className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
               >
                 <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                          {group.name}
-                        </h3>
-                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          (typeof group.status === "string" ? group.status === "Active" : group.status === 1)
-                            ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
-                            : "bg-gray-50 text-gray-600 dark:bg-gray-500/10 dark:text-gray-300"
-                        }`}>
-                          {typeof group.status === "string" ? group.status : (group.status === 1 ? "Active" : "Inactive")}
-                        </span>
+                  <div className="flex items-start gap-4">
+                    {group.imageUrl && (
+                      <div className="flex-shrink-0">
+                        <img 
+                          src={group.imageUrl} 
+                          alt={group.vehicleName}
+                          className="h-24 w-24 rounded-lg object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
                       </div>
-                      <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                        {group.description || "No description"}
-                      </p>
-                      <div className="mt-2 flex gap-4 text-sm text-gray-500 dark:text-gray-400">
-                        <span>Vehicle: {group.vehicleName}</span>
-                        {group.licensePlate && <span>Plate: {group.licensePlate}</span>}
-                        {group.vehicleModel && group.vehicleYear && (
-                          <span>{group.vehicleModel} • {group.vehicleYear}</span>
-                        )}
+                    )}
+                    <div className="flex-1 flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                            {group.name}
+                          </h3>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            (typeof group.status === "string" ? group.status === "Active" : group.status === 1)
+                              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
+                              : "bg-gray-50 text-gray-600 dark:bg-gray-500/10 dark:text-gray-300"
+                          }`}>
+                            {typeof group.status === "string" ? group.status : (group.status === 1 ? "Active" : "Inactive")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                          {group.description || "Không có mô tả"}
+                        </p>
+                        <div className="mt-2 flex gap-4 text-sm text-gray-500 dark:text-gray-400">
+                          <span>Xe: {group.vehicleName}</span>
+                          {group.licensePlate && <span>Biển số: {group.licensePlate}</span>}
+                          {group.vehicleModel && group.vehicleYear && (
+                            <span>{group.vehicleModel} • {group.vehicleYear}</span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                          Tạo lúc: {formatDate(group.createdAt)}
+                        </p>
                       </div>
-                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                        Created: {formatDate(group.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handleViewMembers(group)}>
-                        Manage Members
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleEdit(group)}>
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleDelete(group.id)}>
-                        Delete
-                      </Button>
+                      <div className="flex flex-col gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleViewMembers(group)}>
+                          Quản Lý Thành Viên
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(group)}>
+                          Chỉnh Sửa
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDelete(group.id)}>
+                          Xóa
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -436,65 +660,87 @@ const ManageGroups: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Create New Group
+              Tạo Nhóm Mới
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Create a new co-ownership group.
+              Tạo một nhóm đồng sở hữu mới.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Group Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Nhóm <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter group name"
+                placeholder="Nhập tên nhóm"
               />
             </div>
 
             <div>
-              <Label>Vehicle Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Xe <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.vehicleName}
                 onChange={(e) => setFormData({ ...formData, vehicleName: e.target.value })}
-                placeholder="Enter vehicle name"
+                placeholder="Nhập tên xe"
               />
+            </div>
+
+            <div>
+              <Label>URL Hình Ảnh Xe</Label>
+              <Input
+                type="url"
+                value={formData.imageUrl}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                placeholder="https://example.com/image.jpg"
+              />
+              {formData.imageUrl && (
+                <div className="mt-2">
+                  <img 
+                    src={formData.imageUrl} 
+                    alt="Preview"
+                    className="h-32 w-full rounded-lg object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>License Plate</Label>
+                <Label>Biển Số Xe</Label>
                 <Input
                   type="text"
                   value={formData.licensePlate}
                   onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
-                  placeholder="Enter license plate"
+                  placeholder="Nhập biển số xe"
                 />
               </div>
 
               <div>
-                <Label>Status</Label>
+                <Label>Trạng Thái</Label>
                 <Select
                   value={formData.status.toString()}
                   onChange={(value) => setFormData({ ...formData, status: parseInt(value) })}
                 >
-                  <option value="1">Active</option>
-                  <option value="0">Inactive</option>
+                  <option value="1">Hoạt Động</option>
+                  <option value="0">Không Hoạt Động</option>
                 </Select>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Model</Label>
+                <Label>Mẫu Xe</Label>
                 <Select
                   value={formData.vehicleModel}
                   onChange={(value) => setFormData({ ...formData, vehicleModel: value })}
                 >
-                  <option value="">Select vehicle model</option>
+                  <option value="">Chọn mẫu xe</option>
                   {VEHICLE_MODELS.map((model) => (
                     <option key={model.id} value={model.name}>
                       {model.name}
@@ -504,24 +750,24 @@ const ManageGroups: React.FC = () => {
               </div>
 
               <div>
-                <Label>Year</Label>
+                <Label>Năm Sản Xuất</Label>
                 <Input
                   type="text"
                   value={formData.vehicleYear}
                   onChange={(e) => setFormData({ ...formData, vehicleYear: e.target.value })}
-                  placeholder="Enter vehicle year"
+                  placeholder="Nhập năm sản xuất"
                 />
               </div>
             </div>
 
             <div>
-              <Label>Description</Label>
+              <Label>Mô Tả</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                placeholder="Enter description"
+                placeholder="Nhập mô tả"
               />
             </div>
 
@@ -531,10 +777,10 @@ const ManageGroups: React.FC = () => {
                 variant="outline"
                 onClick={() => setIsCreateModalOpen(false)}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Create Group
+                Tạo Nhóm
               </Button>
             </div>
           </div>
@@ -553,65 +799,87 @@ const ManageGroups: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Group
+              Chỉnh Sửa Nhóm
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Update group information.
+              Cập nhật thông tin nhóm.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Group Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Nhóm <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter group name"
+                placeholder="Nhập tên nhóm"
               />
             </div>
 
             <div>
-              <Label>Vehicle Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Xe <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.vehicleName}
                 onChange={(e) => setFormData({ ...formData, vehicleName: e.target.value })}
-                placeholder="Enter vehicle name"
+                placeholder="Nhập tên xe"
               />
+            </div>
+
+            <div>
+              <Label>URL Hình Ảnh Xe</Label>
+              <Input
+                type="url"
+                value={formData.imageUrl}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                placeholder="https://example.com/image.jpg"
+              />
+              {formData.imageUrl && (
+                <div className="mt-2">
+                  <img 
+                    src={formData.imageUrl} 
+                    alt="Preview"
+                    className="h-32 w-full rounded-lg object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>License Plate</Label>
+                <Label>Biển Số Xe</Label>
                 <Input
                   type="text"
                   value={formData.licensePlate}
                   onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
-                  placeholder="Enter license plate"
+                  placeholder="Nhập biển số xe"
                 />
               </div>
 
               <div>
-                <Label>Status</Label>
+                <Label>Trạng Thái</Label>
                 <Select
                   value={formData.status.toString()}
                   onChange={(value) => setFormData({ ...formData, status: parseInt(value) })}
                 >
-                  <option value="1">Active</option>
-                  <option value="0">Inactive</option>
+                  <option value="1">Hoạt Động</option>
+                  <option value="0">Không Hoạt Động</option>
                 </Select>
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Model</Label>
+                <Label>Mẫu Xe</Label>
                 <Select
                   value={formData.vehicleModel}
                   onChange={(value) => setFormData({ ...formData, vehicleModel: value })}
                 >
-                  <option value="">Select vehicle model</option>
+                  <option value="">Chọn mẫu xe</option>
                   {VEHICLE_MODELS.map((model) => (
                     <option key={model.id} value={model.name}>
                       {model.name}
@@ -621,24 +889,24 @@ const ManageGroups: React.FC = () => {
               </div>
 
               <div>
-                <Label>Year</Label>
+                <Label>Năm Sản Xuất</Label>
                 <Input
                   type="text"
                   value={formData.vehicleYear}
                   onChange={(e) => setFormData({ ...formData, vehicleYear: e.target.value })}
-                  placeholder="Enter vehicle year"
+                  placeholder="Nhập năm sản xuất"
                 />
               </div>
             </div>
 
             <div>
-              <Label>Description</Label>
+              <Label>Mô Tả</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                placeholder="Enter description"
+                placeholder="Nhập mô tả"
               />
             </div>
 
@@ -651,10 +919,10 @@ const ManageGroups: React.FC = () => {
                   setSelectedGroup(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Save Changes
+                Lưu Thay Đổi
               </Button>
             </div>
           </div>
@@ -676,14 +944,14 @@ const ManageGroups: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-                  Manage Members
+                  Quản Lý Thành Viên
                 </h4>
                 <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
                   {selectedGroup?.name}
                 </p>
               </div>
               <Button size="sm" onClick={() => selectedGroup && handleAddMember(selectedGroup)}>
-                Add Member
+                Thêm Thành Viên
               </Button>
             </div>
           </div>
@@ -691,10 +959,10 @@ const ManageGroups: React.FC = () => {
           <div className="px-2">
             <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-500/40 dark:bg-blue-500/10">
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                Total Ownership: <span className="font-semibold">{totalOwnership.toFixed(2)}%</span>
+                Tổng Quyền Sở Hữu: <span className="font-semibold">{totalOwnership.toFixed(2)}%</span>
                 {totalOwnership !== 100 && (
                   <span className="ml-2 text-amber-600 dark:text-amber-400">
-                    (Should be 100%)
+                    (Nên là 100%)
                   </span>
                 )}
               </p>
@@ -702,7 +970,7 @@ const ManageGroups: React.FC = () => {
 
             {groupOwnerships.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">
-                No members found.
+                Không tìm thấy thành viên nào.
               </p>
             ) : (
               <div className="space-y-3">
@@ -723,11 +991,11 @@ const ManageGroups: React.FC = () => {
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          {coOwner?.email || "No email"}
+                          {coOwner?.email || "Không có email"}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Start: {formatDate(ownership.startDate)}
-                          {ownership.endDate && ` • End: ${formatDate(ownership.endDate)}`}
+                          Bắt đầu: {formatDate(ownership.startDate)}
+                          {ownership.endDate && ` • Kết thúc: ${formatDate(ownership.endDate)}`}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -736,14 +1004,14 @@ const ManageGroups: React.FC = () => {
                           variant="outline"
                           onClick={() => handleSetGroupAdmin(ownership.id)}
                         >
-                          Set Admin
+                          Đặt Admin
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleRemoveMember(ownership.id)}
                         >
-                          Remove
+                          Xóa
                         </Button>
                       </div>
                     </div>
@@ -767,10 +1035,10 @@ const ManageGroups: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[500px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Add Member
+              Thêm Thành Viên
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Add a new co-owner to the group.
+              Thêm một co-owner mới vào nhóm.
             </p>
           </div>
 
@@ -781,7 +1049,7 @@ const ManageGroups: React.FC = () => {
                 value={memberFormData.coOwnerId}
                 onChange={(value) => setMemberFormData({ ...memberFormData, coOwnerId: value })}
               >
-                <option value="">Select co-owner</option>
+                <option value="">Chọn co-owner</option>
                 {coOwners.map((coOwner) => (
                   <option key={coOwner.id} value={coOwner.id}>
                     {coOwner.fullName} ({coOwner.email})
@@ -791,7 +1059,7 @@ const ManageGroups: React.FC = () => {
             </div>
 
             <div>
-              <Label>Ownership Percentage <span className="text-error-500">*</span></Label>
+              <Label>Tỷ Lệ Sở Hữu <span className="text-error-500">*</span></Label>
               <Input
                 type="number"
                 step="0.01"
@@ -799,10 +1067,10 @@ const ManageGroups: React.FC = () => {
                 max="100"
                 value={memberFormData.ownershipPercentage === 0 ? "" : String(memberFormData.ownershipPercentage)}
                 onChange={(e) => setMemberFormData({ ...memberFormData, ownershipPercentage: parseFloat(e.target.value) || 0 })}
-                placeholder="Enter ownership percentage"
+                placeholder="Nhập tỷ lệ sở hữu"
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Current total: {totalOwnership.toFixed(2)}% • Remaining: {(100 - totalOwnership).toFixed(2)}%
+                Tổng hiện tại: {totalOwnership.toFixed(2)}% • Còn lại: {(100 - totalOwnership).toFixed(2)}%
               </p>
             </div>
 
@@ -815,10 +1083,10 @@ const ManageGroups: React.FC = () => {
                   setSelectedGroup(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSaveMember}>
-                Add Member
+                Thêm Thành Viên
               </Button>
             </div>
           </div>

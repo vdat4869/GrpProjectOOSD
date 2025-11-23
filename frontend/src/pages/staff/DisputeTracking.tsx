@@ -1,3 +1,7 @@
+/**
+ * Trang theo dõi tranh chấp cho Staff
+ * Hỗ trợ quản trị viên bằng cách phân loại các vấn đề, ghi nhận cập nhật và thông báo cho đồng sở hữu
+ */
 import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -9,6 +13,9 @@ import { disputeService, Dispute as DisputeType, CreateDisputeDto } from "../../
 import { Modal } from "../../components/ui/modal";
 import Label from "../../components/form/Label";
 
+/**
+ * Interface cho tranh chấp tiềm năng
+ */
 interface PotentialDispute {
   id: string;
   type: "booking_conflict" | "payment_issue" | "cancellation" | "refund" | "overdue_payment";
@@ -24,7 +31,11 @@ interface PotentialDispute {
   resolvedAt?: string;
 }
 
-// Convert Dispute from API to PotentialDispute for compatibility
+/**
+ * Chuyển đổi Dispute từ API sang PotentialDispute để tương thích
+ * @param dispute - Dispute từ API
+ * @returns PotentialDispute
+ */
 const convertDisputeToPotential = (dispute: DisputeType): PotentialDispute => ({
   id: dispute.id,
   type: dispute.type as PotentialDispute["type"],
@@ -50,44 +61,53 @@ const DisputeTracking: React.FC = () => {
   const [showResolveModal, setShowResolveModal] = useState(false);
   const [reviewNotes, setReviewNotes] = useState("");
 
+  /**
+   * Tải danh sách tranh chấp khi component mount
+   */
   useEffect(() => {
     loadDisputes();
   }, []);
 
+  /**
+   * Tải danh sách tranh chấp từ database và phát hiện tranh chấp mới
+   */
   const loadDisputes = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // First, try to load existing disputes from database
+      // Đầu tiên, thử tải các tranh chấp hiện có từ database
       const existingDisputes = await disputeService.getDisputes();
       if (existingDisputes.length > 0) {
-        // Convert and set disputes from database
+        // Chuyển đổi và set disputes từ database
         setDisputes(existingDisputes.map(convertDisputeToPotential));
       }
 
-      // Then, detect new potential disputes and save to database
+      // Sau đó, phát hiện các tranh chấp tiềm năng mới và lưu vào database
       await detectAndSaveNewDisputes();
 
-      // Reload from database after saving new ones
+      // Tải lại từ database sau khi lưu các tranh chấp mới
       const allDisputes = await disputeService.getDisputes();
       setDisputes(allDisputes.map(convertDisputeToPotential));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load disputes");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách tranh chấp");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Phát hiện và lưu các tranh chấp mới vào database
+   */
   const detectAndSaveNewDisputes = async () => {
     try {
-      // Load bookings, cost shares, and vehicle groups
+      // Tải bookings, cost shares và vehicle groups
       const [bookings, vehicleGroups] = await Promise.all([
         bookingService.getBookings(),
         ownershipService.getGroups(),
       ]);
 
-      // Load cost shares for each group
+      // Tải cost shares cho từng nhóm
       const costSharesPromises = vehicleGroups.map((group) =>
         paymentService.getCostShares(group.id).catch(() => [])
       );
@@ -96,20 +116,20 @@ const DisputeTracking: React.FC = () => {
 
       const potentialDisputes: CreateDisputeDto[] = [];
 
-      // Check for booking conflicts (overlapping bookings, multiple cancellations)
+      // Kiểm tra xung đột đặt chỗ (đặt chỗ trùng lặp, nhiều hủy)
       const cancelledBookings = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
       cancelledBookings.forEach((booking) => {
         potentialDisputes.push({
           type: "cancellation",
-          title: `Booking #${booking.id} Cancelled`,
-          description: `Booking for vehicle #${booking.vehicleId} was cancelled. Check for conflicts or issues.`,
+          title: `Đặt Chỗ #${booking.id} Đã Hủy`,
+          description: `Đặt chỗ cho xe #${booking.vehicleId} đã bị hủy. Kiểm tra xung đột hoặc vấn đề.`,
           severity: "medium",
           relatedId: booking.id.toString(),
           relatedType: "booking",
         });
       });
 
-      // Check for overlapping bookings (potential conflicts)
+      // Kiểm tra đặt chỗ trùng lặp (xung đột tiềm năng)
       const activeBookings = bookings.filter(
         (b) => b.status.toLowerCase() === "confirmed" || b.status.toLowerCase() === "in-progress"
       );
@@ -123,12 +143,12 @@ const DisputeTracking: React.FC = () => {
             const start2 = new Date(b2.startTime);
             const end2 = new Date(b2.endTime);
 
-            // Check for overlap
+            // Kiểm tra trùng lặp
             if (start1 <= end2 && start2 <= end1) {
               potentialDisputes.push({
                 type: "booking_conflict",
-                title: `Booking Conflict: #${b1.id} and #${b2.id}`,
-                description: `Two bookings for vehicle #${b1.vehicleId} have overlapping time slots.`,
+                title: `Xung Đột Đặt Chỗ: #${b1.id} và #${b2.id}`,
+                description: `Hai đặt chỗ cho xe #${b1.vehicleId} có thời gian trùng lặp.`,
                 severity: "high",
                 relatedId: b1.id.toString(),
                 relatedType: "booking",
@@ -138,21 +158,21 @@ const DisputeTracking: React.FC = () => {
         }
       }
 
-      // Check for bookings with issues (no check-in after scheduled time, long overdue check-out)
+      // Kiểm tra đặt chỗ có vấn đề (không check-in sau thời gian đã lên lịch, check-out quá hạn lâu)
       const now = new Date();
       bookings.forEach((booking) => {
         const startTime = new Date(booking.startTime);
         const endTime = new Date(booking.endTime);
         const status = booking.status.toLowerCase();
 
-        // Booking confirmed but past start time without check-in
+        // Đặt chỗ đã xác nhận nhưng quá thời gian bắt đầu mà chưa check-in
         if (status === "confirmed" && now > startTime && !booking.checkInTime) {
           const hoursPast = Math.floor((now.getTime() - startTime.getTime()) / (1000 * 60 * 60));
           if (hoursPast > 1) {
             potentialDisputes.push({
               type: "booking_conflict",
-              title: `No Show: Booking #${booking.id}`,
-              description: `Booking for vehicle #${booking.vehicleId} was confirmed but no check-in occurred. ${hoursPast} hours past scheduled time.`,
+              title: `Không Xuất Hiện: Đặt Chỗ #${booking.id}`,
+              description: `Đặt chỗ cho xe #${booking.vehicleId} đã được xác nhận nhưng không có check-in. Quá ${hoursPast} giờ so với thời gian đã lên lịch.`,
               severity: "medium",
               relatedId: booking.id.toString(),
               relatedType: "booking",
@@ -160,14 +180,14 @@ const DisputeTracking: React.FC = () => {
           }
         }
 
-        // Booking checked-in but past end time without check-out
+        // Đặt chỗ đã check-in nhưng quá thời gian kết thúc mà chưa check-out
         if (booking.checkInTime && !booking.checkOutTime && now > endTime) {
           const hoursPast = Math.floor((now.getTime() - endTime.getTime()) / (1000 * 60 * 60));
           if (hoursPast > 2) {
             potentialDisputes.push({
               type: "booking_conflict",
-              title: `Overdue Check-out: Booking #${booking.id}`,
-              description: `Booking for vehicle #${booking.vehicleId} is overdue by ${hoursPast} hours. Check-out required.`,
+              title: `Check-out Quá Hạn: Đặt Chỗ #${booking.id}`,
+              description: `Đặt chỗ cho xe #${booking.vehicleId} quá hạn ${hoursPast} giờ. Cần check-out.`,
               severity: "high",
               relatedId: booking.id.toString(),
               relatedType: "booking",
@@ -176,32 +196,32 @@ const DisputeTracking: React.FC = () => {
         }
       });
 
-      // Check for payment issues (overdue cost shares, failed payments)
+      // Kiểm tra vấn đề thanh toán (cost shares quá hạn, thanh toán thất bại)
       allCostShares.forEach((costShare) => {
         const dueDate = new Date(costShare.dueDate);
         const now = new Date();
         const daysPastDue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
 
-        // Overdue cost share
+        // Cost share quá hạn
         if (costShare.status === PaymentStatus.Pending && now > dueDate && daysPastDue > 7) {
           potentialDisputes.push({
             type: "overdue_payment",
-            title: `Overdue Payment: ${costShare.title}`,
-            description: `Cost share for ${costShare.title} is ${daysPastDue} days overdue. Amount: ${costShare.currency} ${costShare.totalAmount.toLocaleString()}`,
+            title: `Thanh Toán Quá Hạn: ${costShare.title}`,
+            description: `Chia sẻ chi phí cho ${costShare.title} quá hạn ${daysPastDue} ngày. Số tiền: ${costShare.currency} ${costShare.totalAmount.toLocaleString()}`,
             severity: daysPastDue > 30 ? "high" : "medium",
             relatedId: costShare.id.toString(),
             relatedType: "cost_share",
           });
         }
 
-        // Check cost share details for unpaid items
+        // Kiểm tra chi tiết cost share cho các mục chưa thanh toán
         if (costShare.costShareDetails) {
           costShare.costShareDetails.forEach((detail) => {
             if (detail.status === PaymentStatus.Failed) {
               potentialDisputes.push({
                 type: "payment_issue",
-                title: `Failed Payment: ${costShare.title}`,
-                description: `Payment failed for cost share detail #${detail.id}. Amount: ${detail.currency} ${detail.amount.toLocaleString()}`,
+                title: `Thanh Toán Thất Bại: ${costShare.title}`,
+                description: `Thanh toán thất bại cho chi tiết chia sẻ chi phí #${detail.id}. Số tiền: ${detail.currency} ${detail.amount.toLocaleString()}`,
                 severity: "high",
                 relatedId: detail.id.toString(),
                 relatedType: "payment",
@@ -211,86 +231,109 @@ const DisputeTracking: React.FC = () => {
         }
       });
 
-      // Bulk save detected disputes to database
+      // Lưu hàng loạt các tranh chấp đã phát hiện vào database
       if (potentialDisputes.length > 0) {
         try {
           await disputeService.bulkCreateDisputes(potentialDisputes);
         } catch (err) {
-          console.error("Failed to save detected disputes:", err);
+          console.error("Không thể lưu các tranh chấp đã phát hiện:", err);
         }
       }
     } catch (err) {
-      console.error("Failed to detect disputes:", err);
+      console.error("Không thể phát hiện tranh chấp:", err);
     }
   };
 
+  /**
+   * Xử lý khi click nút xem xét tranh chấp
+   * @param dispute - Tranh chấp cần xem xét
+   */
   const handleReview = (dispute: PotentialDispute) => {
     setSelectedDispute(dispute);
     setReviewNotes(dispute.notes || "");
     setShowReviewModal(true);
   };
 
+  /**
+   * Xử lý khi click nút giải quyết tranh chấp
+   * @param dispute - Tranh chấp cần giải quyết
+   */
   const handleResolve = (dispute: PotentialDispute) => {
     setSelectedDispute(dispute);
     setReviewNotes(dispute.notes || "");
     setShowResolveModal(true);
   };
 
+  /**
+   * Lưu đánh giá tranh chấp
+   */
   const saveReview = async () => {
     if (!selectedDispute) return;
 
     try {
       setError(null);
-      // Update dispute in database via API
+      // Cập nhật tranh chấp trong database qua API
       await disputeService.updateDispute(selectedDispute.id, {
         status: "in_review",
         notes: reviewNotes,
       });
 
-      // Reload disputes from database
+      // Tải lại tranh chấp từ database
       await loadDisputes();
 
       setShowReviewModal(false);
       setSelectedDispute(null);
       setReviewNotes("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update dispute");
+      setError(err instanceof Error ? err.message : "Không thể cập nhật tranh chấp");
     }
   };
 
+  /**
+   * Lưu giải quyết tranh chấp
+   */
   const saveResolve = async () => {
     if (!selectedDispute) return;
 
     try {
       setError(null);
-      const userEmail = localStorage.getItem("email") || "Staff";
+      const userEmail = localStorage.getItem("email") || "Nhân viên";
       
-      // Update dispute in database via API
+      // Cập nhật tranh chấp trong database qua API
       await disputeService.updateDispute(selectedDispute.id, {
         status: "resolved",
         notes: reviewNotes,
         resolvedBy: userEmail,
       });
 
-      // Reload disputes from database
+      // Tải lại tranh chấp từ database
       await loadDisputes();
 
       setShowResolveModal(false);
       setSelectedDispute(null);
       setReviewNotes("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to resolve dispute");
+      setError(err instanceof Error ? err.message : "Không thể giải quyết tranh chấp");
     }
   };
 
+  /**
+   * Lọc tranh chấp theo filter đã chọn
+   * @returns Danh sách tranh chấp đã lọc
+   */
   const filteredDisputes = disputes.filter((dispute) => {
     if (filter === "all") return true;
-    // Match status regardless of case and format (Pending/pending, InReview/in_review, Resolved/resolved)
+    // Khớp status bất kể chữ hoa/thường và định dạng (Pending/pending, InReview/in_review, Resolved/resolved)
     const disputeStatusLower = dispute.status.toLowerCase().replace("_", "");
     const filterLower = filter.toLowerCase().replace("_", "");
     return disputeStatusLower === filterLower;
   });
 
+  /**
+   * Lấy màu hiển thị cho mức độ nghiêm trọng
+   * @param severity - Mức độ nghiêm trọng ("low", "medium", "high")
+   * @returns CSS classes cho màu
+   */
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "high":
@@ -304,23 +347,33 @@ const DisputeTracking: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy nhãn loại tranh chấp (tiếng Việt)
+   * @param type - Loại tranh chấp
+   * @returns Nhãn loại tranh chấp
+   */
   const getTypeLabel = (type: string) => {
     switch (type) {
       case "booking_conflict":
-        return "Booking Conflict";
+        return "Xung Đột Đặt Chỗ";
       case "payment_issue":
-        return "Payment Issue";
+        return "Vấn Đề Thanh Toán";
       case "cancellation":
-        return "Cancellation";
+        return "Hủy Bỏ";
       case "refund":
-        return "Refund";
+        return "Hoàn Tiền";
       case "overdue_payment":
-        return "Overdue Payment";
+        return "Thanh Toán Quá Hạn";
       default:
         return type;
     }
   };
 
+  /**
+   * Định dạng ngày giờ theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày giờ
+   * @returns Ngày giờ đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
@@ -333,53 +386,53 @@ const DisputeTracking: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Staff | Dispute Tracking" />
+      <PageMeta title="Nhân viên | Theo Dõi Tranh Chấp" />
       <PageHeader
-        title="Dispute Tracking"
-        description="Assist administrators by triaging escalations, logging updates, and keeping co-owners informed."
+        title="Theo Dõi Tranh Chấp"
+        description="Hỗ trợ quản trị viên bằng cách phân loại các vấn đề, ghi nhận cập nhật và thông báo cho đồng sở hữu."
         actions={
           <Button size="sm" onClick={loadDisputes} disabled={loading}>
-            Refresh
+            Làm Mới
           </Button>
         }
       />
 
-      {/* Filters */}
+      {/* Bộ Lọc */}
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
-          All ({disputes.length})
+          Tất Cả ({disputes.length})
         </Button>
         <Button
           size="sm"
           variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
-          Pending ({disputes.filter((d) => d.status === "pending").length})
+          Chờ Xử Lý ({disputes.filter((d) => d.status === "pending").length})
         </Button>
         <Button
           size="sm"
           variant={filter === "in_review" ? "primary" : "outline"}
           onClick={() => setFilter("in_review")}
         >
-          In Review ({disputes.filter((d) => d.status === "in_review").length})
+          Đang Xem Xét ({disputes.filter((d) => d.status === "in_review").length})
         </Button>
         <Button
           size="sm"
           variant={filter === "resolved" ? "primary" : "outline"}
           onClick={() => setFilter("resolved")}
         >
-          Resolved ({disputes.filter((d) => d.status === "resolved").length})
+          Đã Giải Quyết ({disputes.filter((d) => d.status === "resolved").length})
         </Button>
       </div>
 
-      {/* Disputes List */}
+      {/* Danh Sách Tranh Chấp */}
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">Loading disputes...</p>
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400">Đang tải danh sách tranh chấp...</p>
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-error-200 bg-error-50 p-6 shadow-theme-xs dark:border-error-500/40 dark:bg-error-500/10">
@@ -389,18 +442,18 @@ const DisputeTracking: React.FC = () => {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Triage Checklist
+              Danh Sách Kiểm Tra Phân Loại
             </h3>
             <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-              <li>• Review evidence from booking and payment services.</li>
-              <li>• Collect statements from involved co-owners.</li>
-              <li>• Coordinate with admins for final arbitration decisions.</li>
+              <li>• Xem xét bằng chứng từ dịch vụ đặt chỗ và thanh toán.</li>
+              <li>• Thu thập tuyên bố từ các đồng sở hữu liên quan.</li>
+              <li>• Phối hợp với quản trị viên để đưa ra quyết định phân xử cuối cùng.</li>
             </ul>
           </div>
           <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-            <p className="font-medium text-gray-700 dark:text-gray-200">No Disputes Found</p>
+            <p className="font-medium text-gray-700 dark:text-gray-200">Không Tìm Thấy Tranh Chấp</p>
             <p className="mt-2">
-              No potential disputes detected. The system is monitoring bookings and payments for issues.
+              Không phát hiện tranh chấp tiềm năng nào. Hệ thống đang theo dõi đặt chỗ và thanh toán để phát hiện vấn đề.
             </p>
           </div>
         </div>
@@ -436,34 +489,34 @@ const DisputeTracking: React.FC = () => {
                   <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{dispute.description}</p>
                   {dispute.notes && (
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      <span className="font-medium">Notes:</span> {dispute.notes}
+                      <span className="font-medium">Ghi chú:</span> {dispute.notes}
                     </p>
                   )}
                   {dispute.resolvedBy && dispute.resolvedAt && (
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Resolved by {dispute.resolvedBy} on {formatDate(dispute.resolvedAt)}
+                      Đã giải quyết bởi {dispute.resolvedBy} vào {formatDate(dispute.resolvedAt)}
                     </p>
                   )}
                   <div className="mt-3 flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
-                    <span>Created: {formatDate(dispute.createdAt)}</span>
+                    <span>Tạo: {formatDate(dispute.createdAt)}</span>
                     <span>•</span>
-                    <span>Related: {dispute.relatedType} #{dispute.relatedId}</span>
+                    <span>Liên quan: {dispute.relatedType} #{dispute.relatedId}</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
                   {dispute.status.toLowerCase().replace("_", "") === "pending" && (
                     <>
                       <Button size="sm" variant="outline" onClick={() => handleReview(dispute)}>
-                        Review
+                        Xem Xét
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => handleResolve(dispute)}>
-                        Resolve
+                        Giải Quyết
                       </Button>
                     </>
                   )}
                   {dispute.status.toLowerCase().replace("_", "") === "inreview" && (
                     <Button size="sm" variant="outline" onClick={() => handleResolve(dispute)}>
-                      Resolve
+                      Giải Quyết
                     </Button>
                   )}
                 </div>
@@ -486,10 +539,10 @@ const DisputeTracking: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Review Dispute
+              Xem Xét Tranh Chấp
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Add notes and mark this dispute as under review.
+              Thêm ghi chú và đánh dấu tranh chấp này là đang được xem xét.
             </p>
           </div>
 
@@ -502,13 +555,13 @@ const DisputeTracking: React.FC = () => {
             )}
 
             <div className="mb-6">
-              <Label>Review Notes</Label>
+              <Label>Ghi Chú Xem Xét</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 rows={5}
-                placeholder="Enter review notes..."
+                placeholder="Nhập ghi chú xem xét..."
               />
             </div>
 
@@ -522,10 +575,10 @@ const DisputeTracking: React.FC = () => {
                   setReviewNotes("");
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={saveReview}>
-                Mark as In Review
+                Đánh Dấu Đang Xem Xét
               </Button>
             </div>
           </div>
@@ -545,10 +598,10 @@ const DisputeTracking: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Resolve Dispute
+              Giải Quyết Tranh Chấp
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Add resolution notes and mark this dispute as resolved.
+              Thêm ghi chú giải quyết và đánh dấu tranh chấp này là đã được giải quyết.
             </p>
           </div>
 
@@ -561,13 +614,13 @@ const DisputeTracking: React.FC = () => {
             )}
 
             <div className="mb-6">
-              <Label>Resolution Notes</Label>
+              <Label>Ghi Chú Giải Quyết</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value)}
                 rows={5}
-                placeholder="Enter resolution notes..."
+                placeholder="Nhập ghi chú giải quyết..."
               />
             </div>
 
@@ -581,10 +634,10 @@ const DisputeTracking: React.FC = () => {
                   setReviewNotes("");
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={saveResolve}>
-                Mark as Resolved
+                Đánh Dấu Đã Giải Quyết
               </Button>
             </div>
           </div>
@@ -595,18 +648,18 @@ const DisputeTracking: React.FC = () => {
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
-            Triage Checklist
+            Danh Sách Kiểm Tra Phân Loại
           </h3>
           <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <li>• Review evidence from booking and payment services.</li>
-            <li>• Collect statements from involved co-owners.</li>
-            <li>• Coordinate with admins for final arbitration decisions.</li>
+            <li>• Xem xét bằng chứng từ dịch vụ đặt chỗ và thanh toán.</li>
+            <li>• Thu thập tuyên bố từ các đồng sở hữu liên quan.</li>
+            <li>• Phối hợp với quản trị viên để đưa ra quyết định phân xử cuối cùng.</li>
           </ul>
         </div>
         <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-          <p className="font-medium text-gray-700 dark:text-gray-200">Tip</p>
+          <p className="font-medium text-gray-700 dark:text-gray-200">Mẹo</p>
           <p className="mt-2">
-            Use report-service analytics to spot recurring patterns, then surface proactive training opportunities for groups with repeated disputes.
+            Sử dụng phân tích từ dịch vụ báo cáo để phát hiện các mẫu lặp lại, sau đó đề xuất cơ hội đào tạo chủ động cho các nhóm có tranh chấp lặp lại.
           </p>
         </div>
       </div>

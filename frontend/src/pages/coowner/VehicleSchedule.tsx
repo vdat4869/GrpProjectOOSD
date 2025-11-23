@@ -3,6 +3,7 @@ import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Button from "../../components/ui/button/Button";
 import { bookingService, type VehicleSchedule, type BookingPeriod } from "../../services/bookingService";
+import { ownershipService } from "../../services/ownershipService";
 
 /**
  * Trang lịch xe - xem lịch sử dụng xe và trạng thái xe
@@ -18,17 +19,114 @@ const VehicleSchedule: React.FC = () => {
    */
   useEffect(() => {
     loadSchedules();
+    
+    // Listen for booking created/updated events to refresh schedules
+    const handleBookingUpdated = () => {
+      console.log('[VehicleSchedule] Booking updated event received, refreshing schedules...');
+      setTimeout(() => {
+        loadSchedules();
+      }, 1000);
+    };
+    
+    window.addEventListener('bookingCreated', handleBookingUpdated);
+    window.addEventListener('bookingUpdated', handleBookingUpdated);
+    
+    // Listen for window focus to refresh if needed
+    const handleFocus = () => {
+      if (typeof window !== 'undefined') {
+        const bookingJustCreated = sessionStorage.getItem('bookingJustCreated');
+        if (bookingJustCreated === 'true') {
+          console.log('[VehicleSchedule] Window focused, booking just created, refreshing...');
+          sessionStorage.removeItem('bookingJustCreated');
+          setTimeout(() => {
+            loadSchedules();
+          }, 1000);
+        }
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('bookingCreated', handleBookingUpdated);
+      window.removeEventListener('bookingUpdated', handleBookingUpdated);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   /**
-   * Tải danh sách lịch xe từ API
+   * Tải danh sách lịch xe từ API (chỉ hiển thị xe mà co-owner có quyền)
    */
   const loadSchedules = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await bookingService.getSchedules();
-      setSchedules(data);
+      
+      // Lấy co-owner hiện tại
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
+      }
+      
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        throw new Error("Tài khoản chưa được đăng ký làm co-owner. Vui lòng hoàn thành KYC trước.");
+      }
+      
+      // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Lấy danh sách group IDs từ ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Lấy tất cả groups và vehicles từ booking service
+      const [allGroups, allSchedules, vehiclesFromBooking] = await Promise.all([
+        ownershipService.getGroups(),
+        bookingService.getSchedules(),
+        bookingService.getVehicles(),
+      ]);
+      
+      console.log('[VehicleSchedule] All schedules received:', allSchedules);
+      console.log('[VehicleSchedule] All vehicles from booking:', vehiclesFromBooking);
+      
+      // Lọc groups mà co-owner có quyền
+      const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+      console.log('[VehicleSchedule] User groups:', userGroups);
+      
+      // Map vehicle name từ groups sang vehicleId từ booking service
+      const allowedVehicleIds = new Set<number>();
+      userGroups.forEach(group => {
+        const matchingVehicle = vehiclesFromBooking.find(v => 
+          v.name.toLowerCase() === group.vehicleName.toLowerCase()
+        );
+        if (matchingVehicle) {
+          console.log('[VehicleSchedule] Matched group', group.vehicleName, 'to vehicleId:', matchingVehicle.id);
+          allowedVehicleIds.add(matchingVehicle.id);
+        } else {
+          console.warn('[VehicleSchedule] Could not match group', group.vehicleName, 'to any vehicle');
+          // Fallback: try partial match
+          const partialMatch = vehiclesFromBooking.find(v => 
+            v.name.toLowerCase().includes(group.vehicleName.toLowerCase()) ||
+            group.vehicleName.toLowerCase().includes(v.name.toLowerCase())
+          );
+          if (partialMatch) {
+            console.log('[VehicleSchedule] Found partial match for', group.vehicleName, 'to vehicleId:', partialMatch.id);
+            allowedVehicleIds.add(partialMatch.id);
+          }
+        }
+      });
+      
+      console.log('[VehicleSchedule] Allowed vehicle IDs:', Array.from(allowedVehicleIds));
+      
+      // Lọc schedules chỉ giữ lại những xe mà co-owner có quyền
+      const filteredSchedules = allSchedules.filter(schedule => 
+        allowedVehicleIds.has(schedule.vehicleId)
+      );
+      
+      console.log('[VehicleSchedule] Filtered schedules:', filteredSchedules);
+      console.log('[VehicleSchedule] Total bookings in filtered schedules:', filteredSchedules.reduce((sum, s) => sum + s.bookings.length, 0));
+      
+      setSchedules(filteredSchedules);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải lịch xe");
     } finally {

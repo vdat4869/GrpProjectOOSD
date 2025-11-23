@@ -38,21 +38,42 @@ const OwnershipDetails: React.FC = () => {
   }, []);
 
   /**
-   * Tải dữ liệu: groups và co-owners
+   * Tải dữ liệu: groups và co-owners (chỉ hiển thị groups mà co-owner có quyền)
    */
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [groupsData, coOwnersData] = await Promise.all([
+      
+      // Lấy co-owner hiện tại
+      if (!userId) {
+        throw new Error("Không tìm thấy user. Vui lòng đăng nhập lại.");
+      }
+      
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        throw new Error("Tài khoản chưa được đăng ký làm co-owner. Vui lòng hoàn thành KYC trước.");
+      }
+      
+      // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Lấy danh sách group IDs từ ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Lấy tất cả groups và lọc chỉ những groups mà co-owner có quyền
+      const [allGroupsData, coOwnersData] = await Promise.all([
         ownershipService.getGroups(),
         ownershipService.getCoOwners(),
       ]);
-      setGroups(groupsData);
+      
+      const userGroups = allGroupsData.filter(g => groupIds.includes(g.id));
+      
+      setGroups(userGroups);
       setCoOwners(coOwnersData);
-      if (groupsData.length > 0) {
-        setSelectedGroup(groupsData[0]);
-        await loadGroupOwnerships(groupsData[0].id);
+      if (userGroups.length > 0) {
+        setSelectedGroup(userGroups[0]);
+        await loadGroupOwnerships(userGroups[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không thể tải chi tiết quyền sở hữu");
@@ -138,21 +159,6 @@ const OwnershipDetails: React.FC = () => {
     }
   };
 
-  /**
-   * Đặt thành viên làm admin của group
-   * @param _ownershipId - ID của ownership
-   */
-  const handleSetGroupAdmin = async (_ownershipId: string) => {
-    if (!confirm("Đặt thành viên này làm admin của nhóm?")) return;
-    try {
-      // TODO: Implement set group admin API call
-      if (selectedGroup) {
-        await loadGroupOwnerships(selectedGroup.id);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể đặt group admin");
-    }
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
@@ -297,22 +303,13 @@ const OwnershipDetails: React.FC = () => {
                                 Sửa
                               </Button>
                               {!isCurrentUser && (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleSetGroupAdmin(ownership.id)}
-                                  >
-                                    Đặt Admin
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleRemoveMember(ownership.id)}
-                                  >
-                                    Xóa
-                                  </Button>
-                                </>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRemoveMember(ownership.id)}
+                                >
+                                  Xóa
+                                </Button>
                               )}
                             </div>
                           </div>

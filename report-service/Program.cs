@@ -2,14 +2,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Text.Json;
 using ReportService.Data;
 using ReportService.Services;
 using ReportService.Repositories;
 using ReportService.Infrastructure;
+using ReportService.Models;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using AutoMapper;
 using Microsoft.AspNetCore.Authorization;
+using ReportService;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -193,14 +196,76 @@ try
     // Subscribe to booking completed events
     rabbitMQService.SubscribeEvent<BookingCompletedEvent>("booking.completed", (bookingEvent) =>
     {
-        logger.LogInformation("Received booking completed event: BookingId={BookingId}",
-            bookingEvent.BookingId);
+        logger.LogInformation("Received booking completed event: BookingId={BookingId}, VehicleId={VehicleId}, CoOwnerId={CoOwnerId}, Distance={Distance}, Cost={Cost}",
+            bookingEvent.BookingId, bookingEvent.VehicleId, bookingEvent.CoOwnerId, bookingEvent.Distance, bookingEvent.Cost);
 
-        // Update report data asynchronously
+        // Update report data asynchronously - create UsageHistory and log to MongoDB
         _ = Task.Run(async () =>
         {
             try
             {
+                using var scope = app.Services.CreateScope();
+                var historyRepository = scope.ServiceProvider.GetRequiredService<IHistoryRepository>();
+
+                // Validate data before creating UsageHistory
+                if (bookingEvent.Distance <= 0)
+                {
+                    logger.LogWarning("Invalid distance ({Distance}) for booking {BookingId}. Skipping UsageHistory creation.",
+                        bookingEvent.Distance, bookingEvent.BookingId);
+                    return;
+                }
+
+                // Check if UsageHistory already exists for this booking
+                var existingHistories = await historyRepository.GetUsageHistoriesByDateRangeAsync(
+                    bookingEvent.CheckInTime.AddDays(-1), 
+                    bookingEvent.CheckOutTime.AddDays(1));
+                
+                var existing = existingHistories.FirstOrDefault(h => 
+                    h.VehicleId == bookingEvent.VehicleId && 
+                    h.CoOwnerId == bookingEvent.CoOwnerId &&
+                    Math.Abs((h.StartTime - bookingEvent.CheckInTime).TotalMinutes) < 5 &&
+                    Math.Abs((h.EndTime - bookingEvent.CheckOutTime).TotalMinutes) < 5);
+                
+                if (existing != null)
+                {
+                    logger.LogInformation("UsageHistory already exists for booking {BookingId}: UsageHistoryId={UsageHistoryId}. Skipping creation.",
+                        bookingEvent.BookingId, existing.Id);
+                    return;
+                }
+
+                // Create UsageHistory from booking completed event
+                // Ensure times are in UTC for database consistency
+                var usageHistory = new UsageHistory
+                {
+                    VehicleId = bookingEvent.VehicleId,
+                    CoOwnerId = bookingEvent.CoOwnerId,
+                    StartTime = bookingEvent.CheckInTime.Kind == DateTimeKind.Utc 
+                        ? bookingEvent.CheckInTime 
+                        : bookingEvent.CheckInTime.ToUniversalTime(),
+                    EndTime = bookingEvent.CheckOutTime.Kind == DateTimeKind.Utc 
+                        ? bookingEvent.CheckOutTime 
+                        : bookingEvent.CheckOutTime.ToUniversalTime(),
+                    DistanceKm = (decimal)bookingEvent.Distance,
+                    Cost = (decimal)bookingEvent.Cost,
+                    EnergyConsumed = 0, // Will be calculated or updated later if available
+                    StartBatteryLevel = 0, // Will be updated if available
+                    EndBatteryLevel = 0, // Will be updated if available
+                    Purpose = "Booking",
+                    Notes = $"Booking ID: {bookingEvent.BookingId}",
+                    CreatedAt = bookingEvent.CompletedAt.Kind == DateTimeKind.Utc 
+                        ? bookingEvent.CompletedAt 
+                        : bookingEvent.CompletedAt.ToUniversalTime(),
+                    UpdatedAt = bookingEvent.CompletedAt.Kind == DateTimeKind.Utc 
+                        ? bookingEvent.CompletedAt 
+                        : bookingEvent.CompletedAt.ToUniversalTime(),
+                    IsActive = true
+                };
+
+                await historyRepository.CreateUsageHistoryAsync(usageHistory);
+                logger.LogInformation("Successfully created UsageHistory for booking {BookingId}: UsageHistoryId={UsageHistoryId}, VehicleId={VehicleId}, CoOwnerId={CoOwnerId}, Distance={Distance}, Cost={Cost}",
+                    bookingEvent.BookingId, usageHistory.Id, bookingEvent.VehicleId, bookingEvent.CoOwnerId, bookingEvent.Distance, bookingEvent.Cost);
+
+                // Also log to MongoDB
                 await mongoService.LogAsync("booking_logs", new ReportLog
                 {
                     Action = "BookingCompleted",
@@ -210,7 +275,8 @@ try
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error logging booking event to MongoDB");
+                logger.LogError(ex, "Error processing booking completed event: BookingId={BookingId}, VehicleId={VehicleId}, CoOwnerId={CoOwnerId}, Distance={Distance}, Cost={Cost}. Exception: {Exception}",
+                    bookingEvent.BookingId, bookingEvent.VehicleId, bookingEvent.CoOwnerId, bookingEvent.Distance, bookingEvent.Cost, ex.ToString());
             }
         });
     });
@@ -283,6 +349,123 @@ try
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error logging ownership updated event to MongoDB");
+            }
+        });
+    });
+
+    // Subscribe to cost share created/updated events
+    rabbitMQService.SubscribeEvent<CostShareCreatedMessage>("costshare.created", (costShareEvent) =>
+    {
+        logger.LogInformation("Received cost share created event: CostShareId={CostShareId}, GroupId={GroupId}, VehicleId={VehicleId}, TotalAmount={TotalAmount}",
+            costShareEvent.CostShareId, costShareEvent.GroupId, costShareEvent.VehicleId, costShareEvent.TotalAmount);
+
+        // Update report data asynchronously - create CostRecords for each cost share detail
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = app.Services.CreateScope();
+                var historyRepository = scope.ServiceProvider.GetRequiredService<IHistoryRepository>();
+                var httpClientFactory = scope.ServiceProvider.GetRequiredService<IHttpClientFactory>();
+                var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                var httpClient = httpClientFactory.CreateClient();
+                
+                var paymentServiceUrl = configuration["PaymentServiceUrl"] ?? "http://payment-service:80";
+                
+                // Get cost share details from payment service
+                var detailsRequest = new HttpRequestMessage(HttpMethod.Get, $"{paymentServiceUrl}/api/costshares/{costShareEvent.CostShareId}/details");
+                var detailsResponse = await httpClient.SendAsync(detailsRequest);
+                
+                if (!detailsResponse.IsSuccessStatusCode)
+                {
+                    logger.LogWarning("Failed to get cost share details for CostShareId={CostShareId}: {StatusCode}", 
+                        costShareEvent.CostShareId, detailsResponse.StatusCode);
+                    return;
+                }
+                
+                var detailsJson = await detailsResponse.Content.ReadAsStringAsync();
+                var details = JsonSerializer.Deserialize<List<CostShareDetailResponse>>(detailsJson, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<CostShareDetailResponse>();
+                
+                // Map GUID VehicleId/GroupId to int vehicleId (same way as in HistoryService)
+                var vehicleId = Convert.ToInt32(costShareEvent.VehicleId.ToString().Replace("-", "").Substring(0, 8), 16);
+                
+                // Create CostRecord for each detail
+                foreach (var detail in details)
+                {
+                    // Map GUID CoOwnerId to int coOwnerId
+                    var userIdString = detail.UserId.ToString();
+                    var coOwnerId = Convert.ToInt32(userIdString.Replace("-", "").Substring(0, 8), 16);
+                    
+                    // Determine CostType from Title (Maintenance, Fuel, etc.)
+                    var costType = "Other";
+                    if (costShareEvent.Title.Contains("Bảo dưỡng", StringComparison.OrdinalIgnoreCase) || 
+                        costShareEvent.Title.Contains("Maintenance", StringComparison.OrdinalIgnoreCase))
+                    {
+                        costType = "Maintenance";
+                    }
+                    else if (costShareEvent.Title.Contains("Nhiên liệu", StringComparison.OrdinalIgnoreCase) || 
+                             costShareEvent.Title.Contains("Fuel", StringComparison.OrdinalIgnoreCase))
+                    {
+                        costType = "Fuel";
+                    }
+                    
+                    var costRecord = new CostRecord
+                    {
+                        VehicleId = vehicleId,
+                        CoOwnerId = coOwnerId,
+                        CostType = costType,
+                        Description = costShareEvent.Title,
+                        Amount = detail.Amount,
+                        Currency = detail.Currency ?? costShareEvent.Currency,
+                        ExpenseDate = costShareEvent.CreatedAt,
+                        PaymentStatus = detail.Status == 2 ? PaymentStatus.Paid : PaymentStatus.Pending, // 2 = Completed (mapped to Paid)
+                        Notes = detail.Notes,
+                        CreatedAt = costShareEvent.CreatedAt,
+                        UpdatedAt = costShareEvent.CreatedAt,
+                        IsActive = true
+                    };
+                    
+                    await historyRepository.CreateCostRecordAsync(costRecord);
+                    logger.LogInformation("Created CostRecord for CostShareId={CostShareId}, DetailId={DetailId}, VehicleId={VehicleId}, CoOwnerId={CoOwnerId}, Amount={Amount}",
+                        costShareEvent.CostShareId, detail.Id, vehicleId, coOwnerId, detail.Amount);
+                }
+                
+                // Also log to MongoDB
+                await mongoService.LogAsync("costshare_logs", new ReportLog
+                {
+                    Action = "CostShareCreated",
+                    Details = $"CostShareId: {costShareEvent.CostShareId}, GroupId: {costShareEvent.GroupId}, TotalAmount: {costShareEvent.TotalAmount}, DetailsCount: {details.Count}"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error processing cost share created event: CostShareId={CostShareId}, GroupId={GroupId}, VehicleId={VehicleId}. Exception: {Exception}",
+                    costShareEvent.CostShareId, costShareEvent.GroupId, costShareEvent.VehicleId, ex.ToString());
+            }
+        });
+    });
+    
+    rabbitMQService.SubscribeEvent<CostShareCreatedMessage>("costshare.updated", (costShareEvent) =>
+    {
+        logger.LogInformation("Received cost share updated event: CostShareId={CostShareId}, GroupId={GroupId}, VehicleId={VehicleId}, TotalAmount={TotalAmount}",
+            costShareEvent.CostShareId, costShareEvent.GroupId, costShareEvent.VehicleId, costShareEvent.TotalAmount);
+
+        // Update report data asynchronously - update CostRecords if needed
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // For now, just log to MongoDB. Can add update logic later if needed
+                await mongoService.LogAsync("costshare_logs", new ReportLog
+                {
+                    Action = "CostShareUpdated",
+                    Details = $"CostShareId: {costShareEvent.CostShareId}, GroupId: {costShareEvent.GroupId}, TotalAmount: {costShareEvent.TotalAmount}"
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error logging cost share updated event to MongoDB");
             }
         });
     });

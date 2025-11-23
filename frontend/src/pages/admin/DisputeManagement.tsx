@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý tranh chấp
+ * Cho phép admin giám sát các vấn đề tranh chấp giữa co-owners, đảm bảo SLA được đáp ứng và ghi nhận kết quả
+ */
 import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -6,6 +10,9 @@ import { bookingService } from "../../services/bookingService";
 import { paymentService, PaymentStatus } from "../../services/paymentService";
 import { ownershipService } from "../../services/ownershipService";
 
+/**
+ * Interface cho tranh chấp tiềm năng
+ */
 interface PotentialDispute {
   id: string;
   type: "booking_conflict" | "payment_issue" | "cancellation" | "refund" | "overdue_payment";
@@ -24,10 +31,14 @@ const DisputeManagement: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "pending" | "in_review" | "resolved">("all");
 
+  // Load danh sách tranh chấp khi component mount
   useEffect(() => {
     loadDisputes();
   }, []);
 
+  /**
+   * Tải và phát hiện các tranh chấp tiềm năng từ bookings và cost shares
+   */
   const loadDisputes = async () => {
     try {
       setLoading(true);
@@ -46,14 +57,14 @@ const DisputeManagement: React.FC = () => {
 
       const potentialDisputes: PotentialDispute[] = [];
 
-      // Check for cancelled bookings
+      // Kiểm tra các booking đã hủy
       const cancelledBookings = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
       cancelledBookings.forEach((booking) => {
         potentialDisputes.push({
           id: `booking-${booking.id}`,
           type: "cancellation",
-          title: `Booking #${booking.id} Cancelled`,
-          description: `Booking for vehicle #${booking.vehicleId} was cancelled.`,
+          title: `Đặt Chỗ #${booking.id} Đã Hủy`,
+          description: `Đặt chỗ cho xe #${booking.vehicleId} đã bị hủy.`,
           severity: "medium",
           relatedId: booking.id,
           relatedType: "booking",
@@ -62,7 +73,7 @@ const DisputeManagement: React.FC = () => {
         });
       });
 
-      // Check for overlapping bookings
+      // Kiểm tra các booking trùng lịch
       for (let i = 0; i < bookings.length; i++) {
         for (let j = i + 1; j < bookings.length; j++) {
           const b1 = bookings[i];
@@ -80,8 +91,8 @@ const DisputeManagement: React.FC = () => {
               potentialDisputes.push({
                 id: `conflict-${b1.id}-${b2.id}`,
                 type: "booking_conflict",
-                title: `Booking Conflict: #${b1.id} & #${b2.id}`,
-                description: `Overlapping bookings for vehicle #${b1.vehicleId}.`,
+                title: `Xung Đột Đặt Chỗ: #${b1.id} & #${b2.id}`,
+                description: `Các đặt chỗ trùng lịch cho xe #${b1.vehicleId}.`,
                 severity: "high",
                 relatedId: b1.id,
                 relatedType: "booking",
@@ -93,7 +104,7 @@ const DisputeManagement: React.FC = () => {
         }
       }
 
-      // Check for overdue payments
+      // Kiểm tra các khoản thanh toán quá hạn
       allCostShares.forEach((cs) => {
         const dueDate = new Date(cs.dueDate);
         const now = new Date();
@@ -101,8 +112,8 @@ const DisputeManagement: React.FC = () => {
           potentialDisputes.push({
             id: `overdue-${cs.id}`,
             type: "overdue_payment",
-            title: `Overdue Payment: ${cs.title}`,
-            description: `Cost share for ${cs.vehicleId} is overdue.`,
+            title: `Thanh Toán Quá Hạn: ${cs.title}`,
+            description: `Chi phí chia sẻ cho ${cs.vehicleId} đã quá hạn thanh toán.`,
             severity: "high",
             relatedId: cs.id,
             relatedType: "cost_share",
@@ -114,12 +125,17 @@ const DisputeManagement: React.FC = () => {
 
       setDisputes(potentialDisputes);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load disputes");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách tranh chấp");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho mức độ nghiêm trọng
+   * @param severity - Mức độ nghiêm trọng
+   * @returns Class CSS cho màu
+   */
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case "high":
@@ -131,6 +147,11 @@ const DisputeManagement: React.FC = () => {
     }
   };
 
+  /**
+   * Lấy màu hiển thị cho loại tranh chấp
+   * @param type - Loại tranh chấp
+   * @returns Class CSS cho màu
+   */
   const getTypeColor = (type: string) => {
     switch (type) {
       case "booking_conflict":
@@ -144,11 +165,20 @@ const DisputeManagement: React.FC = () => {
     }
   };
 
+  /**
+   * Lọc tranh chấp theo filter
+   * @returns Danh sách tranh chấp đã lọc
+   */
   const filteredDisputes = disputes.filter((d) => {
     if (filter === "all") return true;
     return d.status === filter;
   });
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "2-digit",
@@ -159,18 +189,48 @@ const DisputeManagement: React.FC = () => {
     });
   };
 
+  /**
+   * Lấy nhãn hiển thị cho loại tranh chấp
+   * @param type - Loại tranh chấp
+   * @returns Nhãn loại tranh chấp
+   */
+  const getTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      booking_conflict: "Xung Đột Đặt Chỗ",
+      payment_issue: "Vấn Đề Thanh Toán",
+      cancellation: "Hủy Đặt Chỗ",
+      refund: "Hoàn Tiền",
+      overdue_payment: "Thanh Toán Quá Hạn",
+    };
+    return labels[type] || type.replace("_", " ");
+  };
+
+  /**
+   * Lấy nhãn hiển thị cho trạng thái tranh chấp
+   * @param status - Trạng thái tranh chấp
+   * @returns Nhãn trạng thái
+   */
+  const getStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      pending: "Chờ Xử Lý",
+      in_review: "Đang Xem Xét",
+      resolved: "Đã Giải Quyết",
+    };
+    return labels[status] || status;
+  };
+
   return (
     <>
-      <PageMeta title="Admin | Dispute Management" />
+      <PageMeta title="Admin | Quản Lý Tranh Chấp" />
       <PageHeader
-        title="Dispute Management"
-        description="Oversee escalations between co-owners, ensure SLAs are met, and document outcomes across services."
-        actions={<Button size="sm" onClick={loadDisputes} disabled={loading}>Refresh</Button>}
+        title="Quản Lý Tranh Chấp"
+        description="Giám sát các vấn đề tranh chấp giữa co-owners, đảm bảo SLA được đáp ứng và ghi nhận kết quả trên các dịch vụ."
+        actions={<Button size="sm" onClick={loadDisputes} disabled={loading}>Làm Mới</Button>}
       />
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading disputes...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách tranh chấp...</p>
         </div>
       )}
 
@@ -188,35 +248,35 @@ const DisputeManagement: React.FC = () => {
               variant={filter === "all" ? "primary" : "outline"}
               onClick={() => setFilter("all")}
             >
-              All ({disputes.length})
+              Tất Cả ({disputes.length})
             </Button>
             <Button
               size="sm"
               variant={filter === "pending" ? "primary" : "outline"}
               onClick={() => setFilter("pending")}
             >
-              Pending ({disputes.filter((d) => d.status === "pending").length})
+              Chờ Xử Lý ({disputes.filter((d) => d.status === "pending").length})
             </Button>
             <Button
               size="sm"
               variant={filter === "in_review" ? "primary" : "outline"}
               onClick={() => setFilter("in_review")}
             >
-              In Review ({disputes.filter((d) => d.status === "in_review").length})
+              Đang Xem Xét ({disputes.filter((d) => d.status === "in_review").length})
             </Button>
             <Button
               size="sm"
               variant={filter === "resolved" ? "primary" : "outline"}
               onClick={() => setFilter("resolved")}
             >
-              Resolved ({disputes.filter((d) => d.status === "resolved").length})
+              Đã Giải Quyết ({disputes.filter((d) => d.status === "resolved").length})
             </Button>
           </div>
 
           <div className="grid gap-4">
             {filteredDisputes.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-                <p className="text-gray-600 dark:text-gray-400">No disputes found.</p>
+                <p className="text-gray-600 dark:text-gray-400">Không tìm thấy tranh chấp nào.</p>
               </div>
             ) : (
               filteredDisputes.map((dispute) => (
@@ -232,17 +292,26 @@ const DisputeManagement: React.FC = () => {
                             {dispute.title}
                           </h3>
                           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getTypeColor(dispute.type)}`}>
-                            {dispute.type.replace("_", " ")}
+                            {getTypeLabel(dispute.type)}
                           </span>
                           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getSeverityColor(dispute.severity)}`}>
-                            {dispute.severity}
+                            {dispute.severity === "high" ? "Cao" : dispute.severity === "medium" ? "Trung Bình" : "Thấp"}
+                          </span>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            dispute.status === "pending" 
+                              ? "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"
+                              : dispute.status === "in_review"
+                              ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300"
+                              : "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300"
+                          }`}>
+                            {getStatusLabel(dispute.status)}
                           </span>
                         </div>
                         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                           {dispute.description}
                         </p>
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                          Created: {formatDate(dispute.createdAt)} • Related: {dispute.relatedType} #{dispute.relatedId}
+                          Tạo lúc: {formatDate(dispute.createdAt)} • Liên quan: {dispute.relatedType} #{dispute.relatedId}
                         </p>
                       </div>
                     </div>

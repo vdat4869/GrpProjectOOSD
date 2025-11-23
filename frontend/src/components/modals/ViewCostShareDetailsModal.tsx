@@ -4,12 +4,14 @@ import Button from "../ui/button/Button";
 import { paymentService, CostShare, CostShareDetail, PaymentStatus } from "../../services/paymentService";
 import { authService, UserSummary } from "../../services/authService";
 
+// Props cho modal xem chi tiết cost share
 interface ViewCostShareDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   costShare: CostShare | null;
 }
 
+// Modal để xem chi tiết cost share
 export default function ViewCostShareDetailsModal({
   isOpen,
   onClose,
@@ -30,6 +32,7 @@ export default function ViewCostShareDetailsModal({
     }
   }, [isOpen, costShare]);
 
+  // Tải chi tiết cost share
   const loadDetails = async () => {
     if (!costShare) return;
 
@@ -39,46 +42,47 @@ export default function ViewCostShareDetailsModal({
       const detailsData = await paymentService.getCostShareDetails(costShare.id);
       setDetails(detailsData);
 
-      // Load user info for each detail
+      // Tải thông tin người dùng cho mỗi chi tiết
       const userMap = new Map<string, UserSummary>();
       for (const detail of detailsData) {
         try {
-          // Try to parse userId as number first (if it's a number string)
+          // Thử parse userId thành number trước (nếu là chuỗi số)
           const userIdNum = parseInt(detail.userId);
           if (!isNaN(userIdNum)) {
             const user = await authService.getUserDetails(userIdNum);
             userMap.set(detail.userId, user);
           }
         } catch (err) {
-          // If userId is GUID, we can't get user details easily
-          // Just skip for now
+          // Nếu userId là GUID, không thể lấy thông tin người dùng dễ dàng
+          // Bỏ qua tạm thời
           console.warn(`Could not load user details for ${detail.userId}`);
         }
       }
       setUsers(userMap);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load cost share details");
+      setError(err instanceof Error ? err.message : "Không thể tải chi tiết cost share");
     } finally {
       setLoading(false);
     }
   };
 
+  // Đánh dấu đã thanh toán
   const handleMarkAsPaid = async (detailId: string) => {
     try {
       const success = await paymentService.markCostShareDetailAsPaid(detailId);
       if (success) {
         await loadDetails();
-        // Also reload parent if needed
+        // Tải lại parent nếu cần
         if (costShare) {
           const updated = await paymentService.getCostShareById(costShare.id);
           if (updated) {
-            // Trigger parent reload
+            // Kích hoạt reload parent
             window.dispatchEvent(new CustomEvent("costShareUpdated"));
           }
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mark as paid");
+      setError(err instanceof Error ? err.message : "Không thể đánh dấu đã thanh toán");
     }
   };
 
@@ -105,22 +109,23 @@ export default function ViewCostShareDetailsModal({
     }
   };
 
+  // Lấy nhãn trạng thái thanh toán
   const getStatusLabel = (status: PaymentStatus) => {
     switch (status) {
       case PaymentStatus.Pending:
-        return "Pending";
+        return "Chờ thanh toán";
       case PaymentStatus.Processing:
-        return "Processing";
+        return "Đang xử lý";
       case PaymentStatus.Completed:
-        return "Completed";
+        return "Đã hoàn thành";
       case PaymentStatus.Failed:
-        return "Failed";
+        return "Thất bại";
       case PaymentStatus.Cancelled:
-        return "Cancelled";
+        return "Đã hủy";
       case PaymentStatus.Refunded:
-        return "Refunded";
+        return "Đã hoàn tiền";
       default:
-        return "Unknown";
+        return "Không xác định";
     }
   };
 
@@ -150,11 +155,11 @@ export default function ViewCostShareDetailsModal({
       <div className="no-scrollbar relative w-full max-w-[800px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Cost Share Details
+            Chi Tiết Cost Share
           </h4>
         </div>
         <div className="px-2 space-y-4">
-        {/* Cost Share Summary */}
+        {/* Tóm tắt Cost Share */}
         <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/30">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">{costShare.title}</h3>
           {costShare.description && (
@@ -162,19 +167,19 @@ export default function ViewCostShareDetailsModal({
           )}
           <div className="mt-3 grid grid-cols-3 gap-4">
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Total Amount</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Tổng Số Tiền</p>
               <p className="text-sm font-semibold text-gray-900 dark:text-white/90">
                 {formatAmount(costShare.totalAmount)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Paid</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Đã Thanh Toán</p>
               <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                 {formatAmount(paidAmount)}
               </p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Pending</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Chờ Thanh Toán</p>
               <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
                 {formatAmount(pendingAmount)}
               </p>
@@ -189,33 +194,33 @@ export default function ViewCostShareDetailsModal({
         )}
 
         {loading ? (
-          <div className="py-8 text-center text-gray-600 dark:text-gray-400">Loading details...</div>
+          <div className="py-8 text-center text-gray-600 dark:text-gray-400">Đang tải chi tiết...</div>
         ) : details.length === 0 ? (
-          <div className="py-8 text-center text-gray-600 dark:text-gray-400">No details found.</div>
+          <div className="py-8 text-center text-gray-600 dark:text-gray-400">Không tìm thấy chi tiết.</div>
         ) : (
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-white/90">Payment Breakdown</h4>
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-white/90">Phân Bổ Thanh Toán</h4>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-50 dark:bg-gray-800/30">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Co-owner
+                      Đồng sở hữu
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Ownership %
+                      % Sở hữu
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Amount
+                      Số Tiền
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Status
+                      Trạng Thái
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Paid Date
+                      Ngày Thanh Toán
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Actions
+                      Hành Động
                     </th>
                   </tr>
                 </thead>
@@ -250,7 +255,7 @@ export default function ViewCostShareDetailsModal({
                             variant="outline"
                             onClick={() => handleMarkAsPaid(detail.id)}
                           >
-                            Mark Paid
+                            Đánh Dấu Đã Thanh Toán
                           </Button>
                         )}
                       </td>
@@ -264,7 +269,7 @@ export default function ViewCostShareDetailsModal({
 
         <div className="flex justify-end gap-2 pt-4">
           <Button size="sm" variant="outline" onClick={onClose}>
-            Close
+            Đóng
           </Button>
         </div>
         </div>

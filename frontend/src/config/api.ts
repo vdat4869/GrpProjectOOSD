@@ -52,6 +52,7 @@ export const API_ENDPOINTS = {
     GROUP_FUND_TRANSACTIONS: "/api/ownership/groupfunds/{fundId}/transactions",
     CREATE_GROUP_FUND_TRANSACTION: "/api/ownership/groupfunds/{fundId}/transactions",
     APPROVE_FUND_TRANSACTION: "/api/ownership/groupfunds/transactions/{transactionId}/approve",
+    AUTO_APPROVE_FUND_TRANSACTION: "/api/ownership/groupfunds/transactions/{transactionId}/auto-approve-payment",
   },
   // Booking
   BOOKING: {
@@ -64,6 +65,7 @@ export const API_ENDPOINTS = {
     CHECK_IN: "/api/booking/{id}/check-in",
     CHECK_OUT: "/api/booking/{id}/check-out",
     QR_CODE: "/api/booking/{id}/qr-code",
+    SYNC_COOWNERS: "/api/booking/sync-coowners",
   },
   // Payment
   PAYMENT: {

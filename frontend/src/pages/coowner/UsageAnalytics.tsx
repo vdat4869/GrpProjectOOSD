@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
 import Chart from "react-apexcharts";
@@ -36,6 +36,32 @@ const UsageAnalytics: React.FC = () => {
   const [_selectedGroup, _setSelectedGroup] = useState<VehicleGroup | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const loadStatistics = useCallback(async () => {
+    if (!selectedVehicleId) {
+      console.log('[UsageAnalytics] loadStatistics: No selectedVehicleId, skipping');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('[UsageAnalytics] Loading statistics for vehicleId:', selectedVehicleId, 'date range:', startDate, 'to', endDate);
+      const [usage, cost] = await Promise.all([
+        reportService.getUsageStatistics(selectedVehicleId, startDate, endDate),
+        reportService.getCostStatistics(selectedVehicleId, startDate, endDate),
+      ]);
+      console.log('[UsageAnalytics] Received usage stats:', usage);
+      console.log('[UsageAnalytics] Received cost stats:', cost);
+      setUsageStats(usage);
+      setCostStats(cost);
+    } catch (err) {
+      console.error('[UsageAnalytics] Error loading statistics:', err);
+      setError(err instanceof Error ? err.message : "Không thể tải thống kê");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedVehicleId, startDate, endDate]);
+
   useEffect(() => {
     loadGroups();
   }, []);
@@ -49,38 +75,109 @@ const UsageAnalytics: React.FC = () => {
       loadOwnerships();
       loadBookings();
     }
-  }, [selectedVehicleId, selectedGroupId, startDate, endDate]);
+  }, [selectedVehicleId, selectedGroupId, startDate, endDate, loadStatistics]);
+
+  /**
+   * Listen for booking completed events to refresh usage analytics
+   */
+  useEffect(() => {
+    const handleBookingCompleted = async () => {
+      console.log('[UsageAnalytics] Booking completed event received, refreshing statistics...');
+      if (selectedVehicleId) {
+        // Delay để đảm bảo backend đã xử lý xong
+        setTimeout(() => {
+          loadStatistics();
+        }, 2000);
+        // Retry sau 5 giây
+        setTimeout(() => {
+          console.log('[UsageAnalytics] Second retry after checkout...');
+          loadStatistics();
+        }, 5000);
+      }
+    };
+
+    window.addEventListener('bookingCompleted', handleBookingCompleted);
+
+    // Listen for window focus to refresh if checkout just completed
+    const handleFocus = () => {
+      if (typeof window !== 'undefined') {
+        const checkoutJustCompleted = sessionStorage.getItem('checkoutJustCompleted');
+        if (checkoutJustCompleted === 'true' && selectedVehicleId) {
+          console.log('[UsageAnalytics] Window focused, checkout just completed, refreshing...');
+          sessionStorage.removeItem('checkoutJustCompleted');
+          setTimeout(() => {
+            loadStatistics();
+          }, 1500);
+        }
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('bookingCompleted', handleBookingCompleted);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [selectedVehicleId, loadStatistics]);
 
   const loadGroups = async () => {
     try {
-      const data = await ownershipService.getGroups();
-      setGroups(data);
-      if (data.length > 0 && !selectedGroupId) {
-        setSelectedGroupId(data[0].id);
-        // Use group id as vehicle identifier (simplified - would need proper vehicle mapping)
-        setSelectedVehicleId(parseInt(data[0].id.replace(/-/g, "").substring(0, 8), 16) || 1);
+      // Lấy co-owner hiện tại
+      const userId = typeof window !== "undefined" ? localStorage.getItem("userId") : null;
+      if (!userId) {
+        console.error("Không tìm thấy user. Vui lòng đăng nhập lại.");
+        return;
+      }
+      
+      const coOwner = await ownershipService.getCoOwnerByUserId(userId);
+      if (!coOwner) {
+        console.error("Tài khoản chưa được đăng ký làm co-owner.");
+        return;
+      }
+      
+      // Lấy tất cả quyền sở hữu của co-owner (chỉ active)
+      const allOwnerships = await ownershipService.getOwnerships(undefined, coOwner.id, true);
+      
+      // Lấy danh sách group IDs từ ownerships
+      const groupIds = [...new Set(allOwnerships.map(o => o.vehicleGroupId))];
+      
+      // Lấy tất cả groups và vehicles từ booking service
+      const [allGroups, vehiclesFromBooking] = await Promise.all([
+        ownershipService.getGroups(),
+        bookingService.getVehicles(),
+      ]);
+      
+      // Lọc chỉ những groups mà co-owner có quyền
+      const userGroups = allGroups.filter(g => groupIds.includes(g.id));
+      
+      setGroups(userGroups);
+      if (userGroups.length > 0 && !selectedGroupId) {
+        const firstGroup = userGroups[0];
+        setSelectedGroupId(firstGroup.id);
+        
+        // Map group sang vehicleId từ booking service
+        const matchingVehicle = vehiclesFromBooking.find(v => 
+          v.name.toLowerCase() === firstGroup.vehicleName.toLowerCase()
+        );
+        
+        if (matchingVehicle) {
+          console.log('[UsageAnalytics] Mapped group to vehicleId:', matchingVehicle.id, 'for group:', firstGroup.vehicleName);
+          setSelectedVehicleId(matchingVehicle.id);
+        } else {
+          console.warn('[UsageAnalytics] Could not find matching vehicle for group:', firstGroup.vehicleName);
+          // Fallback: try to find by partial name match
+          const partialMatch = vehiclesFromBooking.find(v => 
+            v.name.toLowerCase().includes(firstGroup.vehicleName.toLowerCase()) ||
+            firstGroup.vehicleName.toLowerCase().includes(v.name.toLowerCase())
+          );
+          if (partialMatch) {
+            console.log('[UsageAnalytics] Found partial match, using vehicleId:', partialMatch.id);
+            setSelectedVehicleId(partialMatch.id);
+          }
+        }
       }
     } catch (err) {
-      console.error("Failed to load groups:", err);
-    }
-  };
-
-  const loadStatistics = async () => {
-    if (!selectedVehicleId) return;
-
-    try {
-      setLoading(true);
-      setError(null);
-      const [usage, cost] = await Promise.all([
-        reportService.getUsageStatistics(selectedVehicleId, startDate, endDate),
-        reportService.getCostStatistics(selectedVehicleId, startDate, endDate),
-      ]);
-      setUsageStats(usage);
-      setCostStats(cost);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Không thể tải thống kê");
-    } finally {
-      setLoading(false);
+      console.error("Không thể tải nhóm:", err);
     }
   };
 
@@ -95,7 +192,7 @@ const UsageAnalytics: React.FC = () => {
       });
       setFairnessCheck(fairness);
     } catch (err) {
-      console.error("Failed to load fairness check:", err);
+      console.error("Không thể tải kiểm tra công bằng:", err);
     } finally {
       setLoadingFairness(false);
     }
@@ -107,7 +204,7 @@ const UsageAnalytics: React.FC = () => {
       const data = await ownershipService.getOwnerships(selectedGroupId, undefined, true);
       setOwnerships(data);
     } catch (err) {
-      console.error("Failed to load ownerships:", err);
+      console.error("Không thể tải quyền sở hữu:", err);
     }
   };
 
@@ -121,17 +218,40 @@ const UsageAnalytics: React.FC = () => {
       });
       setBookings(filtered);
     } catch (err) {
-      console.error("Failed to load bookings:", err);
+      console.error("Không thể tải đặt chỗ:", err);
     }
   };
 
-  const handleGroupChange = (groupId: string) => {
+  const handleGroupChange = async (groupId: string) => {
     setSelectedGroupId(groupId);
     const group = groups.find((g) => g.id === groupId);
     _setSelectedGroup(group || null);
     if (group?.id) {
-      // Use group id as vehicle identifier (simplified - would need proper vehicle mapping)
-      setSelectedVehicleId(parseInt(group.id.replace(/-/g, "").substring(0, 8), 16) || 1);
+      try {
+        // Map group sang vehicleId từ booking service
+        const vehiclesFromBooking = await bookingService.getVehicles();
+        const matchingVehicle = vehiclesFromBooking.find(v => 
+          v.name.toLowerCase() === group.vehicleName.toLowerCase()
+        );
+        
+        if (matchingVehicle) {
+          console.log('[UsageAnalytics] Mapped group to vehicleId:', matchingVehicle.id, 'for group:', group.vehicleName);
+          setSelectedVehicleId(matchingVehicle.id);
+        } else {
+          console.warn('[UsageAnalytics] Could not find matching vehicle for group:', group.vehicleName);
+          // Fallback: try to find by partial name match
+          const partialMatch = vehiclesFromBooking.find(v => 
+            v.name.toLowerCase().includes(group.vehicleName.toLowerCase()) ||
+            group.vehicleName.toLowerCase().includes(v.name.toLowerCase())
+          );
+          if (partialMatch) {
+            console.log('[UsageAnalytics] Found partial match, using vehicleId:', partialMatch.id);
+            setSelectedVehicleId(partialMatch.id);
+          }
+        }
+      } catch (err) {
+        console.error('[UsageAnalytics] Error mapping group to vehicleId:', err);
+      }
     }
   };
 
@@ -167,11 +287,14 @@ const UsageAnalytics: React.FC = () => {
         window.URL.revokeObjectURL(url);
       }
     } catch (err) {
-      console.error("Failed to download CSV:", err);
+      console.error("Không thể tải CSV:", err);
     }
   };
 
-  const formatNumber = (num: number) => {
+  const formatNumber = (num: number | undefined | null) => {
+    if (num === undefined || num === null || isNaN(num)) {
+      return "0";
+    }
     return num.toLocaleString("en-US", { maximumFractionDigits: 2 });
   };
 
@@ -258,7 +381,7 @@ const UsageAnalytics: React.FC = () => {
             </Select>
           </div>
           <div>
-            <Label>Start Date</Label>
+            <Label>Ngày Bắt Đầu</Label>
             <Input
               type="date"
               value={startDate.toISOString().split("T")[0]}
@@ -266,7 +389,7 @@ const UsageAnalytics: React.FC = () => {
             />
           </div>
           <div>
-            <Label>End Date</Label>
+            <Label>Ngày Kết Thúc</Label>
             <Input
               type="date"
               value={endDate.toISOString().split("T")[0]}
@@ -280,7 +403,7 @@ const UsageAnalytics: React.FC = () => {
               disabled={!selectedVehicleId || loading}
               className="w-full"
             >
-              {loading ? "Loading..." : "Refresh"}
+              {loading ? "Đang tải..." : "Làm Mới"}
             </Button>
           </div>
         </div>
@@ -297,33 +420,33 @@ const UsageAnalytics: React.FC = () => {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Usage
+                Tổng Sử Dụng
               </h3>
               <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white/90">
                 {formatNumber(usageStats.totalUsageCount)}
               </p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">times</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">lần</p>
             </div>
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Distance
+                Tổng Quãng Đường
               </h3>
               <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white/90">
                 {formatNumber(usageStats.totalDistance)} km
               </p>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Avg: {formatNumber(usageStats.averageDistancePerUsage)} km/trip
+                Trung bình: {formatNumber(usageStats.averageDistancePerUsage)} km/chuyến
               </p>
             </div>
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
               <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                Total Cost
+                Tổng Chi Phí
               </h3>
               <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white/90">
                 ₫{formatNumber(usageStats.totalCost)}
               </p>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Energy Efficiency: {formatNumber(usageStats.energyEfficiency)} km/kWh
+                Hiệu suất năng lượng: {formatNumber(usageStats.energyEfficiency)} km/kWh
               </p>
             </div>
           </div>
@@ -333,10 +456,10 @@ const UsageAnalytics: React.FC = () => {
         {usageVsOwnershipData && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Usage vs. Ownership Ratio
+              Tỷ Lệ Sử Dụng vs. Sở Hữu
             </h2>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-              Compare your actual booking percentage with your ownership percentage.
+              So sánh tỷ lệ đặt chỗ thực tế của bạn với tỷ lệ sở hữu của bạn.
             </p>
             <div className="mt-6">
               <Chart
@@ -359,7 +482,7 @@ const UsageAnalytics: React.FC = () => {
                     formatter: (val: number) => `${val.toFixed(1)}%`,
                   },
                   xaxis: {
-                    categories: ["Ownership %", "Booking %"],
+                    categories: ["Tỷ Lệ Sở Hữu %", "Tỷ Lệ Đặt Chỗ %"],
                     labels: {
                       style: {
                         fontSize: "12px",
@@ -388,7 +511,7 @@ const UsageAnalytics: React.FC = () => {
                 }}
                 series={[
                   {
-                    name: "Percentage",
+                    name: "Tỷ Lệ",
                     data: [usageVsOwnershipData.ownership, usageVsOwnershipData.booking],
                   },
                 ]}
@@ -398,7 +521,7 @@ const UsageAnalytics: React.FC = () => {
             </div>
             <div className="mt-4 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30">
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                Difference: {Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking).toFixed(1)}%
+                Chênh lệch: {Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking).toFixed(1)}%
               </span>
               <span className={`text-sm font-semibold ${
                 Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking) < 5
@@ -406,8 +529,8 @@ const UsageAnalytics: React.FC = () => {
                   : "text-amber-600 dark:text-amber-400"
               }`}>
                 {Math.abs(usageVsOwnershipData.ownership - usageVsOwnershipData.booking) < 5
-                  ? "✓ Balanced"
-                  : "⚠ Needs Adjustment"}
+                  ? "✓ Cân Bằng"
+                  : "⚠ Cần Điều Chỉnh"}
               </span>
             </div>
           </div>
@@ -417,10 +540,10 @@ const UsageAnalytics: React.FC = () => {
         {bookingFrequencyData && bookingFrequencyData.dates.length > 0 && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Booking Frequency
+              Tần Suất Đặt Chỗ
             </h2>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-              Number of bookings per day in the selected period.
+              Số lượng đặt chỗ mỗi ngày trong khoảng thời gian đã chọn.
             </p>
             <div className="mt-6">
               <Chart
@@ -494,7 +617,7 @@ const UsageAnalytics: React.FC = () => {
                       },
                     },
                     title: {
-                      text: "Number of Bookings",
+                      text: "Số Lượng Đặt Chỗ",
                       style: {
                         fontSize: "12px",
                         color: "#6B7280",
@@ -504,7 +627,7 @@ const UsageAnalytics: React.FC = () => {
                 }}
                 series={[
                   {
-                    name: "Bookings",
+                    name: "Đặt Chỗ",
                     data: bookingFrequencyData.counts,
                   },
                 ]}
@@ -518,10 +641,10 @@ const UsageAnalytics: React.FC = () => {
         {costStats && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Cost Breakdown
+              Phân Tích Chi Phí
             </h2>
             <div className="mt-4 space-y-3">
-              {Object.entries(costStats.costByType).map(([type, cost]) => (
+              {costStats.costByType && Object.entries(costStats.costByType).map(([type, cost]) => (
                 <div
                   key={type}
                   className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30"
@@ -536,7 +659,7 @@ const UsageAnalytics: React.FC = () => {
               ))}
               <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-800">
                 <span className="text-sm font-semibold text-gray-900 dark:text-white/90">
-                  Average Monthly Cost
+                  Chi Phí Trung Bình Hàng Tháng
                 </span>
                 <span className="text-sm font-semibold text-gray-900 dark:text-white/90">
                   ₫{formatNumber(costStats.averageMonthlyCost)}
@@ -549,12 +672,12 @@ const UsageAnalytics: React.FC = () => {
         {fairnessCheck && (
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Usage Fairness Check
+              Kiểm Tra Công Bằng Sử Dụng
             </h2>
             <div className="mt-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                  Fairness Score
+                  Điểm Công Bằng
                 </span>
                 <div className="flex items-center gap-2">
                   <div className="h-2 w-32 rounded-full bg-gray-200 dark:bg-gray-700">
@@ -577,7 +700,7 @@ const UsageAnalytics: React.FC = () => {
               {fairnessCheck.recommendations && fairnessCheck.recommendations.length > 0 && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-800/30">
                   <p className="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">
-                    Recommendations:
+                    Đề Xuất:
                   </p>
                   <ul className="list-inside list-disc space-y-1 text-xs text-gray-600 dark:text-gray-400">
                     {fairnessCheck.recommendations.map((rec, idx) => (
@@ -593,10 +716,10 @@ const UsageAnalytics: React.FC = () => {
         {!usageStats && !loading && selectedVehicleId && (
           <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
             <p className="font-medium text-gray-700 dark:text-gray-200">
-              No data available
+              Không có dữ liệu
             </p>
             <p className="mt-2">
-              No usage statistics found for the selected period. Try adjusting the date range.
+              Không tìm thấy thống kê sử dụng cho khoảng thời gian đã chọn. Vui lòng thử điều chỉnh phạm vi ngày.
             </p>
           </div>
         )}

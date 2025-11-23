@@ -1,3 +1,7 @@
+/**
+ * Trang quản lý xe
+ * Cho phép admin thêm, chỉnh sửa, xóa xe và theo dõi trạng thái của chúng trên tất cả các nhóm đồng sở hữu
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -10,17 +14,23 @@ import Input from "../../components/form/input/InputField";
 import Select from "../../components/form/Select";
 import { VEHICLE_MODELS } from "../../config/vehicleModels";
 
+/**
+ * Interface cho trạng thái xe
+ */
 interface VehicleStatus {
   id: number;
   label: string;
   color: string;
 }
 
+/**
+ * Danh sách các trạng thái xe
+ */
 const VEHICLE_STATUSES: VehicleStatus[] = [
-  { id: 0, label: "Available", color: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300" },
-  { id: 1, label: "In Use", color: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" },
-  { id: 2, label: "Maintenance", color: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300" },
-  { id: 3, label: "Technical Issue", color: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300" },
+  { id: 0, label: "Có Sẵn", color: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300" },
+  { id: 1, label: "Đang Sử Dụng", color: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300" },
+  { id: 2, label: "Bảo Dưỡng", color: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300" },
+  { id: 3, label: "Sự Cố Kỹ Thuật", color: "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300" },
 ];
 
 const ManageVehicles: React.FC = () => {
@@ -38,13 +48,18 @@ const ManageVehicles: React.FC = () => {
     licensePlate: "",
     vehicleModel: "",
     vehicleYear: "",
+    imageUrl: "",
     status: 0,
   });
 
+  // Load dữ liệu khi component mount
   useEffect(() => {
     loadData();
   }, []);
 
+  /**
+   * Tải danh sách vehicles và bookings từ API
+   */
   const loadData = async () => {
     try {
       setLoading(true);
@@ -56,13 +71,19 @@ const ManageVehicles: React.FC = () => {
       setVehicles(vehiclesData);
       setBookings(bookingsData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load vehicles");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách xe");
     } finally {
       setLoading(false);
     }
   };
 
-  // Map backend status string to frontend status number
+  /**
+   * Chuyển đổi trạng thái từ backend (string) sang frontend (number)
+   * Backend: "Active", "Inactive", "Dissolved"
+   * Frontend: 0=Available, 1=In Use, 2=Maintenance, 3=Technical Issue
+   * @param backendStatus - Trạng thái từ backend
+   * @returns Số trạng thái cho frontend
+   */
   const mapBackendStatusToFrontend = (backendStatus: string | number): number => {
     if (typeof backendStatus === 'number') {
       return backendStatus;
@@ -77,7 +98,11 @@ const ManageVehicles: React.FC = () => {
     return statusMap[backendStatus] ?? 0;
   };
 
-  // Map frontend status number to backend status string
+  /**
+   * Chuyển đổi trạng thái từ frontend (number) sang backend (string)
+   * @param frontendStatus - Số trạng thái từ frontend
+   * @returns Chuỗi trạng thái cho backend
+   */
   const mapFrontendStatusToBackend = (frontendStatus: number): string => {
     const statusMap: Record<number, string> = {
       0: "Active",   // Available -> Active
@@ -88,14 +113,29 @@ const ManageVehicles: React.FC = () => {
     return statusMap[frontendStatus] || "Active";
   };
 
+  /**
+   * Lấy thông tin trạng thái xe
+   * @param status - Số trạng thái
+   * @returns Thông tin trạng thái
+   */
   const getVehicleStatus = (status: number) => {
     return VEHICLE_STATUSES.find((s) => s.id === status) || VEHICLE_STATUSES[0];
   };
 
+  /**
+   * Lấy danh sách bookings của một xe
+   * @param vehicleId - ID của xe
+   * @returns Danh sách bookings
+   */
   const getVehicleBookings = (vehicleId: string | number) => {
     return bookings.filter((b) => b.vehicleId.toString() === vehicleId.toString());
   };
 
+  /**
+   * Lấy danh sách bookings đang active của một xe
+   * @param vehicleId - ID của xe
+   * @returns Danh sách bookings đang active
+   */
   const getActiveBookings = (vehicleId: string) => {
     const vehicleBookings = getVehicleBookings(vehicleId);
     const now = new Date();
@@ -112,6 +152,9 @@ const ManageVehicles: React.FC = () => {
     );
   };
 
+  /**
+   * Mở modal tạo xe mới và reset form
+   */
   const handleCreate = () => {
     setFormData({
       name: "",
@@ -120,11 +163,16 @@ const ManageVehicles: React.FC = () => {
       licensePlate: "",
       vehicleModel: "",
       vehicleYear: "",
+      imageUrl: "",
       status: 0,
     });
     setIsCreateModalOpen(true);
   };
 
+  /**
+   * Mở modal chỉnh sửa xe và điền dữ liệu hiện tại vào form
+   * @param vehicle - Xe cần chỉnh sửa
+   */
   const handleEdit = (vehicle: VehicleGroup) => {
     setSelectedVehicle(vehicle);
     // Map backend status string to frontend status number
@@ -136,11 +184,15 @@ const ManageVehicles: React.FC = () => {
       licensePlate: vehicle.licensePlate || "",
       vehicleModel: vehicle.vehicleModel || "",
       vehicleYear: vehicle.vehicleYear || "",
+      imageUrl: vehicle.imageUrl || "",
       status: statusNumber,
     });
     setIsEditModalOpen(true);
   };
 
+  /**
+   * Lưu xe mới hoặc cập nhật xe hiện có
+   */
   const handleSave = async () => {
     try {
       if (isCreateModalOpen) {
@@ -152,6 +204,7 @@ const ManageVehicles: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
+          imageUrl: formData.imageUrl || undefined,
         });
       } else if (isEditModalOpen && _selectedVehicle) {
         // Update existing vehicle group
@@ -164,6 +217,7 @@ const ManageVehicles: React.FC = () => {
           licensePlate: formData.licensePlate,
           vehicleModel: formData.vehicleModel,
           vehicleYear: formData.vehicleYear,
+          imageUrl: formData.imageUrl || undefined,
           status: backendStatus,
         });
       }
@@ -172,10 +226,15 @@ const ManageVehicles: React.FC = () => {
       setSelectedVehicle(null);
       await loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save vehicle");
+      setError(err instanceof Error ? err.message : "Không thể lưu xe");
     }
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
@@ -188,16 +247,16 @@ const ManageVehicles: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Admin | Manage Vehicles" />
+      <PageMeta title="Admin | Quản Lý Xe" />
       <PageHeader
-        title="Vehicle Management"
-        description="Add, edit, delete vehicles and monitor their status across all co-ownership groups."
-        actions={<Button size="sm" onClick={handleCreate}>Add Vehicle</Button>}
+        title="Quản Lý Xe"
+        description="Thêm, chỉnh sửa, xóa xe và theo dõi trạng thái của chúng trên tất cả các nhóm đồng sở hữu."
+        actions={<Button size="sm" onClick={handleCreate}>Thêm Xe</Button>}
       />
 
       {loading && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-gray-600 dark:text-gray-400">Loading vehicles...</p>
+          <p className="text-gray-600 dark:text-gray-400">Đang tải danh sách xe...</p>
         </div>
       )}
 
@@ -211,7 +270,7 @@ const ManageVehicles: React.FC = () => {
         <div className="grid gap-4">
           {vehicles.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-gray-600 dark:text-gray-400">No vehicles found.</p>
+              <p className="text-gray-600 dark:text-gray-400">Không tìm thấy xe nào.</p>
             </div>
           ) : (
             vehicles.map((vehicle) => {
@@ -227,29 +286,43 @@ const ManageVehicles: React.FC = () => {
                   className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
                 >
                   <div className="border-b border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                            {vehicle.vehicleName}
-                          </h3>
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.color}`}>
-                            {status.label}
-                          </span>
+                    <div className="flex items-start gap-4">
+                      {vehicle.imageUrl && (
+                        <div className="flex-shrink-0">
+                          <img 
+                            src={vehicle.imageUrl} 
+                            alt={vehicle.vehicleName}
+                            className="h-24 w-24 rounded-lg object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
                         </div>
-                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                          {vehicle.name} • {vehicle.licensePlate || "No license plate"}
-                        </p>
-                        {vehicle.vehicleModel && vehicle.vehicleYear && (
-                          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            {vehicle.vehicleModel} • {vehicle.vehicleYear}
+                      )}
+                      <div className="flex-1 flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
+                              {vehicle.vehicleName}
+                            </h3>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${status.color}`}>
+                              {status.label}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            {vehicle.name} • {vehicle.licensePlate || "Không có biển số"}
                           </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleEdit(vehicle)}>
-                          Edit
-                        </Button>
+                          {vehicle.vehicleModel && vehicle.vehicleYear && (
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                              {vehicle.vehicleModel} • {vehicle.vehicleYear}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleEdit(vehicle)}>
+                            Chỉnh Sửa
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -258,27 +331,27 @@ const ManageVehicles: React.FC = () => {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Booking Status
+                          Trạng Thái Đặt Chỗ
                         </h4>
                         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          <p>Active Bookings: {activeBookings.length}</p>
-                          <p>Total Bookings: {allBookings.length}</p>
+                          <p>Đặt chỗ đang hoạt động: {activeBookings.length}</p>
+                          <p>Tổng đặt chỗ: {allBookings.length}</p>
                         </div>
                       </div>
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                          Recent Activity
+                          Hoạt Động Gần Đây
                         </h4>
                         {activeBookings.length > 0 ? (
                           <div className="space-y-1 text-sm">
                             {activeBookings.slice(0, 2).map((booking) => (
                               <p key={booking.id} className="text-gray-600 dark:text-gray-400">
-                                In use until {formatDate(booking.endTime)}
+                                Đang sử dụng đến {formatDate(booking.endTime)}
                               </p>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500 dark:text-gray-400">No active bookings</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Không có đặt chỗ đang hoạt động</p>
                         )}
                       </div>
                     </div>
@@ -290,7 +363,7 @@ const ManageVehicles: React.FC = () => {
         </div>
       )}
 
-      {/* Create Vehicle Modal */}
+      {/* Modal Tạo Xe */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => {
@@ -302,6 +375,7 @@ const ManageVehicles: React.FC = () => {
             licensePlate: "",
             vehicleModel: "",
             vehicleYear: "",
+            imageUrl: "",
             status: 0,
           });
         }}
@@ -310,47 +384,47 @@ const ManageVehicles: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Add New Vehicle
+              Thêm Xe Mới
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Create a new vehicle group for co-ownership.
+              Tạo một nhóm xe mới cho đồng sở hữu.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Group Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Nhóm <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter group name"
+                placeholder="Nhập tên nhóm"
               />
             </div>
 
             <div>
-              <Label>Vehicle Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Xe <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.vehicleName}
                 onChange={(e) => setFormData({ ...formData, vehicleName: e.target.value })}
-                placeholder="Enter vehicle name"
+                placeholder="Nhập tên xe"
               />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>License Plate</Label>
+                <Label>Biển Số Xe</Label>
                 <Input
                   type="text"
                   value={formData.licensePlate}
                   onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
-                  placeholder="Enter license plate"
+                  placeholder="Nhập biển số xe"
                 />
               </div>
 
               <div>
-                <Label>Status</Label>
+                <Label>Trạng Thái</Label>
                 <Select
                   value={formData.status.toString()}
                   onChange={(value) => setFormData({ ...formData, status: parseInt(value) })}
@@ -366,12 +440,12 @@ const ManageVehicles: React.FC = () => {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Model</Label>
+                <Label>Mẫu Xe</Label>
                 <Select
                   value={formData.vehicleModel}
                   onChange={(value) => setFormData({ ...formData, vehicleModel: value })}
                 >
-                  <option value="">Select vehicle model</option>
+                  <option value="">Chọn mẫu xe</option>
                   {VEHICLE_MODELS.map((model) => (
                     <option key={model.id} value={model.name}>
                       {model.name}
@@ -381,25 +455,47 @@ const ManageVehicles: React.FC = () => {
               </div>
 
               <div>
-                <Label>Year</Label>
+                <Label>Năm Sản Xuất</Label>
                 <Input
                   type="text"
                   value={formData.vehicleYear}
                   onChange={(e) => setFormData({ ...formData, vehicleYear: e.target.value })}
-                  placeholder="Enter vehicle year"
+                  placeholder="Nhập năm sản xuất"
                 />
               </div>
             </div>
 
             <div>
-              <Label>Description</Label>
+              <Label>Mô Tả</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                placeholder="Enter description"
+                placeholder="Nhập mô tả"
               />
+            </div>
+
+            <div>
+              <Label>URL Ảnh Xe</Label>
+              <Input
+                type="url"
+                value={formData.imageUrl}
+                onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                placeholder="https://example.com/image.jpg"
+              />
+              {formData.imageUrl && (
+                <div className="mt-2">
+                  <img 
+                    src={formData.imageUrl} 
+                    alt="Preview"
+                    className="h-32 w-full rounded-lg object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3 lg:justify-end mt-6">
@@ -415,21 +511,22 @@ const ManageVehicles: React.FC = () => {
                     licensePlate: "",
                     vehicleModel: "",
                     vehicleYear: "",
+                    imageUrl: "",
                     status: 0,
                   });
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Create Vehicle
+                Tạo Xe
               </Button>
             </div>
           </div>
         </div>
       </Modal>
 
-      {/* Edit Vehicle Modal */}
+      {/* Modal Chỉnh Sửa Xe */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => {
@@ -441,47 +538,47 @@ const ManageVehicles: React.FC = () => {
         <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
           <div className="px-2 pr-14">
             <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Vehicle
+              Chỉnh Sửa Xe
             </h4>
             <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-              Update vehicle information and status.
+              Cập nhật thông tin xe và trạng thái.
             </p>
           </div>
 
           <div className="px-2 space-y-4">
             <div>
-              <Label>Group Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Nhóm <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter group name"
+                placeholder="Nhập tên nhóm"
               />
             </div>
 
             <div>
-              <Label>Vehicle Name <span className="text-error-500">*</span></Label>
+              <Label>Tên Xe <span className="text-error-500">*</span></Label>
               <Input
                 type="text"
                 value={formData.vehicleName}
                 onChange={(e) => setFormData({ ...formData, vehicleName: e.target.value })}
-                placeholder="Enter vehicle name"
+                placeholder="Nhập tên xe"
               />
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>License Plate</Label>
+                <Label>Biển Số Xe</Label>
                 <Input
                   type="text"
                   value={formData.licensePlate}
                   onChange={(e) => setFormData({ ...formData, licensePlate: e.target.value })}
-                  placeholder="Enter license plate"
+                  placeholder="Nhập biển số xe"
                 />
               </div>
 
               <div>
-                <Label>Status</Label>
+                <Label>Trạng Thái</Label>
                 <Select
                   value={formData.status.toString()}
                   onChange={(value) => setFormData({ ...formData, status: parseInt(value) })}
@@ -497,12 +594,12 @@ const ManageVehicles: React.FC = () => {
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <Label>Model</Label>
+                <Label>Mẫu Xe</Label>
                 <Select
                   value={formData.vehicleModel}
                   onChange={(value) => setFormData({ ...formData, vehicleModel: value })}
                 >
-                  <option value="">Select vehicle model</option>
+                  <option value="">Chọn mẫu xe</option>
                   {VEHICLE_MODELS.map((model) => (
                     <option key={model.id} value={model.name}>
                       {model.name}
@@ -512,24 +609,24 @@ const ManageVehicles: React.FC = () => {
               </div>
 
               <div>
-                <Label>Year</Label>
+                <Label>Năm Sản Xuất</Label>
                 <Input
                   type="text"
                   value={formData.vehicleYear}
                   onChange={(e) => setFormData({ ...formData, vehicleYear: e.target.value })}
-                  placeholder="Enter vehicle year"
+                  placeholder="Nhập năm sản xuất"
                 />
               </div>
             </div>
 
             <div>
-              <Label>Description</Label>
+              <Label>Mô Tả</Label>
               <textarea
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={3}
-                placeholder="Enter description"
+                placeholder="Nhập mô tả"
               />
             </div>
 
@@ -542,10 +639,10 @@ const ManageVehicles: React.FC = () => {
                   setSelectedVehicle(null);
                 }}
               >
-                Cancel
+                Hủy
               </Button>
               <Button size="sm" onClick={handleSave}>
-                Save Changes
+                Lưu Thay Đổi
               </Button>
             </div>
           </div>
@@ -556,4 +653,3 @@ const ManageVehicles: React.FC = () => {
 };
 
 export default ManageVehicles;
-

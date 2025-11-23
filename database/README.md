@@ -4,7 +4,7 @@
 
 ## Danh sách Database theo Microservice
 
-Hệ thống sử dụng kiến trúc microservices, mỗi service có database riêng:
+Hệ thống sử dụng kiến trúc microservices với 6 databases cho 6 service chính:
 
 ### SQL Server Databases:
 - **auth_db**: Database cho Auth Service
@@ -28,12 +28,11 @@ Hệ thống sử dụng kiến trúc microservices, mỗi service có database 
   - Các bảng: UsageHistories, ChargingSessions, MaintenanceRecords, CostRecords, AnalyticsReports
 
 ### NoSQL Databases:
-- **ai_db (MongoDB)**: Database cho AI Service
+- **ai_db (MongoDB)**: Database chung cho AI Service, Booking Service logs, và Report Service logs
   - Lưu trữ events từ các microservices để phân tích AI và machine learning
   - Collections: user_events, vehicle_group_events, ownership_events, booking_events, payment_events, costshare_events, voting_events
-
-- **mongo_logs (MongoDB)**: Database lưu trữ logs
-  - Lưu trữ logs từ các services
+  - Lưu trữ logs từ Booking Service và Report Service
+  - Collections logs: booking_logs, report_logs
 
 ### Cache & Message Broker:
 - **redis_cache (Redis)**: Cache database
@@ -46,12 +45,15 @@ Hệ thống sử dụng kiến trúc microservices, mỗi service có database 
 ## Khởi tạo Database
 
 ### SQL Server:
-- Các file trong `mssql/init/` tạo các database
+- Các file trong `mssql/init/` tạo các database và schema
 - Schema và bảng được quản lý bởi EF Core migrations trong mỗi service
-- Thứ tự chạy script:
-  1. Tạo database: `015_auth_db.sql`, `025_ownership_db.sql`, `035_booking_db.sql`, `045_payment_db.sql`, `055_report_db.sql`
-  2. Tạo schema: `115_auth_schema.sql`, `125_ownership_schema.sql`, `135_booking_schema.sql`, `140_disputes_schema.sql`, `145_payment_schema.sql`, `155_report_schema.sql`
-  3. Migration scripts: `160_fix_vote_choice_column.sql`
+- **Các file SQL đã được gộp theo database để dễ quản lý:**
+  - `010_auth_complete.sql` - Tạo database và schema cho auth_db
+  - `020_ownership_complete.sql` - Tạo database và schema cho ownership_db (bao gồm Disputes, Votes fix, ImageUrl)
+  - `030_booking_complete.sql` - Tạo database và schema cho booking_db (bao gồm BookingHistory, SyncCoOwners stored procedure)
+  - `040_payment_complete.sql` - Tạo database và schema cho payment_db
+  - `050_report_complete.sql` - Tạo database và schema cho report_db
+- Thứ tự chạy: Các file được chạy theo thứ tự số (010 → 020 → 030 → 040 → 050)
 
 ### MongoDB:
 - Databases và collections được tạo tự động khi service ghi dữ liệu lần đầu
@@ -62,9 +64,9 @@ Hệ thống sử dụng kiến trúc microservices, mỗi service có database 
 
 ## Lưu ý
 
-- Các script legacy (AccountDB/GroupDB/HistoryDB) được giữ lại để tương thích ngược
-- Tên database mới (auth_db, ownership_db, report_db, etc.) đã được thêm vào
-- Cập nhật connection strings trong mỗi service để khớp với tên mới khi sẵn sàng migrate
-- Tất cả các script SQL đều là idempotent - có thể chạy nhiều lần mà không gây lỗi
+- Tất cả các script SQL đều là **idempotent** - có thể chạy nhiều lần mà không gây lỗi
+- Các file SQL đã được gộp để giảm số lượng file và dễ quản lý hơn
+- Mỗi file complete chứa: tạo database + schema + migrations (nếu có)
+- Các script export/import trong `scripts/` được giữ lại để hỗ trợ chia sẻ dữ liệu giữa các máy development
 
 

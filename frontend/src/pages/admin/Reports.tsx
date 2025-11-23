@@ -1,3 +1,7 @@
+/**
+ * Trang báo cáo điều hành
+ * Cho phép admin tạo báo cáo phân tích toàn hệ thống và xuất tóm tắt sẵn sàng chia sẻ cho lãnh đạo và các bên liên quan
+ */
 import { useEffect, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -29,10 +33,12 @@ const Reports: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Load danh sách groups khi component mount
   useEffect(() => {
     loadGroups();
   }, []);
 
+  // Load reports, ownerships và bookings khi selectedVehicleId hoặc selectedGroupId thay đổi
   useEffect(() => {
     if (selectedVehicleId) {
       loadReports();
@@ -43,6 +49,9 @@ const Reports: React.FC = () => {
     }
   }, [selectedVehicleId, selectedGroupId]);
 
+  /**
+   * Tải danh sách groups và bookings từ API
+   */
   const loadGroups = async () => {
     try {
       const [groupsData, allBookings] = await Promise.all([
@@ -67,10 +76,13 @@ const Reports: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error("Failed to load groups:", err);
+      console.error("Không thể tải danh sách nhóm:", err);
     }
   };
 
+  /**
+   * Tải danh sách reports cho một vehicle
+   */
   const loadReports = async () => {
     if (!selectedVehicleId) return;
 
@@ -80,12 +92,16 @@ const Reports: React.FC = () => {
       const data = await reportService.getReportsByVehicle(selectedVehicleId);
       setReports(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load reports");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách báo cáo");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Xử lý khi thay đổi nhóm xe
+   * @param groupId - ID của nhóm xe
+   */
   const handleGroupChange = async (groupId: string) => {
     setSelectedGroupId(groupId);
     const group = groups.find((g) => g.id === groupId);
@@ -114,32 +130,42 @@ const Reports: React.FC = () => {
           console.warn("No bookings found, cannot determine vehicleId for this group");
         }
       } catch (err) {
-        console.error("Failed to load group data:", err);
+        console.error("Không thể tải dữ liệu nhóm:", err);
         setSelectedVehicleId(null);
       }
     }
   };
 
+  /**
+   * Tải danh sách quyền sở hữu của nhóm
+   */
   const loadOwnerships = async () => {
     if (!selectedGroupId) return;
     try {
       const data = await ownershipService.getOwnerships(selectedGroupId, undefined, true);
       setOwnerships(data);
     } catch (err) {
-      console.error("Failed to load ownerships:", err);
+      console.error("Không thể tải quyền sở hữu:", err);
     }
   };
 
+  /**
+   * Tải danh sách bookings từ API
+   */
   const loadBookings = async () => {
     try {
       const allBookings = await bookingService.getBookings();
       setBookings(allBookings);
     } catch (err) {
-      console.error("Failed to load bookings:", err);
+      console.error("Không thể tải danh sách đặt chỗ:", err);
     }
   };
 
-  // Calculate usage comparison data
+  /**
+   * Tính toán dữ liệu so sánh sử dụng giữa các thành viên
+   * So sánh tỷ lệ sử dụng thực tế với tỷ lệ sở hữu
+   * @returns Danh sách dữ liệu so sánh
+   */
   const getUsageComparisonData = () => {
     if (!ownerships.length || !bookings.length) return [];
 
@@ -176,9 +202,12 @@ const Reports: React.FC = () => {
 
   const usageComparisonData = getUsageComparisonData();
 
+  /**
+   * Tạo báo cáo mới dựa trên loại báo cáo đã chọn
+   */
   const handleGenerateReport = async () => {
     if (!selectedVehicleId) {
-      setError("Please select a vehicle");
+      setError("Vui lòng chọn một xe");
       setSuccessMessage(null);
       return;
     }
@@ -214,24 +243,37 @@ const Reports: React.FC = () => {
       }
 
       if (report) {
-        setSuccessMessage(`${reportType.charAt(0).toUpperCase() + reportType.slice(1)} report generated successfully!`);
+        const reportTypeLabels: Record<string, string> = {
+          usage: "Báo cáo sử dụng",
+          cost: "Báo cáo chi phí",
+          maintenance: "Báo cáo bảo dưỡng",
+        };
+        setSuccessMessage(`${reportTypeLabels[reportType] || reportType} đã được tạo thành công!`);
         await loadReports();
         // Clear success message after 5 seconds
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
-        setError("Failed to generate report. Please try again.");
+        setError("Không thể tạo báo cáo. Vui lòng thử lại.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate report");
+      setError(err instanceof Error ? err.message : "Không thể tạo báo cáo");
       setSuccessMessage(null);
     } finally {
       setGenerating(false);
     }
   };
 
+  /**
+   * Xuất báo cáo ra file (CSV, Excel, hoặc PDF)
+   * @param report - Báo cáo cần xuất
+   * @param format - Định dạng file ("csv", "excel", hoặc "pdf")
+   */
   const handleExportReport = (report: AnalyticsReport, format: "csv" | "pdf" | "excel" = "csv") => {
     try {
-      const reportData = JSON.parse(report.reportData);
+      const reportData = report.reportData ? JSON.parse(report.reportData) : {};
+      if (!reportData || typeof reportData !== 'object') {
+        throw new Error("Dữ liệu báo cáo không hợp lệ");
+      }
       
       if (format === "csv") {
         const csvRows = [
@@ -239,7 +281,7 @@ const Reports: React.FC = () => {
           ["Period", `${report.periodStart} to ${report.periodEnd}`],
           ["Generated At", report.generatedAt],
           [],
-          ...Object.entries(reportData).map(([key, value]) => [
+          ...Object.entries(reportData || {}).map(([key, value]) => [
             key,
             typeof value === "object" ? JSON.stringify(value) : String(value),
           ]),
@@ -261,7 +303,7 @@ const Reports: React.FC = () => {
           ["Period", `${report.periodStart} to ${report.periodEnd}`],
           ["Generated At", report.generatedAt],
           [],
-          ...Object.entries(reportData).map(([key, value]) => [
+          ...Object.entries(reportData || {}).map(([key, value]) => [
             key,
             typeof value === "object" ? JSON.stringify(value) : String(value),
           ]),
@@ -348,7 +390,7 @@ const Reports: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  ${Object.entries(reportData).map(([key, value]) => `
+                  ${Object.entries(reportData || {}).map(([key, value]) => `
                     <tr>
                       <td>${key}</td>
                       <td>${typeof value === "object" ? JSON.stringify(value, null, 2) : String(value)}</td>
@@ -370,13 +412,18 @@ const Reports: React.FC = () => {
         }
       }
     } catch (err) {
-      console.error("Failed to export report:", err);
-      setError("Failed to export report. Please try again.");
+      console.error("Không thể xuất báo cáo:", err);
+      setError("Không thể xuất báo cáo. Vui lòng thử lại.");
     }
   };
 
+  /**
+   * Định dạng ngày tháng theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày tháng cần định dạng
+   * @returns Chuỗi ngày tháng đã định dạng
+   */
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleDateString("vi-VN", {
       day: "numeric",
       month: "short",
       year: "numeric",
@@ -387,24 +434,24 @@ const Reports: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Admin | Reports" />
+      <PageMeta title="Admin | Báo Cáo" />
       <PageHeader
-        title="Executive Reports"
-        description="Generate system-wide analytics and export share-ready summaries for leadership and stakeholders."
+        title="Báo Cáo Điều Hành"
+        description="Tạo báo cáo phân tích toàn hệ thống và xuất tóm tắt sẵn sàng chia sẻ cho lãnh đạo và các bên liên quan."
       />
 
       <div className="mb-6 space-y-4 rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
         <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
-          Generate New Report
+          Tạo Báo Cáo Mới
         </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-5">
           <div>
-            <Label>Vehicle Group</Label>
+            <Label>Nhóm Xe</Label>
                 <Select
                   value={selectedGroupId}
                   onChange={(value) => handleGroupChange(value)}
                 >
-                  <option value="">Select a group</option>
+                  <option value="">Chọn nhóm</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name} - {group.vehicleName}
@@ -413,18 +460,18 @@ const Reports: React.FC = () => {
                 </Select>
           </div>
           <div>
-            <Label>Report Type</Label>
+            <Label>Loại Báo Cáo</Label>
                 <Select
                   value={reportType}
                   onChange={(value) => setReportType(value)}
                 >
-                  <option value="usage">Usage Report</option>
-                  <option value="cost">Cost Report</option>
-                  <option value="maintenance">Maintenance Report</option>
+                  <option value="usage">Báo Cáo Sử Dụng</option>
+                  <option value="cost">Báo Cáo Chi Phí</option>
+                  <option value="maintenance">Báo Cáo Bảo Dưỡng</option>
                 </Select>
           </div>
           <div>
-            <Label>Start Date</Label>
+            <Label>Ngày Bắt Đầu</Label>
             <Input
               type="date"
               value={startDate.toISOString().split("T")[0]}
@@ -432,7 +479,7 @@ const Reports: React.FC = () => {
             />
           </div>
           <div>
-            <Label>End Date</Label>
+            <Label>Ngày Kết Thúc</Label>
             <Input
               type="date"
               value={endDate.toISOString().split("T")[0]}
@@ -446,7 +493,7 @@ const Reports: React.FC = () => {
               disabled={!selectedVehicleId || generating}
               className="w-full"
             >
-              {generating ? "Generating..." : "Generate"}
+              {generating ? "Đang tạo..." : "Tạo Báo Cáo"}
             </Button>
           </div>
         </div>
@@ -469,10 +516,10 @@ const Reports: React.FC = () => {
         <div className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="border-b border-gray-200 p-6 dark:border-gray-800">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Usage Comparison by Member
+              So Sánh Sử Dụng Theo Thành Viên
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Compare each member's actual usage with their ownership percentage
+              So sánh mức sử dụng thực tế của mỗi thành viên với tỷ lệ sở hữu của họ
             </p>
           </div>
           <div className="overflow-x-auto">
@@ -480,25 +527,25 @@ const Reports: React.FC = () => {
               <thead className="bg-gray-50 dark:bg-gray-800/30">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Member
+                    Thành Viên
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Ownership %
+                    Tỷ Lệ Sở Hữu %
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Booking Count
+                    Số Lượng Đặt Chỗ
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Booking %
+                    Tỷ Lệ Đặt Chỗ %
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Total Distance (km)
+                    Tổng Quãng Đường (km)
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Total Cost (₫)
+                    Tổng Chi Phí (₫)
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Difference
+                    Chênh Lệch
                   </th>
                 </tr>
               </thead>
@@ -543,18 +590,18 @@ const Reports: React.FC = () => {
       <div className="grid gap-6 lg:grid-cols-3">
         {[
           {
-            title: "Usage Summary",
-            description: "Daily and monthly utilization metrics across all shared vehicles.",
+            title: "Tóm Tắt Sử Dụng",
+            description: "Các chỉ số sử dụng hàng ngày và hàng tháng trên tất cả các xe chia sẻ.",
             type: "usage",
           },
           {
-            title: "Financial Health",
-            description: "Revenue, expense, and outstanding balance insights from the payment service.",
+            title: "Sức Khỏe Tài Chính",
+            description: "Thông tin về doanh thu, chi phí và số dư chưa thanh toán từ dịch vụ thanh toán.",
             type: "cost",
           },
           {
-            title: "Operational KPIs",
-            description: "Staff throughput, maintenance turn-around, and SLA adherence by cohort.",
+            title: "KPI Vận Hành",
+            description: "Thông lượng nhân viên, thời gian quay vòng bảo dưỡng và tuân thủ SLA theo nhóm.",
             type: "maintenance",
           },
         ].map(({ title, description, type }) => (
@@ -576,7 +623,7 @@ const Reports: React.FC = () => {
               }}
               disabled={!selectedVehicleId || generating}
             >
-              Generate {title}
+              Tạo {title}
             </Button>
           </div>
         ))}
@@ -586,36 +633,42 @@ const Reports: React.FC = () => {
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="border-b border-gray-200 p-6 dark:border-gray-800">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white/90">
-              Generated Reports
+              Báo Cáo Đã Tạo
             </h3>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Reports for {selectedGroup?.vehicleName || "selected vehicle"}
+              Báo cáo cho {selectedGroup?.vehicleName || "xe đã chọn"}
             </p>
           </div>
           {loading ? (
             <div className="p-6 text-center text-gray-600 dark:text-gray-400">
-              Loading reports...
+              Đang tải báo cáo...
             </div>
           ) : reports.length === 0 ? (
             <div className="p-6 text-center text-gray-600 dark:text-gray-400">
-              No reports generated yet. Generate a report to get started.
+              Chưa có báo cáo nào được tạo. Tạo báo cáo để bắt đầu.
             </div>
           ) : (
             <div className="divide-y divide-gray-200 dark:divide-gray-800">
-              {reports.map((report) => (
+              {reports.map((report) => {
+                const reportTypeLabels: Record<string, string> = {
+                  usage: "Báo Cáo Sử Dụng",
+                  cost: "Báo Cáo Chi Phí",
+                  maintenance: "Báo Cáo Bảo Dưỡng",
+                };
+                return (
                 <div
                   key={report.id}
                   className="flex items-center justify-between p-6 hover:bg-gray-50 dark:hover:bg-gray-800/30"
                 >
                   <div>
                     <h4 className="text-sm font-semibold text-gray-900 dark:text-white/90">
-                      {report.reportType} Report
+                      {reportTypeLabels[report.reportType] || report.reportType}
                     </h4>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Period: {formatDate(report.periodStart)} - {formatDate(report.periodEnd)}
+                      Kỳ: {formatDate(report.periodStart)} - {formatDate(report.periodEnd)}
                     </p>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Generated: {formatDate(report.generatedAt)}
+                      Tạo lúc: {formatDate(report.generatedAt)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -642,7 +695,8 @@ const Reports: React.FC = () => {
                     </Button>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
           )}
         </div>

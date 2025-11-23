@@ -1,3 +1,7 @@
+/**
+ * Trang Check-In / Check-Out cho Staff
+ * Xác thực mã QR đặt chỗ, xác nhận tình trạng xe và thu thập chữ ký số tại chỗ
+ */
 import { useState, useEffect } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import PageHeader from "../../components/common/PageHeader";
@@ -15,10 +19,16 @@ const CheckInOut: React.FC = () => {
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "confirmed" | "in-progress" | "completed">("all");
 
+  /**
+   * Tải danh sách bookings khi component mount
+   */
   useEffect(() => {
     loadBookings();
   }, []);
 
+  /**
+   * Tải danh sách bookings từ API
+   */
   const loadBookings = async () => {
     try {
       setLoading(true);
@@ -26,12 +36,16 @@ const CheckInOut: React.FC = () => {
       const data = await bookingService.getBookings();
       setBookings(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load bookings");
+      setError(err instanceof Error ? err.message : "Không thể tải danh sách đặt chỗ");
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Lọc bookings theo filter đã chọn
+   * @returns Danh sách bookings đã lọc
+   */
   const filteredBookings = bookings.filter((booking) => {
     if (filter === "all") return true;
     const statusLower = booking.status.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
@@ -54,26 +68,47 @@ const CheckInOut: React.FC = () => {
     return true;
   });
 
+  /**
+   * Kiểm tra xem có thể check-in không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể check-in
+   */
   const canCheckIn = (booking: Booking) => {
     const status = booking.status.toLowerCase();
     return (status === "confirmed" || status === "pending") && !booking.checkInTime;
   };
 
+  /**
+   * Kiểm tra xem có thể check-out không
+   * @param booking - Booking cần kiểm tra
+   * @returns true nếu có thể check-out
+   */
   const canCheckOut = (booking: Booking) => {
     const status = booking.status.toLowerCase();
     return (status === "in-progress" || status === "checked-in") && booking.checkInTime && !booking.checkOutTime;
   };
 
+  /**
+   * Xử lý khi click nút check-in
+   * @param booking - Booking cần check-in
+   */
   const handleCheckIn = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowCheckInModal(true);
   };
 
+  /**
+   * Xử lý khi click nút check-out
+   * @param booking - Booking cần check-out
+   */
   const handleCheckOut = (booking: Booking) => {
     setSelectedBooking(booking);
     setShowCheckOutModal(true);
   };
 
+  /**
+   * Xử lý sau khi check-in/check-out thành công
+   */
   const handleSuccess = () => {
     loadBookings();
     setShowCheckInModal(false);
@@ -81,6 +116,11 @@ const CheckInOut: React.FC = () => {
     setSelectedBooking(null);
   };
 
+  /**
+   * Định dạng ngày giờ theo định dạng Việt Nam
+   * @param dateString - Chuỗi ngày giờ
+   * @returns Ngày giờ đã định dạng
+   */
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString("vi-VN", {
       day: "2-digit",
@@ -91,6 +131,11 @@ const CheckInOut: React.FC = () => {
     });
   };
 
+  /**
+   * Lấy màu hiển thị cho trạng thái booking
+   * @param status - Trạng thái booking
+   * @returns CSS classes cho màu
+   */
   const getStatusColor = (status: string) => {
     const statusLower = status.toLowerCase();
     if (statusLower === "confirmed" || statusLower === "pending") {
@@ -107,55 +152,55 @@ const CheckInOut: React.FC = () => {
 
   return (
     <>
-      <PageMeta title="Staff | Check-In / Check-Out" />
+      <PageMeta title="Nhân viên | Check-In / Check-Out" />
       <PageHeader
         title="Check-In / Check-Out"
-        description="Validate booking QR codes, confirm vehicle condition, and capture digital signatures on-site."
+        description="Xác thực mã QR đặt chỗ, xác nhận tình trạng xe và thu thập chữ ký số tại chỗ."
       />
 
-      {/* Filters */}
+      {/* Bộ Lọc */}
       <div className="mb-6 flex flex-wrap gap-2">
         <Button
           size="sm"
           variant={filter === "all" ? "primary" : "outline"}
           onClick={() => setFilter("all")}
         >
-          All
+          Tất Cả
         </Button>
         <Button
           size="sm"
           variant={filter === "pending" ? "primary" : "outline"}
           onClick={() => setFilter("pending")}
         >
-          Pending Check-in
+          Chờ Check-in
         </Button>
         <Button
           size="sm"
           variant={filter === "confirmed" ? "primary" : "outline"}
           onClick={() => setFilter("confirmed")}
         >
-          Confirmed
+          Đã Xác Nhận
         </Button>
         <Button
           size="sm"
           variant={filter === "in-progress" ? "primary" : "outline"}
           onClick={() => setFilter("in-progress")}
         >
-          In Progress
+          Đang Sử Dụng
         </Button>
         <Button
           size="sm"
           variant={filter === "completed" ? "primary" : "outline"}
           onClick={() => setFilter("completed")}
         >
-          Completed
+          Hoàn Thành
         </Button>
       </div>
 
-      {/* Bookings List */}
+      {/* Danh Sách Đặt Chỗ */}
       {loading ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">Loading bookings...</p>
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400">Đang tải danh sách đặt chỗ...</p>
         </div>
       ) : error ? (
         <div className="rounded-2xl border border-error-200 bg-error-50 p-6 shadow-theme-xs dark:border-error-500/40 dark:bg-error-500/10">
@@ -163,7 +208,7 @@ const CheckInOut: React.FC = () => {
         </div>
       ) : filteredBookings.length === 0 ? (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
-          <p className="text-center text-sm text-gray-500 dark:text-gray-400">No bookings found</p>
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400">Không tìm thấy đặt chỗ nào</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -176,7 +221,7 @@ const CheckInOut: React.FC = () => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white/90">
-                      Booking #{booking.id}
+                      Đặt Chỗ #{booking.id}
                     </h3>
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${getStatusColor(booking.status)}`}>
                       {booking.status}
@@ -184,16 +229,16 @@ const CheckInOut: React.FC = () => {
                   </div>
                   <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-600 dark:text-gray-300 sm:grid-cols-2">
                     <div>
-                      <span className="font-medium">Vehicle:</span> {booking.vehicleName || `Vehicle #${booking.vehicleId}`}
+                      <span className="font-medium">Xe:</span> {booking.vehicleName || `Xe #${booking.vehicleId}`}
                     </div>
                     <div>
-                      <span className="font-medium">Co-owner:</span> {booking.coOwnerName || `Co-owner #${booking.coOwnerId}`}
+                      <span className="font-medium">Đồng sở hữu:</span> {booking.coOwnerName || `Đồng sở hữu #${booking.coOwnerId}`}
                     </div>
                     <div>
-                      <span className="font-medium">Start:</span> {formatDate(booking.startTime)}
+                      <span className="font-medium">Bắt đầu:</span> {formatDate(booking.startTime)}
                     </div>
                     <div>
-                      <span className="font-medium">End:</span> {formatDate(booking.endTime)}
+                      <span className="font-medium">Kết thúc:</span> {formatDate(booking.endTime)}
                     </div>
                     {booking.checkInTime && (
                       <div>
@@ -207,18 +252,18 @@ const CheckInOut: React.FC = () => {
                     )}
                     {booking.distanceKm && (
                       <div>
-                        <span className="font-medium">Distance:</span> {booking.distanceKm} km
+                        <span className="font-medium">Quãng đường:</span> {booking.distanceKm} km
                       </div>
                     )}
                     {booking.cost && (
                       <div>
-                        <span className="font-medium">Cost:</span> ₫{booking.cost.toLocaleString()}
+                        <span className="font-medium">Chi phí:</span> ₫{booking.cost.toLocaleString()}
                       </div>
                     )}
                   </div>
                   {booking.note && (
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                      <span className="font-medium">Note:</span> {booking.note}
+                      <span className="font-medium">Ghi chú:</span> {booking.note}
                     </p>
                   )}
                 </div>

@@ -56,7 +56,7 @@ const VehicleMaintenance: React.FC = () => {
         setFormData((prev) => ({ ...prev, vehicleId: firstVehicleId }));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
+      setError(err instanceof Error ? err.message : "Không thể tải dữ liệu");
     } finally {
       setLoading(false);
     }
@@ -233,16 +233,19 @@ const VehicleMaintenance: React.FC = () => {
   const getStatusLabel = (record: MaintenanceRecord) => {
     // Kiểm tra status field trước (có thể là "2", "Completed", hoặc number 2)
     const status = record.status;
-    if (status === "2" || status === 2 || status === "Completed" || status === "completed") {
+    const statusStr = status?.toString().toLowerCase();
+    const statusNum = status ? Number(status) : undefined;
+    
+    if (statusStr === "2" || statusNum === 2 || statusStr === "completed") {
       return "Hoàn thành";
     }
-    if (status === "1" || status === 1 || status === "InProgress" || status === "inProgress") {
+    if (statusStr === "1" || statusNum === 1 || statusStr === "inprogress") {
       return "Đang thực hiện";
     }
-    if (status === "0" || status === 0 || status === "Scheduled" || status === "scheduled") {
+    if (statusStr === "0" || statusNum === 0 || statusStr === "scheduled") {
       return "Đã lên lịch";
     }
-    if (status === "3" || status === 3 || status === "Overdue" || status === "overdue") {
+    if (statusStr === "3" || statusNum === 3 || statusStr === "overdue") {
       return "Quá hạn";
     }
     // Fallback: kiểm tra isActive
@@ -272,12 +275,13 @@ const VehicleMaintenance: React.FC = () => {
    */
   const isCompleted = (record: MaintenanceRecord) => {
     const status = record.status;
+    const statusStr = status?.toString().toLowerCase();
+    const statusNum = status ? Number(status) : undefined;
     // Kiểm tra cả number và string (backend có thể serialize enum thành number hoặc string)
     return (
-      status === "2" || 
-      status === 2 || 
-      status === "Completed" || 
-      status === "completed" || 
+      statusStr === "2" || 
+      statusNum === 2 || 
+      statusStr === "completed" || 
       !record.isActive
     );
   };
@@ -497,7 +501,7 @@ const VehicleMaintenance: React.FC = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>
-                      Cost <span className="text-error-500">*</span>
+                      Chi Phí <span className="text-error-500">*</span>
                     </Label>
                     <Input
                       type="number"
@@ -540,7 +544,7 @@ const VehicleMaintenance: React.FC = () => {
 
                 <div>
                   <Label>
-                    Maintenance Date <span className="text-error-500">*</span>
+                    Ngày Bảo Dưỡng <span className="text-error-500">*</span>
                   </Label>
                   <Input
                     type="date"
@@ -552,7 +556,7 @@ const VehicleMaintenance: React.FC = () => {
                 </div>
 
                 <div>
-                  <Label>Next Maintenance Date</Label>
+                  <Label>Ngày Bảo Dưỡng Tiếp Theo</Label>
                   <Input
                     type="date"
                     value={formData.nextMaintenanceDate}
@@ -639,7 +643,7 @@ const VehicleMaintenance: React.FC = () => {
               <div className="space-y-5">
                 <div>
                   <Label>
-                    Maintenance Type <span className="text-error-500">*</span>
+                    Loại Bảo Dưỡng <span className="text-error-500">*</span>
                   </Label>
                   <Select
                     value={editFormData.maintenanceType || ""}

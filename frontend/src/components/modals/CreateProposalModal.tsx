@@ -14,13 +14,14 @@ interface CreateProposalModalProps {
   groupId?: string;
 }
 
+// Các loại đề xuất
 const PROPOSAL_TYPES = [
-  { value: "upgrade_battery", label: "Upgrade Battery" },
-  { value: "repair", label: "Repair" },
-  { value: "sell_vehicle", label: "Sell Vehicle" },
-  { value: "insurance_change", label: "Insurance Change" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "other", label: "Other" },
+  { value: "upgrade_battery", label: "Nâng Cấp Pin" },
+  { value: "repair", label: "Sửa Chữa" },
+  { value: "sell_vehicle", label: "Bán Xe" },
+  { value: "insurance_change", label: "Thay Đổi Bảo Hiểm" },
+  { value: "maintenance", label: "Bảo Dưỡng" },
+  { value: "other", label: "Khác" },
 ];
 
 const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
@@ -69,7 +70,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
     setError(null);
 
     if (!formData.vehicleGroupId || !formData.title || !formData.type) {
-      setError("Vehicle group, title, and type are required");
+      setError("Nhóm xe, tiêu đề và loại đề xuất là bắt buộc");
       return;
     }
 
@@ -87,7 +88,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
       });
       onSuccess();
       onClose();
-      // Reset form
+      // Đặt lại form
       setFormData({
         vehicleGroupId: groupId || "",
         title: "",
@@ -100,15 +101,16 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
         votingEndDate: "",
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create proposal");
+      setError(err instanceof Error ? err.message : "Không thể tạo đề xuất");
     } finally {
       setLoading(false);
     }
   };
 
+  // Lấy gợi ý từ AI
   const handleGetAISuggestion = async () => {
     if (!formData.vehicleGroupId || !formData.type) {
-      setError("Please select vehicle group and proposal type first");
+      setError("Vui lòng chọn nhóm xe và loại đề xuất trước");
       return;
     }
 
@@ -138,12 +140,13 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
         setAiSuggestion(suggestion);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to get AI suggestion");
+      setError(err instanceof Error ? err.message : "Không thể lấy gợi ý từ AI");
     } finally {
       setLoadingSuggestion(false);
     }
   };
 
+  // Xử lý đóng modal
   const handleClose = () => {
     if (!loading) {
       setError(null);
@@ -157,10 +160,10 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
       <div className="no-scrollbar relative w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
         <div className="px-2 pr-14">
           <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-            Create Proposal
+            Tạo Đề Xuất
           </h4>
           <p className="mb-6 text-sm text-gray-500 dark:text-gray-400 lg:mb-7">
-            Create a new proposal for group voting.
+            Tạo đề xuất mới cho nhóm bỏ phiếu.
           </p>
         </div>
 
@@ -175,7 +178,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
             <div className="space-y-5">
               <div>
                 <Label>
-                  Vehicle Group <span className="text-error-500">*</span>
+                  Nhóm Xe <span className="text-error-500">*</span>
                 </Label>
                 <Select
                   value={formData.vehicleGroupId}
@@ -185,7 +188,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                   disabled={!!groupId || loading}
                   required
                 >
-                  <option value="">Select a group</option>
+                  <option value="">Chọn nhóm</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
                       {group.name} - {group.vehicleName}
@@ -196,7 +199,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
 
               <div>
                 <Label>
-                  Title <span className="text-error-500">*</span>
+                  Tiêu Đề <span className="text-error-500">*</span>
                 </Label>
                 <Input
                   type="text"
@@ -206,13 +209,13 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                   }
                   disabled={loading}
                   required
-                  placeholder="Enter proposal title"
+                  placeholder="Nhập tiêu đề đề xuất"
                 />
               </div>
 
               <div>
                 <Label>
-                  Type <span className="text-error-500">*</span>
+                  Loại <span className="text-error-500">*</span>
                 </Label>
                 <Select
                   value={formData.type}
@@ -231,7 +234,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
               </div>
 
               <div>
-                <Label>Description</Label>
+                <Label>Mô Tả</Label>
                 <textarea
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                   value={formData.description}
@@ -240,12 +243,12 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                   }
                   disabled={loading}
                   rows={3}
-                  placeholder="Enter proposal description"
+                  placeholder="Nhập mô tả đề xuất"
                 />
               </div>
 
               <div>
-                <Label>Details</Label>
+                <Label>Chi Tiết</Label>
                 <textarea
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:placeholder-gray-500 dark:focus:border-brand-400 dark:focus:ring-brand-400"
                   value={formData.details}
@@ -254,13 +257,13 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                   }
                   disabled={loading}
                   rows={3}
-                  placeholder="Enter additional details"
+                  placeholder="Nhập chi tiết bổ sung"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Estimated Cost</Label>
+                  <Label>Chi Phí Ước Tính</Label>
                   <Input
                     type="number"
                     value={formData.estimatedCost || ""}
@@ -275,7 +278,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                 </div>
 
                 <div>
-                  <Label>Currency</Label>
+                  <Label>Loại Tiền Tệ</Label>
                   <Select
                     value={formData.currency}
                     onChange={(value) =>
@@ -300,7 +303,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                     disabled={loadingSuggestion}
                     className="w-full"
                   >
-                    {loadingSuggestion ? "Getting AI Suggestion..." : "Get AI Voting Suggestion"}
+                    {loadingSuggestion ? "Đang lấy gợi ý AI..." : "Lấy Gợi Ý Bỏ Phiếu từ AI"}
                   </Button>
                 </div>
               )}
@@ -318,27 +321,27 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <h4 className="text-sm font-semibold text-gray-900 dark:text-white/90">
-                        AI Recommendation: {aiSuggestion.recommendation.toUpperCase()}
+                        Gợi Ý AI: {aiSuggestion.recommendation.toUpperCase()}
                       </h4>
                       <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">
                         {aiSuggestion.reasoning}
                       </p>
-                      {aiSuggestion.risk_assessment && (
+                      {aiSuggestion.risk_assessment && typeof aiSuggestion.risk_assessment === 'object' && (
                         <div className="mt-2 space-y-1">
-                          {Object.entries(aiSuggestion.risk_assessment).map(([key, value]) => (
+                          {Object.entries(aiSuggestion.risk_assessment || {}).map(([key, value]) => (
                             <p key={key} className="text-xs text-gray-600 dark:text-gray-400">
                               {key.replace(/_/g, " ")}: <span className="font-medium">{value}</span>
                             </p>
                           ))}
                         </div>
                       )}
-                      {aiSuggestion.suggested_modifications && (
+                      {aiSuggestion.suggested_modifications && typeof aiSuggestion.suggested_modifications === 'object' && (
                         <div className="mt-2">
                           <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
-                            Suggested Modifications:
+                            Đề Xuất Chỉnh Sửa:
                           </p>
                           <ul className="mt-1 list-inside list-disc text-xs text-gray-600 dark:text-gray-400">
-                            {Object.entries(aiSuggestion.suggested_modifications).map(([key, value]) => (
+                            {Object.entries(aiSuggestion.suggested_modifications || {}).map(([key, value]) => (
                               <li key={key}>
                                 {key.replace(/_/g, " ")}: {String(value)}
                               </li>
@@ -362,7 +365,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Voting Start Date</Label>
+                  <Label>Ngày Bắt Đầu Bỏ Phiếu</Label>
                   <Input
                     type="datetime-local"
                     value={formData.votingStartDate}
@@ -374,7 +377,7 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
                 </div>
 
                 <div>
-                  <Label>Voting End Date</Label>
+                  <Label>Ngày Kết Thúc Bỏ Phiếu</Label>
                   <Input
                     type="datetime-local"
                     value={formData.votingEndDate}
@@ -396,10 +399,10 @@ const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
               disabled={loading}
               type="button"
             >
-              Cancel
+              Hủy
             </Button>
             <Button size="sm" type="submit" disabled={loading}>
-              {loading ? "Creating..." : "Create Proposal"}
+              {loading ? "Đang tạo..." : "Tạo Đề Xuất"}
             </Button>
           </div>
         </form>

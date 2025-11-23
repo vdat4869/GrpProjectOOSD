@@ -9,6 +9,7 @@ export interface VehicleGroup {
   licensePlate?: string;
   vehicleModel?: string;
   vehicleYear?: string;
+  imageUrl?: string;
   status: number | string; // Backend returns string ("Active", "Inactive"), frontend uses number (0, 1)
   createdAt: string;
   updatedAt: string;
@@ -121,6 +122,7 @@ export const ownershipService = {
     licensePlate?: string;
     vehicleModel?: string;
     vehicleYear?: string;
+    imageUrl?: string;
   }): Promise<VehicleGroup> {
     const response = await apiClient.post<VehicleGroup>(
       API_ENDPOINTS.OWNERSHIP.GROUPS,
@@ -139,6 +141,7 @@ export const ownershipService = {
     licensePlate?: string;
     vehicleModel?: string;
     vehicleYear?: string;
+    imageUrl?: string;
     status?: string;
   }): Promise<VehicleGroup> {
     const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${id}`;
@@ -166,8 +169,8 @@ export const ownershipService = {
     return response.data;
   },
 
-  async getGroupMembers(groupId: string): Promise<GroupMember[]> {
-    const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${groupId}/members`;
+  async getGroupMembers(groupId: string, includeRemoved: boolean = false): Promise<GroupMember[]> {
+    const endpoint = `${API_ENDPOINTS.OWNERSHIP.GROUPS}/${groupId}/members${includeRemoved ? '?includeRemoved=true' : ''}`;
     const response = await apiClient.get<GroupMember[]>(endpoint);
     if (!response.success || !response.data) {
       return [];
@@ -597,6 +600,15 @@ export const ownershipService = {
     const response = await apiClient.post<FundTransaction>(endpoint);
     if (!response.success || !response.data) {
       throw new Error(response.message || "Failed to approve fund transaction");
+    }
+    return response.data;
+  },
+
+  async autoApproveFundTransactionForPayment(transactionId: string): Promise<FundTransaction> {
+    const endpoint = API_ENDPOINTS.OWNERSHIP.AUTO_APPROVE_FUND_TRANSACTION.replace("{transactionId}", transactionId);
+    const response = await apiClient.post<FundTransaction>(endpoint);
+    if (!response.success || !response.data) {
+      throw new Error(response.message || "Failed to auto-approve fund transaction");
     }
     return response.data;
   },
