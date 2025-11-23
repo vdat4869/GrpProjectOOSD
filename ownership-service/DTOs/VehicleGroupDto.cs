@@ -9,6 +9,7 @@ public class VehicleGroupDto
     public string? LicensePlate { get; set; }
     public string? VehicleModel { get; set; }
     public string? VehicleYear { get; set; }
+    public string? ImageUrl { get; set; }
     public Guid? CreatedByCoOwnerId { get; set; } // Nullable for Admin
     public string Status { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
@@ -25,6 +26,7 @@ public class CreateVehicleGroupDto
     public string? LicensePlate { get; set; }
     public string? VehicleModel { get; set; }
     public string? VehicleYear { get; set; }
+    public string? ImageUrl { get; set; }
 }
 
 public class UpdateVehicleGroupDto
@@ -35,6 +37,7 @@ public class UpdateVehicleGroupDto
     public string? LicensePlate { get; set; }
     public string? VehicleModel { get; set; }
     public string? VehicleYear { get; set; }
+    public string? ImageUrl { get; set; }
     public string? Status { get; set; }
 }
 

@@ -77,6 +77,8 @@ public class UpdateCoOwnerHandler : IRequestHandler<UpdateCoOwnerCommand, CoOwne
 
         if (!string.IsNullOrEmpty(request.Dto.FullName))
             coOwner.FullName = request.Dto.FullName;
+        if (!string.IsNullOrEmpty(request.Dto.IdentityCardNumber))
+            coOwner.IdentityCardNumber = request.Dto.IdentityCardNumber;
         if (!string.IsNullOrEmpty(request.Dto.DrivingLicenseNumber))
             coOwner.DrivingLicenseNumber = request.Dto.DrivingLicenseNumber;
         if (!string.IsNullOrEmpty(request.Dto.Email))

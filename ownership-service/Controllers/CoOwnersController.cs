@@ -331,13 +331,145 @@ public class CoOwnersController : ControllerBase
                 }
             }
 
-            _logger.LogInformation("[SyncCoOwnersFromAuth] Sync completed: {Created} created, {Skipped} skipped, {Errors} errors", created, skipped, errors.Count);
+            // Sau khi sync, tự động verify các co-owners có Identity Document đã được approve
+            var verified = 0;
+            try
+            {
+                // Lấy danh sách KYC requests đã được approve từ auth-service
+                var checkClient = httpClientFactory.CreateClient();
+                checkClient.Timeout = TimeSpan.FromSeconds(30);
+                
+                if (!string.IsNullOrEmpty(token))
+                {
+                    checkClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                }
+
+                // Lấy danh sách KYC requests (tất cả, không filter status)
+                var kycResponse = await checkClient.GetAsync($"{gatewayUrl}/api/kyc/all?page=1&pageSize=1000");
+                if (kycResponse.IsSuccessStatusCode)
+                {
+                    var kycJson = await kycResponse.Content.ReadAsStringAsync();
+                    _logger.LogInformation("[SyncCoOwnersFromAuth] KYC response: {Response}", kycJson.Substring(0, Math.Min(500, kycJson.Length)));
+                    
+                    using var kycDoc = System.Text.Json.JsonDocument.Parse(kycJson);
+                    var kycRoot = kycDoc.RootElement;
+                    
+                    // Parse response để lấy danh sách KYC requests
+                    // Format: { success: true, data: [...] }
+                    System.Text.Json.JsonElement kycArray;
+                    if (kycRoot.TryGetProperty("data", out var kycDataProp) && kycDataProp.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        kycArray = kycDataProp;
+                    }
+                    else if (kycRoot.TryGetProperty("success", out var successProp) && successProp.GetBoolean() &&
+                             kycRoot.TryGetProperty("data", out var kycDataProp2) && kycDataProp2.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        kycArray = kycDataProp2;
+                    }
+                    else if (kycRoot.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        kycArray = kycRoot;
+                    }
+                    else
+                    {
+                        _logger.LogWarning("[SyncCoOwnersFromAuth] Unexpected KYC response format");
+                        kycArray = default;
+                    }
+
+                    if (kycArray.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        // Tạo dictionary để map userId -> approved identity document
+                        var approvedUserIds = new HashSet<int>();
+                        var userIdToDocNumber = new Dictionary<int, string>();
+                        
+                        foreach (var kycItem in kycArray.EnumerateArray())
+                        {
+                            if (kycItem.TryGetProperty("identityStatus", out var identityStatusProp) &&
+                                identityStatusProp.GetString() == "Approved" &&
+                                kycItem.TryGetProperty("userId", out var userIdProp))
+                            {
+                                int userId = 0;
+                                if (userIdProp.ValueKind == System.Text.Json.JsonValueKind.Number)
+                                {
+                                    userId = userIdProp.GetInt32();
+                                }
+                                else if (userIdProp.ValueKind == System.Text.Json.JsonValueKind.String &&
+                                         int.TryParse(userIdProp.GetString(), out var parsedUserId))
+                                {
+                                    userId = parsedUserId;
+                                }
+                                
+                                if (userId > 0)
+                                {
+                                    approvedUserIds.Add(userId);
+                                    
+                                    // Lưu document number để cập nhật sau
+                                    if (kycItem.TryGetProperty("identityDocumentNumber", out var docNumProp))
+                                    {
+                                        var docNumber = docNumProp.GetString();
+                                        if (!string.IsNullOrEmpty(docNumber))
+                                        {
+                                            userIdToDocNumber[userId] = docNumber;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        _logger.LogInformation("[SyncCoOwnersFromAuth] Found {Count} users with approved identity documents", approvedUserIds.Count);
+
+                        // Verify các co-owners có Identity Document đã được approve
+                        var unverifiedCoOwners = await _context.CoOwners
+                            .Where(c => !c.IsVerified)
+                            .ToListAsync();
+
+                        foreach (var coOwner in unverifiedCoOwners)
+                        {
+                            try
+                            {
+                                // Parse userId từ string sang int
+                                if (int.TryParse(coOwner.UserId, out var userId) && approvedUserIds.Contains(userId))
+                                {
+                                    // Cập nhật IdentityCardNumber nếu chưa có (lấy từ dictionary)
+                                    if (coOwner.IdentityCardNumber.StartsWith("TEMP-", StringComparison.OrdinalIgnoreCase) &&
+                                        userIdToDocNumber.TryGetValue(userId, out var docNumber))
+                                    {
+                                        coOwner.IdentityCardNumber = docNumber;
+                                        _context.CoOwners.Update(coOwner);
+                                    }
+
+                                    // Verify co-owner
+                                    var verifyCommand = new Commands.VerifyCoOwnerCommand(coOwner.Id);
+                                    await _mediator.Send(verifyCommand);
+                                    verified++;
+                                    _logger.LogInformation("[SyncCoOwnersFromAuth] Auto-verified co-owner {CoOwnerId} ({Email}) with approved identity", coOwner.Id, coOwner.Email);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "[SyncCoOwnersFromAuth] Failed to auto-verify co-owner {CoOwnerId}", coOwner.Id);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[SyncCoOwnersFromAuth] Failed to fetch KYC requests: {StatusCode}", kycResponse.StatusCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[SyncCoOwnersFromAuth] Error during auto-verification step: {Message}", ex.Message);
+            }
+
+            _logger.LogInformation("[SyncCoOwnersFromAuth] Sync completed: {Created} created, {Skipped} skipped, {Verified} verified, {Errors} errors", created, skipped, verified, errors.Count);
 
             return Ok(new
             {
                 message = "Sync completed",
                 created,
                 skipped,
+                verified,
                 errors = errors.Count > 0 ? errors : null
             });
         }

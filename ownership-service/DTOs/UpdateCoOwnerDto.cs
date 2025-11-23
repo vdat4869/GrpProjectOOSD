@@ -8,6 +8,9 @@ public class UpdateCoOwnerDto
     public string? FullName { get; set; }
 
     [StringLength(20)]
+    public string? IdentityCardNumber { get; set; }
+
+    [StringLength(20)]
     public string? DrivingLicenseNumber { get; set; }
 
     [EmailAddress]

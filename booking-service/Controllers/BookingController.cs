@@ -7,6 +7,10 @@ using System.Threading.Tasks;
 using BookingService.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text;
+using Microsoft.Extensions.Configuration;
 
 /// <summary>
 /// Controller xử lý các API endpoints liên quan đến booking (đặt chỗ)
@@ -20,16 +24,26 @@ public class BookingsController : ControllerBase
     private readonly IWebHostEnvironment _env;              // Thông tin về môi trường hosting (Development/Production)
     private readonly BookingDbContext _context;             // Database context để truy cập database trực tiếp
     private readonly ILogger<BookingsController> _logger;  // Logger để ghi log
+    private readonly IHttpClientFactory _httpClientFactory; // HTTP client factory để gọi các service khác
+    private readonly IConfiguration _configuration;        // Configuration để lấy gateway URL
 
     /// <summary>
     /// Constructor - Dependency Injection
     /// </summary>
-    public BookingsController(IBookingService service, IWebHostEnvironment env, BookingDbContext context, ILogger<BookingsController> logger)
+    public BookingsController(
+        IBookingService service, 
+        IWebHostEnvironment env, 
+        BookingDbContext context, 
+        ILogger<BookingsController> logger,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration)
     {
         _service = service;
         _env = env;
         _context = context;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -542,6 +556,140 @@ public class BookingsController : ControllerBase
     {
         await _service.CheckAndUpdateNoShowBookingsAsync();
         return Ok(new { message = "NoShow check completed" });
+    }
+
+    /// <summary>
+    /// Đồng bộ co-owners từ Ownership Service sang Booking Service
+    /// POST /api/Bookings/sync-coowners
+    /// </summary>
+    /// <returns>Kết quả đồng bộ</returns>
+    [HttpPost("sync-coowners")]
+    [Authorize(Roles = "Admin,Staff")]
+    public async Task<ActionResult<object>> SyncCoOwnersFromOwnership()
+    {
+        try
+        {
+            var gatewayUrl = _configuration["GatewayUrl"] ?? "http://localhost:8000";
+            var httpClient = _httpClientFactory.CreateClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+            // Lấy token từ request hiện tại để forward
+            var token = Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+            if (!string.IsNullOrEmpty(token))
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            _logger.LogInformation("[SyncCoOwnersFromOwnership] Calling gateway at {GatewayUrl}/api/ownership/coowners", gatewayUrl);
+
+            // Lấy tất cả co-owners từ ownership service
+            var response = await httpClient.GetAsync($"{gatewayUrl}/api/ownership/coowners");
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("[SyncCoOwnersFromOwnership] Failed to fetch co-owners: {StatusCode}, {Error}", response.StatusCode, errorContent);
+                return BadRequest(new { message = $"Failed to fetch co-owners: {response.StatusCode}", error = errorContent });
+            }
+
+            var jsonContent = await response.Content.ReadAsStringAsync();
+            var coOwnersFromOwnership = JsonSerializer.Deserialize<List<JsonElement>>(jsonContent);
+
+            if (coOwnersFromOwnership == null || coOwnersFromOwnership.Count == 0)
+            {
+                return Ok(new { message = "No co-owners found in ownership service", created = 0, updated = 0, skipped = 0 });
+            }
+
+            int created = 0;
+            int updated = 0;
+            int skipped = 0;
+            var errors = new List<string>();
+
+            // Lấy tất cả co-owners hiện có trong booking service
+            var existingCoOwners = await _context.CoOwners.ToListAsync();
+            var existingCoOwnersByName = existingCoOwners.ToDictionary(c => c.Name.ToLowerInvariant(), c => c);
+
+            foreach (var coOwnerJson in coOwnersFromOwnership)
+            {
+                try
+                {
+                    // Parse thông tin từ ownership service
+                    var fullName = coOwnerJson.GetProperty("fullName").GetString() ?? 
+                                   coOwnerJson.GetProperty("email").GetString() ?? 
+                                   "Unknown";
+                    var email = coOwnerJson.GetProperty("email").GetString() ?? "";
+                    var userId = coOwnerJson.GetProperty("userId").GetString() ?? "";
+
+                    if (string.IsNullOrEmpty(fullName) && string.IsNullOrEmpty(email))
+                    {
+                        skipped++;
+                        _logger.LogWarning("[SyncCoOwnersFromOwnership] Skipping co-owner with missing name and email");
+                        continue;
+                    }
+
+                    // Tìm co-owner trong booking service theo tên (case-insensitive)
+                    var nameKey = fullName.ToLowerInvariant();
+                    var existingCoOwner = existingCoOwnersByName.ContainsKey(nameKey) 
+                        ? existingCoOwnersByName[nameKey] 
+                        : null;
+
+                    if (existingCoOwner != null)
+                    {
+                        // Cập nhật thông tin nếu cần
+                        if (existingCoOwner.Name != fullName)
+                        {
+                            existingCoOwner.Name = fullName;
+                            _context.CoOwners.Update(existingCoOwner);
+                            updated++;
+                            _logger.LogInformation("[SyncCoOwnersFromOwnership] Updated co-owner: {Name} (ID: {Id})", fullName, existingCoOwner.Id);
+                        }
+                        else
+                        {
+                            skipped++;
+                            _logger.LogInformation("[SyncCoOwnersFromOwnership] Skipping existing co-owner: {Name} (ID: {Id})", fullName, existingCoOwner.Id);
+                        }
+                    }
+                    else
+                    {
+                        // Tạo co-owner mới
+                        var newCoOwner = new BookingService.Models.CoOwner
+                        {
+                            Name = fullName,
+                            OwnershipRatio = 50m, // Default 50%, có thể cập nhật sau từ ownership percentage
+                            UsageCount = 0
+                        };
+                        await _context.CoOwners.AddAsync(newCoOwner);
+                        created++;
+                        _logger.LogInformation("[SyncCoOwnersFromOwnership] Created co-owner: {Name}", fullName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Failed to sync co-owner: {ex.Message}");
+                    _logger.LogError(ex, "[SyncCoOwnersFromOwnership] Failed to sync co-owner");
+                }
+            }
+
+            // Lưu tất cả thay đổi
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("[SyncCoOwnersFromOwnership] Sync completed: {Created} created, {Updated} updated, {Skipped} skipped, {Errors} errors", 
+                created, updated, skipped, errors.Count);
+
+            return Ok(new
+            {
+                message = "Sync completed",
+                created,
+                updated,
+                skipped,
+                errors = errors.Count > 0 ? errors : null
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SyncCoOwnersFromOwnership] Failed to sync co-owners from ownership service");
+            return StatusCode(500, new { message = "Failed to sync co-owners", error = ex.Message });
+        }
     }
 
     /// <summary>

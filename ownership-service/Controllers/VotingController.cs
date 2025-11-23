@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using OwnershipService.DTOs;
 using OwnershipService.Data;
 using OwnershipService.Models;
+using OwnershipService.Services;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Collections.Generic;
@@ -31,15 +32,21 @@ public class VotingController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly ILogger<VotingController> _logger;
     private readonly Infrastructure.IRabbitMQService? _rabbitMQService;
+    private readonly IHttpClientFactory? _httpClientFactory;
+    private readonly IConfiguration? _configuration;
 
     public VotingController(
         ApplicationDbContext context, 
         ILogger<VotingController> logger,
-        Infrastructure.IRabbitMQService? rabbitMQService = null)
+        Infrastructure.IRabbitMQService? rabbitMQService = null,
+        IHttpClientFactory? httpClientFactory = null,
+        IConfiguration? configuration = null)
     {
         _context = context;
         _logger = logger;
         _rabbitMQService = rabbitMQService;
+        _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -297,6 +304,20 @@ public class VotingController : ControllerBase
         else if (!Enum.TryParse<ProposalType>(dto.Type, true, out proposalType))
             return BadRequest(new { message = $"Invalid proposal type: {dto.Type}" });
 
+        // Convert Vietnam time (UTC+7) to UTC for storage
+        DateTime? votingStartDateUtc = null;
+        DateTime? votingEndDateUtc = null;
+        
+        if (dto.VotingStartDate.HasValue)
+        {
+            votingStartDateUtc = TimeZoneHelper.ToUtcTime(dto.VotingStartDate.Value);
+        }
+        
+        if (dto.VotingEndDate.HasValue)
+        {
+            votingEndDateUtc = TimeZoneHelper.ToUtcTime(dto.VotingEndDate.Value);
+        }
+
         var proposal = new Proposal
         {
             VehicleGroupId = groupId,
@@ -308,11 +329,14 @@ public class VotingController : ControllerBase
             EstimatedCost = dto.EstimatedCost,
             Currency = dto.Currency ?? "VND",
             Status = ProposalStatus.Pending,
-            VotingStartDate = dto.VotingStartDate,
-            VotingEndDate = dto.VotingEndDate,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            VotingStartDate = votingStartDateUtc,
+            VotingEndDate = votingEndDateUtc,
+            CreatedAt = TimeZoneHelper.UtcNow,
+            UpdatedAt = TimeZoneHelper.UtcNow
         };
+        
+        _logger.LogInformation("Creating proposal {ProposalId}. VotingStartDate: {StartDate} (Vietnam) -> {StartDateUtc} (UTC), VotingEndDate: {EndDate} (Vietnam) -> {EndDateUtc} (UTC)", 
+            proposal.Id, dto.VotingStartDate, votingStartDateUtc, dto.VotingEndDate, votingEndDateUtc);
 
         _context.Proposals.Add(proposal);
         await _context.SaveChangesAsync();
@@ -355,9 +379,28 @@ public class VotingController : ControllerBase
             return BadRequest(new { message = "Proposal is not in pending status" });
 
         proposal.Status = ProposalStatus.Voting;
-        proposal.VotingStartDate = dto?.StartDate ?? DateTime.UtcNow;
-        proposal.VotingEndDate = dto?.EndDate ?? DateTime.UtcNow.AddDays(7);
-        proposal.UpdatedAt = DateTime.UtcNow;
+        proposal.VotingStartDate = dto?.StartDate != null ? TimeZoneHelper.ToUtcTime(dto.StartDate.Value) : TimeZoneHelper.UtcNow;
+        
+        // Only update VotingEndDate if explicitly provided in dto, otherwise keep existing value
+        // If no existing value and no dto value, default to 7 days from now (Vietnam time)
+        if (dto?.EndDate.HasValue == true)
+        {
+            // Frontend sends Vietnam time (UTC+7), convert to UTC for storage
+            var endDateVietnam = dto.EndDate.Value;
+            proposal.VotingEndDate = TimeZoneHelper.ToUtcTime(endDateVietnam);
+            _logger.LogInformation("Setting VotingEndDate for proposal {ProposalId}. Vietnam time: {VietnamTime}, UTC: {UtcTime}", 
+                proposal.Id, endDateVietnam, proposal.VotingEndDate);
+        }
+        else if (!proposal.VotingEndDate.HasValue)
+        {
+            // Default to 7 days from now in Vietnam time, then convert to UTC
+            var defaultEndDateVietnam = TimeZoneHelper.Now.AddDays(7);
+            proposal.VotingEndDate = TimeZoneHelper.ToUtcTime(defaultEndDateVietnam);
+            _logger.LogInformation("Setting default VotingEndDate for proposal {ProposalId}. Vietnam time: {VietnamTime}, UTC: {UtcTime}", 
+                proposal.Id, defaultEndDateVietnam, proposal.VotingEndDate);
+        }
+        // If proposal already has VotingEndDate and dto doesn't provide one, keep the existing value
+        proposal.UpdatedAt = TimeZoneHelper.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -372,7 +415,7 @@ public class VotingController : ControllerBase
                     VehicleGroupId = proposal.VehicleGroupId,
                     ProposalType = proposal.Type.ToString(),
                     Status = proposal.Status.ToString(),
-                    UpdatedAt = DateTime.UtcNow
+                    UpdatedAt = TimeZoneHelper.UtcNow
                 };
                 _rabbitMQService.PublishEvent("voting.status.changed", eventData);
                 _logger.LogInformation("Published VotingStatusChanged event for proposal {ProposalId}", proposal.Id);
@@ -487,8 +530,8 @@ public class VotingController : ControllerBase
             CoOwnerId = coOwner.Id,
             Choice = choice,
             Comment = dto.Comment,
-            VotedAt = DateTime.UtcNow,
-            CreatedAt = DateTime.UtcNow
+            VotedAt = TimeZoneHelper.UtcNow,
+            CreatedAt = TimeZoneHelper.UtcNow
         };
 
         _logger.LogInformation("Creating vote object: ProposalId={ProposalId}, CoOwnerId={CoOwnerId}, Choice={Choice} (Value={ChoiceValue})", 
@@ -496,62 +539,7 @@ public class VotingController : ControllerBase
 
         _context.Votes.Add(vote);
 
-        // Check if voting period ended and update proposal status
-        if (proposal.VotingEndDate.HasValue && DateTime.UtcNow >= proposal.VotingEndDate.Value)
-        {
-            List<Vote> votes = new List<Vote>();
-            try
-            {
-                votes = await _context.Votes.Where(v => v.ProposalId == id).ToListAsync();
-            }
-            catch (InvalidCastException ex)
-            {
-                _logger.LogWarning(ex, "Vote Choice column is Boolean, using raw SQL to convert");
-                var sql = @"
-                    SELECT 
-                        Id, 
-                        ProposalId, 
-                        CoOwnerId, 
-                        CAST(Choice AS INT) as Choice, 
-                        Comment, 
-                        VotedAt, 
-                        CreatedAt
-                    FROM Votes 
-                    WHERE ProposalId = @proposalId";
-                
-                var parameter = new Microsoft.Data.SqlClient.SqlParameter("@proposalId", id);
-                var votesData = await _context.Database
-                    .SqlQueryRaw<VoteRaw>(sql, parameter)
-                    .ToListAsync();
-                
-                votes = votesData.Select(v => new Vote
-                {
-                    Id = v.Id,
-                    ProposalId = v.ProposalId,
-                    CoOwnerId = v.CoOwnerId,
-                    Choice = (VoteChoice)v.Choice,
-                    Comment = v.Comment,
-                    VotedAt = v.VotedAt,
-                    CreatedAt = v.CreatedAt
-                }).ToList();
-            }
-            
-            var approveCount = votes.Count(v => v.Choice == VoteChoice.Approve);
-            var rejectCount = votes.Count(v => v.Choice == VoteChoice.Reject);
-            var totalActiveVotes = votes.Count(v => v.Choice != VoteChoice.Abstain);
-
-            // Simple majority rule
-            if (approveCount > rejectCount && totalActiveVotes > 0)
-            {
-                proposal.Status = ProposalStatus.Approved;
-            }
-            else if (rejectCount > approveCount && totalActiveVotes > 0)
-            {
-                proposal.Status = ProposalStatus.Rejected;
-            }
-        }
-
-        proposal.UpdatedAt = DateTime.UtcNow;
+        proposal.UpdatedAt = TimeZoneHelper.UtcNow;
         
         try
         {
@@ -566,27 +554,8 @@ public class VotingController : ControllerBase
             return StatusCode(500, new { message = "Failed to save vote", error = ex.Message });
         }
 
-        // Publish VotingStatusChanged event if status changed
-        if (_rabbitMQService != null && (proposal.Status == ProposalStatus.Approved || proposal.Status == ProposalStatus.Rejected))
-        {
-            try
-            {
-                var eventData = new Infrastructure.VotingStatusChangedEvent
-                {
-                    ProposalId = proposal.Id,
-                    VehicleGroupId = proposal.VehicleGroupId,
-                    ProposalType = proposal.Type.ToString(),
-                    Status = proposal.Status.ToString(),
-                    UpdatedAt = DateTime.UtcNow
-                };
-                _rabbitMQService.PublishEvent("voting.status.changed", eventData);
-                _logger.LogInformation("Published VotingStatusChanged event for proposal {ProposalId} with status {Status}", proposal.Id, proposal.Status);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to publish VotingStatusChanged event for proposal {ProposalId}", proposal.Id);
-            }
-        }
+        // Check and close voting if needed (after vote is saved)
+        await CheckAndCloseVotingAsync(proposal);
 
         // Log the vote choice for debugging
         _logger.LogInformation("Vote saved: ProposalId={ProposalId}, CoOwnerId={CoOwnerId}, Choice={Choice} (Value={ChoiceValue})", 
@@ -679,6 +648,299 @@ public class VotingController : ControllerBase
         {
             _logger.LogError(ex, "Error getting votes for proposal {ProposalId}", id);
             return StatusCode(500, new { message = "An error occurred while retrieving votes", error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Manually trigger check and close voting for a specific proposal
+    /// </summary>
+    [HttpPost("proposals/{id}/check-close")]
+    public async Task<ActionResult> CheckAndCloseVoting(Guid id)
+    {
+        var proposal = await _context.Proposals
+            .Include(p => p.VehicleGroup)
+            .FirstOrDefaultAsync(p => p.Id == id);
+        
+        if (proposal == null)
+            return NotFound();
+
+        if (proposal.Status != ProposalStatus.Voting)
+        {
+            return Ok(new { message = $"Proposal is already in {proposal.Status} status", status = proposal.Status.ToString() });
+        }
+
+        await CheckAndCloseVotingAsync(proposal);
+
+        // Reload proposal to get updated status
+        await _context.Entry(proposal).ReloadAsync();
+
+        return Ok(new { 
+            message = "Voting check completed", 
+            status = proposal.Status.ToString(),
+            votingEndDate = proposal.VotingEndDate,
+            currentTime = TimeZoneHelper.Now, // Vietnam time
+            currentTimeUtc = TimeZoneHelper.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Check and close voting if time expired or all members voted
+    /// If approved and has EstimatedCost, create CostShare
+    /// </summary>
+    private async Task CheckAndCloseVotingAsync(Proposal proposal)
+    {
+        if (proposal.Status != ProposalStatus.Voting)
+            return;
+
+        // Get all active members of the vehicle group
+        var activeMembers = await _context.GroupMembers
+            .Where(m => m.VehicleGroupId == proposal.VehicleGroupId && m.Status == MemberStatus.Active)
+            .Select(m => m.CoOwnerId)
+            .ToListAsync();
+
+        if (activeMembers.Count == 0)
+        {
+            _logger.LogWarning("No active members found for vehicle group {VehicleGroupId}", proposal.VehicleGroupId);
+            return;
+        }
+
+        // Get all votes for this proposal
+        List<Vote> votes = new List<Vote>();
+        try
+        {
+            votes = await _context.Votes.Where(v => v.ProposalId == proposal.Id).ToListAsync();
+        }
+        catch (InvalidCastException ex)
+        {
+            _logger.LogWarning(ex, "Vote Choice column is Boolean, using raw SQL to convert");
+            var sql = @"
+                SELECT 
+                    Id, 
+                    ProposalId, 
+                    CoOwnerId, 
+                    CAST(Choice AS INT) as Choice, 
+                    Comment, 
+                    VotedAt, 
+                    CreatedAt
+                FROM Votes 
+                WHERE ProposalId = @proposalId";
+            
+            var parameter = new Microsoft.Data.SqlClient.SqlParameter("@proposalId", proposal.Id);
+            var votesData = await _context.Database
+                .SqlQueryRaw<VoteRaw>(sql, parameter)
+                .ToListAsync();
+            
+            votes = votesData.Select(v => new Vote
+            {
+                Id = v.Id,
+                ProposalId = v.ProposalId,
+                CoOwnerId = v.CoOwnerId,
+                Choice = (VoteChoice)v.Choice,
+                Comment = v.Comment,
+                VotedAt = v.VotedAt,
+                CreatedAt = v.CreatedAt
+            }).ToList();
+        }
+
+        // Get unique co-owner IDs who have voted
+        var votedCoOwnerIds = votes.Select(v => v.CoOwnerId).Distinct().ToList();
+        var allMembersVoted = activeMembers.All(memberId => votedCoOwnerIds.Contains(memberId));
+
+        // Check if voting should be closed
+        // Convert VotingEndDate (stored as UTC) to Vietnam time for comparison
+        bool shouldClose = false;
+        var nowVietnam = TimeZoneHelper.Now;
+        var nowUtc = TimeZoneHelper.UtcNow;
+        
+        if (proposal.VotingEndDate.HasValue)
+        {
+            // Convert UTC VotingEndDate to Vietnam time
+            var endDateUtc = proposal.VotingEndDate.Value;
+            var endDateVietnam = TimeZoneHelper.ToVietnamTime(endDateUtc);
+            
+            _logger.LogInformation("Checking proposal {ProposalId} expiration. EndDate UTC: {EndDateUtc}, EndDate Vietnam: {EndDateVietnam}, Now Vietnam: {NowVietnam}, Now UTC: {NowUtc}", 
+                proposal.Id, endDateUtc, endDateVietnam, nowVietnam, nowUtc);
+            
+            if (nowVietnam >= endDateVietnam)
+            {
+                shouldClose = true;
+                _logger.LogInformation("Voting period ended for proposal {ProposalId}. EndDate: {EndDate} (Vietnam), Current: {Now} (Vietnam)", 
+                    proposal.Id, endDateVietnam, nowVietnam);
+            }
+            else
+            {
+                _logger.LogDebug("Voting period not ended yet for proposal {ProposalId}. EndDate: {EndDate} (Vietnam), Current: {Now} (Vietnam), Remaining: {Remaining}", 
+                    proposal.Id, endDateVietnam, nowVietnam, endDateVietnam - nowVietnam);
+            }
+        }
+        else if (allMembersVoted)
+        {
+            shouldClose = true;
+            _logger.LogInformation("All members have voted for proposal {ProposalId}", proposal.Id);
+        }
+
+        if (!shouldClose)
+            return;
+
+        // Close voting and determine result
+        var approveCount = votes.Count(v => v.Choice == VoteChoice.Approve);
+        var rejectCount = votes.Count(v => v.Choice == VoteChoice.Reject);
+        var totalActiveVotes = votes.Count(v => v.Choice != VoteChoice.Abstain);
+
+        // Check if all votes are Approve (unanimous approval)
+        var allApprove = votes.Count > 0 && votes.All(v => v.Choice == VoteChoice.Approve);
+
+        // Simple majority rule
+        if (approveCount > rejectCount && totalActiveVotes > 0)
+        {
+            proposal.Status = ProposalStatus.Approved;
+            _logger.LogInformation("Proposal {ProposalId} approved: {ApproveCount} approve, {RejectCount} reject", 
+                proposal.Id, approveCount, rejectCount);
+        }
+        else if (rejectCount > approveCount && totalActiveVotes > 0)
+        {
+            proposal.Status = ProposalStatus.Rejected;
+            _logger.LogInformation("Proposal {ProposalId} rejected: {ApproveCount} approve, {RejectCount} reject", 
+                proposal.Id, approveCount, rejectCount);
+        }
+        else if (totalActiveVotes == 0)
+        {
+            // No active votes, consider as rejected
+            proposal.Status = ProposalStatus.Rejected;
+            _logger.LogInformation("Proposal {ProposalId} rejected: no active votes", proposal.Id);
+        }
+
+        proposal.UpdatedAt = TimeZoneHelper.UtcNow;
+        await _context.SaveChangesAsync();
+
+        // If approved and has EstimatedCost, create CostShare
+        if (proposal.Status == ProposalStatus.Approved && proposal.EstimatedCost.HasValue && proposal.EstimatedCost.Value > 0)
+        {
+            await CreateCostShareFromProposalAsync(proposal);
+        }
+
+        // Publish VotingStatusChanged event
+        if (_rabbitMQService != null)
+        {
+            try
+            {
+                var eventData = new Infrastructure.VotingStatusChangedEvent
+                {
+                    ProposalId = proposal.Id,
+                    VehicleGroupId = proposal.VehicleGroupId,
+                    ProposalType = proposal.Type.ToString(),
+                    Status = proposal.Status.ToString(),
+                    UpdatedAt = TimeZoneHelper.UtcNow
+                };
+                _rabbitMQService.PublishEvent("voting.status.changed", eventData);
+                _logger.LogInformation("Published VotingStatusChanged event for proposal {ProposalId} with status {Status}", proposal.Id, proposal.Status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to publish VotingStatusChanged event for proposal {ProposalId}", proposal.Id);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create CostShare from approved proposal
+    /// </summary>
+    private async Task CreateCostShareFromProposalAsync(Proposal proposal)
+    {
+        if (_httpClientFactory == null || _configuration == null)
+        {
+            _logger.LogWarning("HttpClientFactory or Configuration not available, cannot create CostShare for proposal {ProposalId}", proposal.Id);
+            return;
+        }
+
+        try
+        {
+            // Get active ownerships for the vehicle group to calculate cost share details
+            var ownerships = await _context.Ownerships
+                .Where(o => o.VehicleGroupId == proposal.VehicleGroupId && o.IsActive)
+                .ToListAsync();
+
+            if (!ownerships.Any())
+            {
+                _logger.LogWarning("No active ownerships found for vehicle group {VehicleGroupId}, cannot create CostShare", proposal.VehicleGroupId);
+                return;
+            }
+
+            var paymentServiceUrl = _configuration["PaymentServiceUrl"] ?? "http://payment-service:80";
+            var httpClient = _httpClientFactory.CreateClient();
+
+            // Get authorization token from current request
+            var token = Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+            if (!string.IsNullOrEmpty(token))
+            {
+                httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+
+            // Create cost share details based on ownership percentages
+            var estimatedCost = proposal.EstimatedCost!.Value; // Already checked before calling this method
+            var costShareDetails = ownerships.Select(o => new
+            {
+                UserId = o.CoOwnerId, // Guid, not string
+                OwnershipPercentage = o.OwnershipPercentage,
+                Amount = estimatedCost * o.OwnershipPercentage / 100m, // decimal, not double
+                Notes = (string?)null
+            }).ToList();
+
+            // Determine CostType enum value
+            var costType = proposal.Type == ProposalType.Maintenance ? 2 : 99; // 2 = Maintenance, 99 = Other
+            
+            // Create cost share request with correct types
+            var costShareRequest = new
+            {
+                GroupId = proposal.VehicleGroupId, // Guid, not string
+                VehicleId = proposal.VehicleGroupId, // Use GroupId as VehicleId, Guid not string
+                CostType = costType, // int (enum value)
+                Title = proposal.Title,
+                Description = proposal.Description ?? $"Chi phí từ đề xuất: {proposal.Title}",
+                TotalAmount = estimatedCost, // decimal, not double
+                Currency = proposal.Currency ?? "VND",
+                DueDate = TimeZoneHelper.UtcNow.AddDays(30), // DateTime, not string
+                ReceiptUrl = (string?)null,
+                CostShareDetails = costShareDetails
+            };
+
+            var jsonOptions = new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(costShareRequest, jsonOptions);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("Creating CostShare for approved proposal {ProposalId}. GroupId: {GroupId}, TotalAmount: {TotalAmount}, DetailsCount: {Count}", 
+                proposal.Id, proposal.VehicleGroupId, estimatedCost, costShareDetails.Count);
+            _logger.LogDebug("CostShare request JSON: {Json}", json);
+
+            // Try internal endpoint first (no auth required), fallback to regular endpoint
+            var response = await httpClient.PostAsync($"{paymentServiceUrl}/api/costshares/internal", content);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Fallback to regular endpoint with auth token
+                if (!string.IsNullOrEmpty(token))
+                {
+                    response = await httpClient.PostAsync($"{paymentServiceUrl}/api/costshares", content);
+                }
+            }
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("Failed to create CostShare for proposal {ProposalId}: {StatusCode} - {Error}", 
+                    proposal.Id, response.StatusCode, errorContent);
+            }
+            else
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Successfully created CostShare for proposal {ProposalId}: {Response}", 
+                    proposal.Id, responseContent);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating CostShare for proposal {ProposalId}", proposal.Id);
         }
     }
 }

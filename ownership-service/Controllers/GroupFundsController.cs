@@ -254,5 +254,174 @@ public class GroupFundsController : ControllerBase
             CreatedAt = transaction.CreatedAt
         });
     }
+
+    /// <summary>
+    /// Auto-approve fund transaction for payment (allows co-owner to approve their own expense when paying from fund)
+    /// </summary>
+    [HttpPost("transactions/{transactionId}/auto-approve-payment")]
+    [Authorize]
+    public async Task<ActionResult<FundTransactionDto>> AutoApproveFundTransactionForPayment(Guid transactionId)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var coOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == userId);
+        if (coOwner == null)
+            return BadRequest(new { message = "Co-owner not found" });
+
+        var transaction = await _context.FundTransactions
+            .Include(t => t.GroupFund)
+            .Include(t => t.CoOwner)
+            .FirstOrDefaultAsync(t => t.Id == transactionId);
+        if (transaction == null)
+            return NotFound();
+
+        // Only allow co-owner to approve their own expense transactions
+        if (transaction.CoOwnerId != coOwner.Id)
+            return Forbid("You can only approve your own transactions");
+
+        if (transaction.Status != TransactionStatus.Pending)
+            return BadRequest(new { message = "Transaction already processed" });
+
+        if (transaction.Type != TransactionType.Expense)
+            return BadRequest(new { message = "Only expense transactions can be auto-approved for payment" });
+
+        transaction.Status = TransactionStatus.Approved;
+        transaction.ApprovedByCoOwnerId = coOwner.Id;
+        transaction.ApprovedAt = DateTime.UtcNow;
+        transaction.UpdatedAt = DateTime.UtcNow;
+
+        // Update fund balance (deduct for expense)
+        transaction.GroupFund!.Balance -= transaction.Amount;
+        transaction.GroupFund!.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        return Ok(new FundTransactionDto
+        {
+            Id = transaction.Id,
+            GroupFundId = transaction.GroupFundId,
+            CoOwnerId = transaction.CoOwnerId,
+            CoOwnerName = transaction.CoOwner?.FullName ?? "",
+            Type = transaction.Type.ToString(),
+            Amount = transaction.Amount,
+            Currency = transaction.Currency,
+            Description = transaction.Description,
+            Category = transaction.Category,
+            ReceiptNumber = transaction.ReceiptNumber,
+            ReceiptImageUrl = transaction.ReceiptImageUrl,
+            Status = transaction.Status.ToString(),
+            TransactionDate = transaction.TransactionDate,
+            CreatedAt = transaction.CreatedAt
+        });
+    }
+
+    /// <summary>
+    /// Deduct money from group fund for cost share payment (called by payment-service)
+    /// This endpoint allows payment-service to automatically deduct from group fund when a cost share is paid
+    /// </summary>
+    [HttpPost("vehicle-group/{groupId}/deduct-for-cost-share")]
+    [AllowAnonymous] // Allow payment-service to call without authentication
+    public async Task<ActionResult<FundTransactionDto>> DeductFromGroupFundForCostShare(
+        Guid groupId, 
+        [FromBody] DeductFromFundDto dto)
+    {
+        try
+        {
+            // Find the co-owner by userId
+            var coOwner = await _context.CoOwners.FirstOrDefaultAsync(c => c.UserId == dto.UserId);
+            if (coOwner == null)
+            {
+                _logger.LogWarning($"Co-owner not found for userId: {dto.UserId}");
+                return BadRequest(new { message = "Co-owner not found" });
+            }
+
+            // Get all active funds for this group
+            var funds = await _context.GroupFunds
+                .Where(f => f.VehicleGroupId == groupId && f.Status == FundStatus.Active)
+                .OrderByDescending(f => f.Balance) // Prefer funds with more balance
+                .ToListAsync();
+
+            if (funds.Count == 0)
+            {
+                _logger.LogWarning($"No active funds found for group: {groupId}");
+                return BadRequest(new { message = "No active funds found for this group" });
+            }
+
+            // Find a fund with sufficient balance
+            var selectedFund = funds.FirstOrDefault(f => f.Balance >= dto.Amount && f.Currency == dto.Currency);
+            if (selectedFund == null)
+            {
+                // If no fund has sufficient balance, use the fund with the highest balance
+                selectedFund = funds.OrderByDescending(f => f.Balance).First();
+                _logger.LogWarning($"No fund has sufficient balance. Using fund {selectedFund.Id} with balance {selectedFund.Balance}");
+            }
+
+            // Create expense transaction
+            var transaction = new FundTransaction
+            {
+                GroupFundId = selectedFund.Id,
+                CoOwnerId = coOwner.Id,
+                Type = TransactionType.Expense,
+                Amount = dto.Amount,
+                Currency = dto.Currency,
+                Description = dto.Description ?? $"Thanh toán cost share: {dto.CostShareTitle}",
+                Category = "Cost Share Payment",
+                ReceiptNumber = dto.TransactionId,
+                Status = TransactionStatus.Approved, // Auto-approve for cost share payments
+                ApprovedByCoOwnerId = coOwner.Id,
+                ApprovedAt = DateTime.UtcNow,
+                TransactionDate = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.FundTransactions.Add(transaction);
+
+            // Update fund balance (deduct for expense)
+            selectedFund.Balance -= dto.Amount;
+            selectedFund.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation($"Deducted {dto.Amount} {dto.Currency} from fund {selectedFund.Id} for cost share payment by user {dto.UserId}");
+
+            return Ok(new FundTransactionDto
+            {
+                Id = transaction.Id,
+                GroupFundId = transaction.GroupFundId,
+                CoOwnerId = transaction.CoOwnerId,
+                CoOwnerName = coOwner.FullName,
+                Type = transaction.Type.ToString(),
+                Amount = transaction.Amount,
+                Currency = transaction.Currency,
+                Description = transaction.Description,
+                Category = transaction.Category,
+                ReceiptNumber = transaction.ReceiptNumber,
+                ReceiptImageUrl = transaction.ReceiptImageUrl,
+                Status = transaction.Status.ToString(),
+                ApprovedByCoOwnerId = transaction.ApprovedByCoOwnerId,
+                ApprovedAt = transaction.ApprovedAt,
+                TransactionDate = transaction.TransactionDate,
+                CreatedAt = transaction.CreatedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error deducting from group fund for cost share payment");
+            return StatusCode(500, new { message = "Internal server error while deducting from group fund" });
+        }
+    }
+}
+
+// DTO for deducting from fund
+public class DeductFromFundDto
+{
+    public string UserId { get; set; } = string.Empty; // String to match CoOwner.UserId
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "VND";
+    public string? Description { get; set; }
+    public string? CostShareTitle { get; set; }
+    public string? TransactionId { get; set; }
 }
 

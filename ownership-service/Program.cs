@@ -7,6 +7,7 @@ using OwnershipService.Data;
 using OwnershipService.Mappings;
 using OwnershipService.Extensions;
 using OwnershipService.Middleware;
+using OwnershipService.Services;
 using FluentValidation.AspNetCore;
 using FluentValidation;
 using MediatR;
@@ -33,6 +34,9 @@ builder.Services.AddSingleton<IRedisService, RedisService>();
 
 // Add HttpClientFactory for calling other services
 builder.Services.AddHttpClient();
+
+// Background Services
+builder.Services.AddHostedService<VotingBackgroundService>();
 
 // Configure JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JWT");

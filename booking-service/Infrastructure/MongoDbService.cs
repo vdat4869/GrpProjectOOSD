@@ -19,12 +19,12 @@ public class MongoDbService : IMongoDbService
     {
         _logger = logger;
         var connectionString = configuration.GetConnectionString("MongoDB") 
-            ?? "mongodb://mongoadmin:mongopass123@mongodb:27017/booking_logs?authSource=admin";
+            ?? "mongodb://mongoadmin:mongopass123@mongodb:27017/ai_db?authSource=admin";
         
         try
         {
             var client = new MongoClient(connectionString);
-            var databaseName = new MongoUrl(connectionString).DatabaseName ?? "booking_logs";
+            var databaseName = new MongoUrl(connectionString).DatabaseName ?? "ai_db";
             _database = client.GetDatabase(databaseName);
             _logger.LogInformation("Connected to MongoDB database: {DatabaseName}", databaseName);
         }
