@@ -1,0 +1,5 @@
+Legend (usage time symbols): ^ = NH (0.25), ^^ = DH (1.5), ^^^ = LD (2.5)
+NHVF517112504: owns 18% of the car value, usage time 10 days [^], usage share 0.25
+DHVF715102402: owns 36% of the car value, usage time 2 years 4 months 3 days [^^], usage share 1.5
+LDVF901042601: owns 90% of the car value, usage time not available [^^^], usage share 2.5
+

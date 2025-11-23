@@ -1,0 +1,460 @@
+{
+  "info": {
+    "name": "Payment Service API",
+    "description": "EV Co-ownership & Cost-sharing System - Payment Service API Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5003/api",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "your-jwt-token-here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Wallets",
+      "item": [
+        {
+          "name": "Get Wallet",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/{{userId}}/{{groupId}}",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{userId}}", "{{groupId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"groupId\": \"{{groupId}}\",\n  \"currency\": \"VND\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets",
+              "host": ["{{base_url}}"],
+              "path": ["wallets"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/{{walletId}}/balance",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{walletId}}", "balance"]
+            }
+          }
+        },
+        {
+          "name": "Deposit Money",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500000.00,\n  \"description\": \"Nạp tiền từ ngân hàng\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets/{{walletId}}/deposit",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{walletId}}", "deposit"]
+            }
+          }
+        },
+        {
+          "name": "Withdraw Money",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200000.00,\n  \"description\": \"Rút tiền mặt\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets/{{walletId}}/withdraw",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{walletId}}", "withdraw"]
+            }
+          }
+        },
+        {
+          "name": "Transfer Money",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{fromWalletId}}\",\n  \"toWalletId\": \"{{toWalletId}}\",\n  \"amount\": 100000.00,\n  \"description\": \"Chuyển tiền chia chi phí\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/wallets/transfer",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "transfer"]
+            }
+          }
+        },
+        {
+          "name": "Get Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/wallets/{{walletId}}/transactions?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["wallets", "{{walletId}}", "transactions"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cost Shares",
+      "item": [
+        {
+          "name": "Get Cost Share",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/costshares/{{costShareId}}",
+              "host": ["{{base_url}}"],
+              "path": ["costshares", "{{costShareId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Cost Shares by Group",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/costshares/group/{{groupId}}?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["costshares", "group", "{{groupId}}"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Cost Share",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupId\": \"{{groupId}}\",\n  \"vehicleId\": \"{{vehicleId}}\",\n  \"costType\": 0,\n  \"title\": \"Phí sạc điện tháng 1\",\n  \"description\": \"Chi phí sạc điện cho tháng 1/2024\",\n  \"totalAmount\": 500000.00,\n  \"currency\": \"VND\",\n  \"dueDate\": \"2024-02-01T00:00:00Z\",\n  \"receiptUrl\": \"https://example.com/receipt.jpg\",\n  \"costShareDetails\": [\n    {\n      \"userId\": \"{{userId1}}\",\n      \"ownershipPercentage\": 40.00,\n      \"amount\": 200000.00,\n      \"notes\": \"Chủ xe chính\"\n    },\n    {\n      \"userId\": \"{{userId2}}\",\n      \"ownershipPercentage\": 30.00,\n      \"amount\": 150000.00,\n      \"notes\": \"Chủ xe phụ\"\n    },\n    {\n      \"userId\": \"{{userId3}}\",\n      \"ownershipPercentage\": 30.00,\n      \"amount\": 150000.00,\n      \"notes\": \"Chủ xe phụ\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/costshares",
+              "host": ["{{base_url}}"],
+              "path": ["costshares"]
+            }
+          }
+        },
+        {
+          "name": "Get Cost Share Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/costshares/{{costShareId}}/details",
+              "host": ["{{base_url}}"],
+              "path": ["costshares", "{{costShareId}}", "details"]
+            }
+          }
+        },
+        {
+          "name": "Mark as Paid",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/costshares/{{costShareDetailId}}/mark-paid",
+              "host": ["{{base_url}}"],
+              "path": ["costshares", "{{costShareDetailId}}", "mark-paid"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Get Payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/{{paymentId}}",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "{{paymentId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"costShareDetailId\": \"{{costShareDetailId}}\",\n  \"walletId\": \"{{walletId}}\",\n  \"method\": 0,\n  \"amount\": 200000.00,\n  \"currency\": \"VND\",\n  \"callbackUrl\": \"https://your-app.com/payment/callback\",\n  \"returnUrl\": \"https://your-app.com/payment/success\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments",
+              "host": ["{{base_url}}"],
+              "path": ["payments"]
+            }
+          }
+        },
+        {
+          "name": "Payment Callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{transactionId}}\",\n  \"externalTransactionId\": \"vnpay_transaction_id\",\n  \"status\": 2,\n  \"errorMessage\": null,\n  \"signature\": \"signature_hash\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/callback",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "callback"]
+            }
+          }
+        },
+        {
+          "name": "Get Payments by User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/user/{{userId}}?page=1&pageSize=20",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "user", "{{userId}}"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel Payment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/payments/{{paymentId}}/cancel",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "{{paymentId}}", "cancel"]
+            }
+          }
+        },
+        {
+          "name": "Refund Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/{{paymentId}}/refund",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "{{paymentId}}", "refund"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payment Methods",
+      "item": [
+        {
+          "name": "Get Payment Methods by User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/paymentmethods/user/{{userId}}",
+              "host": ["{{base_url}}"],
+              "path": ["paymentmethods", "user", "{{userId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Payment Method",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/paymentmethods/{{paymentMethodId}}",
+              "host": ["{{base_url}}"],
+              "path": ["paymentmethods", "{{paymentMethodId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Payment Method",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"methodType\": \"VNPay\",\n  \"accountNumber\": \"1234567890\",\n  \"accountName\": \"Nguyen Van A\",\n  \"bankName\": \"Vietcombank\",\n  \"bankCode\": \"VCB\",\n  \"isDefault\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/paymentmethods",
+              "host": ["{{base_url}}"],
+              "path": ["paymentmethods"]
+            }
+          }
+        },
+        {
+          "name": "Update Payment Method",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountName\": \"Nguyen Van A Updated\",\n  \"bankName\": \"Vietcombank\",\n  \"bankCode\": \"VCB\",\n  \"isDefault\": true,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/paymentmethods/{{paymentMethodId}}",
+              "host": ["{{base_url}}"],
+              "path": ["paymentmethods", "{{paymentMethodId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Payment Method",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/paymentmethods/{{paymentMethodId}}",
+              "host": ["{{base_url}}"],
+              "path": ["paymentmethods", "{{paymentMethodId}}"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
