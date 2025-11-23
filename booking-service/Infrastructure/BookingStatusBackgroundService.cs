@@ -64,13 +64,18 @@ namespace BookingService.Infrastructure
                                 }
                             }
 
-                            // InProgress → Completed nếu quá giờ EndTime  
-                            if (booking.Status == "InProgress" && now > booking.EndTime)
+                            // InProgress → Cảnh báo nếu quá giờ EndTime nhưng chưa checkout
+                            // KHÔNG tự động checkout vì cần thông tin distance, cost từ user
+                            if (booking.Status == "InProgress" && !booking.CheckOutTime.HasValue && now > booking.EndTime.AddMinutes(5))
                             {
-                                booking.Status = "Completed";
-                                booking.CheckOutTime = now;
-                                _logger.LogInformation("Booking {BookingId} auto-completed", booking.Id);
-                                _rabbitMQService.PublishEvent("booking.auto-completed", new { BookingId = booking.Id });
+                                _logger.LogWarning("Booking {BookingId} is overdue (EndTime: {EndTime}, Now: {Now}) but not checked out yet. User must manually checkout with distance and cost information.", 
+                                    booking.Id, booking.EndTime, now);
+                                // Có thể gửi notification nhưng không tự động checkout
+                                _rabbitMQService.PublishEvent("booking.overdue", new { 
+                                    BookingId = booking.Id, 
+                                    EndTime = booking.EndTime,
+                                    OverdueMinutes = (now - booking.EndTime).TotalMinutes
+                                });
                             }
 
                             // Pending hoặc Confirmed → NoShow nếu quá StartTime mà chưa check-in  

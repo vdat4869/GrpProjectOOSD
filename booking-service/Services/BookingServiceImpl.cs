@@ -2,6 +2,7 @@ using BookingService.DTOs;
 using BookingService.Models;
 using BookingService.Repositories;
 using BookingService.Infrastructure;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -117,7 +118,11 @@ namespace BookingService.Services
                 StartTime = b.StartTime,
                 EndTime = b.EndTime,
                 Status = b.Status,
-                Note = b.Note
+                Note = b.Note,
+                CheckInTime = b.CheckInTime.HasValue ? TimeZoneHelper.ToVietnamTime(b.CheckInTime.Value) : null,
+                CheckOutTime = b.CheckOutTime.HasValue ? TimeZoneHelper.ToVietnamTime(b.CheckOutTime.Value) : null,
+                DistanceKm = b.DistanceKm,
+                Cost = b.Cost
             });
         }
 
@@ -409,7 +414,11 @@ namespace BookingService.Services
                 StartTime = saved.StartTime,
                 EndTime = saved.EndTime,
                 Status = saved.Status,
-                Note = saved.Note
+                Note = saved.Note,
+                CheckInTime = saved.CheckInTime,
+                CheckOutTime = saved.CheckOutTime,
+                DistanceKm = saved.DistanceKm,
+                Cost = saved.Cost
             };
         }
 
@@ -586,7 +595,11 @@ namespace BookingService.Services
                 StartTime = updatedBooking.StartTime,
                 EndTime = updatedBooking.EndTime,
                 Status = updatedBooking.Status,
-                Note = updatedBooking.Note
+                Note = updatedBooking.Note,
+                CheckInTime = updatedBooking.CheckInTime,
+                CheckOutTime = updatedBooking.CheckOutTime,
+                DistanceKm = updatedBooking.DistanceKm,
+                Cost = updatedBooking.Cost
             };
 
         }
@@ -648,7 +661,11 @@ namespace BookingService.Services
                 StartTime = TimeZoneHelper.ToVietnamTime(booking.StartTime),
                 EndTime = TimeZoneHelper.ToVietnamTime(booking.EndTime),
                 Status = booking.Status,
-                Note = booking.Note
+                Note = booking.Note,
+                CheckInTime = booking.CheckInTime.HasValue ? TimeZoneHelper.ToVietnamTime(booking.CheckInTime.Value) : null,
+                CheckOutTime = booking.CheckOutTime.HasValue ? TimeZoneHelper.ToVietnamTime(booking.CheckOutTime.Value) : null,
+                DistanceKm = booking.DistanceKm,
+                Cost = booking.Cost
             };
         }
 
@@ -686,7 +703,7 @@ namespace BookingService.Services
         /// <summary>
         /// Tạo QR code cho booking
         /// QR code được sử dụng để check-in khi nhận xe
-        /// Chỉ có thể tạo QR code cho booking có trạng thái "Confirmed"
+        /// Có thể tạo QR code cho booking có trạng thái "Confirmed", "Approved", "Đã đặt", hoặc "Pending"
         /// </summary>
         /// <param name="bookingId">ID của booking</param>
         /// <returns>QR code dưới dạng string và base64 image</returns>
@@ -696,8 +713,28 @@ namespace BookingService.Services
             if (booking == null)
                 throw new Exception("Booking không tồn tại.");
 
-            if (booking.Status != "Confirmed")
-                throw new Exception("Chỉ có thể tạo QR code cho booking đã xác nhận.");
+            // Cho phép tạo QR code cho các status hợp lệ (case-insensitive)
+            var validStatuses = new[] { "Confirmed", "Approved", "Đã đặt", "Pending" };
+            var bookingStatus = booking.Status?.Trim() ?? "";
+            var isValidStatus = validStatuses.Any(s => 
+                string.Equals(s, bookingStatus, StringComparison.OrdinalIgnoreCase) ||
+                (bookingStatus.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0));
+
+            if (!isValidStatus)
+            {
+                // Nếu booking chưa được xác nhận, tự động chuyển sang "Confirmed" nếu có thể
+                if (booking.Status != "Cancelled" && booking.Status != "NoShow" && booking.Status != "Completed")
+                {
+                    booking.Status = "Confirmed";
+                    await _bookingRepository.UpdateAsync(booking);
+                    await _bookingRepository.SaveChangesAsync();
+                    _logger?.LogInformation("Auto-updated booking {BookingId} status to Confirmed for QR code generation", bookingId);
+                }
+                else
+                {
+                    throw new Exception($"Không thể tạo QR code cho booking có trạng thái: {booking.Status}. Booking phải ở trạng thái Pending, Confirmed, Approved, hoặc Đã đặt.");
+                }
+            }
 
             var qrCodeData = _qrCodeService.GenerateQrCode(bookingId);
             var qrCodeImageBase64 = _qrCodeService.GenerateQrCodeImageBase64(qrCodeData);
@@ -782,14 +819,16 @@ namespace BookingService.Services
         /// Check-out cho booking (trả xe)
         /// Yêu cầu:
         /// - Booking phải đã được check-in
-        /// - Chỉ có thể check-out trong khoảng từ giờ bắt đầu đến 5 phút sau giờ kết thúc
+        /// - DistanceKm là bắt buộc và phải lớn hơn 0
+        /// - Cho phép checkout sớm (early checkout) sau khi đã check-in
+        /// - Cảnh báo nếu checkout quá sớm (< 5 phút sau check-in) hoặc quá muộn (> 30 phút sau EndTime)
         /// Sau khi check-out thành công:
         /// - Trạng thái sẽ chuyển sang "Completed"
         /// - Tạo bản ghi trong BookingHistory
         /// - Publish event "booking.completed" qua RabbitMQ
         /// </summary>
         /// <param name="bookingId">ID của booking</param>
-        /// <param name="request">Request chứa distance (km) và cost (chi phí)</param>
+        /// <param name="request">Request chứa distance (km) - bắt buộc, cost (chi phí) - tùy chọn, và note - tùy chọn</param>
         /// <returns>Thông tin check-out thành công</returns>
         public async Task<CheckOutResponse> CheckOutAsync(int bookingId, CheckOutRequest request)
         {
@@ -805,11 +844,29 @@ namespace BookingService.Services
 
             var now = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "SE Asia Standard Time");
 
-            // Chỉ cho check-out trong khoảng kết thúc đến +5 phút
-            if (now < booking.StartTime)
-                throw new Exception("Chưa đến giờ kết thúc, không thể check-out.");
-            if (now > booking.EndTime.AddMinutes(5))
-                throw new Exception("Quá thời gian check-out.");
+            // Validate distanceKm là required và phải > 0
+            if (request.DistanceKm <= 0)
+            {
+                _logger?.LogWarning("Invalid DistanceKm ({DistanceKm}) for booking {BookingId}. Distance must be greater than 0.",
+                    request.DistanceKm, bookingId);
+                throw new Exception("Vui lòng nhập khoảng cách (km) hợp lệ. Khoảng cách phải lớn hơn 0.");
+            }
+
+            // Cho phép checkout sớm (early checkout) sau khi đã check-in
+            // Chỉ cần đảm bảo đã check-in và chưa checkout
+            // Không giới hạn thời gian checkout (có thể checkout bất cứ lúc nào sau khi check-in)
+            // Nhưng cảnh báo nếu checkout quá sớm hoặc quá muộn
+            if (now < booking.CheckInTime.Value.AddMinutes(5))
+            {
+                _logger?.LogWarning("Early checkout detected for booking {BookingId}. Check-in: {CheckInTime}, Check-out: {CheckOutTime}", 
+                    bookingId, booking.CheckInTime.Value, now);
+            }
+            
+            if (now > booking.EndTime.AddMinutes(30))
+            {
+                _logger?.LogWarning("Late checkout detected for booking {BookingId}. EndTime: {EndTime}, Check-out: {CheckOutTime}", 
+                    bookingId, booking.EndTime, now);
+            }
 
             booking.CheckOutTime = now;
             booking.DistanceKm = request.DistanceKm;
@@ -839,19 +896,31 @@ namespace BookingService.Services
             await _bookingHistoryRepository.AddAsync(history);
             await _bookingHistoryRepository.SaveChangesAsync();
 
-            _rabbitMQService.PublishEvent("booking.completed", new BookingCompletedEvent
+            // Publish event after successful save to ensure data consistency
+            try
             {
-                BookingId = bookingId,
-                VehicleId = booking.VehicleId,
-                CoOwnerId = booking.CoOwnerId,
-                StartTime = booking.StartTime,
-                EndTime = booking.EndTime,
-                Distance = (double)request.DistanceKm,
-                Cost = (double)(request.Cost ?? 0),
-                CheckInTime = booking.CheckInTime.Value,
-                CheckOutTime = now,
-                CompletedAt = now
-            });
+                _rabbitMQService.PublishEvent("booking.completed", new BookingCompletedEvent
+                {
+                    BookingId = bookingId,
+                    VehicleId = booking.VehicleId,
+                    CoOwnerId = booking.CoOwnerId,
+                    StartTime = booking.StartTime,
+                    EndTime = booking.EndTime,
+                    Distance = (double)request.DistanceKm,
+                    Cost = (double)(request.Cost ?? 0),
+                    CheckInTime = booking.CheckInTime.Value,
+                    CheckOutTime = now,
+                    CompletedAt = now
+                });
+                _logger?.LogInformation("Published booking.completed event for booking {BookingId}: Distance={Distance}, Cost={Cost}",
+                    bookingId, request.DistanceKm, request.Cost ?? 0);
+            }
+            catch (Exception ex)
+            {
+                // Log error but don't fail checkout if event publishing fails
+                _logger?.LogWarning(ex, "Failed to publish booking.completed event for booking {BookingId}. Checkout was successful but UsageHistory may not be created.",
+                    bookingId);
+            }
 
             return new CheckOutResponse
             {

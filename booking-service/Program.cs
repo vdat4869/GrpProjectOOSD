@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using System.Linq;
 
 // Tạo builder cho ứng dụng ASP.NET Core
 var builder = WebApplication.CreateBuilder(args);
@@ -154,14 +155,92 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<BookingDbContext>();
-        // Chạy migrations tự động
-        db.Database.Migrate();
+        var loggerInit = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        // Kiểm tra xem bảng BookingHistories có tồn tại không
+        var tableExists = false;
+        try
+        {
+            var result = db.Database.SqlQueryRaw<int>("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'BookingHistories'").FirstOrDefault();
+            tableExists = result > 0;
+        }
+        catch
+        {
+            tableExists = false;
+        }
+        
+        if (!tableExists)
+        {
+            loggerInit.LogWarning("BookingHistories table does not exist. Attempting to create it...");
+            try
+            {
+                // Tạo bảng BookingHistories nếu chưa tồn tại
+                db.Database.ExecuteSqlRaw(@"
+                    IF OBJECT_ID(N'[dbo].[BookingHistories]', N'U') IS NULL
+                    BEGIN
+                        CREATE TABLE [dbo].[BookingHistories] (
+                            [Id] INT IDENTITY(1,1) NOT NULL CONSTRAINT [PK_BookingHistories] PRIMARY KEY,
+                            [BookingId] INT NOT NULL,
+                            [VehicleId] INT NOT NULL,
+                            [CoOwnerId] INT NOT NULL,
+                            [StartTime] DATETIME2 NOT NULL,
+                            [EndTime] DATETIME2 NOT NULL,
+                            [CheckInTime] DATETIME2 NOT NULL,
+                            [CheckOutTime] DATETIME2 NOT NULL,
+                            [DistanceKm] DECIMAL(18,2) NULL,
+                            [Cost] DECIMAL(18,2) NULL,
+                            [Note] NVARCHAR(MAX) NULL,
+                            [CreatedAt] DATETIME2 NOT NULL DEFAULT(GETUTCDATE())
+                        );
+                        CREATE INDEX [IX_BookingHistories_BookingId] ON [dbo].[BookingHistories]([BookingId]);
+                        CREATE INDEX [IX_BookingHistories_VehicleId] ON [dbo].[BookingHistories]([VehicleId]);
+                        CREATE INDEX [IX_BookingHistories_CoOwnerId] ON [dbo].[BookingHistories]([CoOwnerId]);
+                        CREATE INDEX [IX_BookingHistories_CheckOutTime] ON [dbo].[BookingHistories]([CheckOutTime]);
+                    END
+                ");
+                loggerInit.LogInformation("BookingHistories table created successfully");
+            }
+            catch (Exception createEx)
+            {
+                loggerInit.LogWarning(createEx, "Failed to create BookingHistories table. Will try migration instead.");
+            }
+        }
+        
+        // Kiểm tra xem có pending migrations không
+        var pendingMigrations = db.Database.GetPendingMigrations().ToList();
+        if (pendingMigrations.Any())
+        {
+            loggerInit.LogInformation("Applying {Count} pending migrations: {Migrations}", 
+                pendingMigrations.Count, string.Join(", ", pendingMigrations));
+            try
+            {
+                // Chạy migrations tự động
+                db.Database.Migrate();
+                loggerInit.LogInformation("Database migrations applied successfully");
+            }
+            catch (Exception migrateEx)
+            {
+                // Nếu migration fail do pending changes warning, log warning nhưng không fail
+                if (migrateEx.Message.Contains("pending changes"))
+                {
+                    loggerInit.LogWarning("Migration warning: {Message}. This is usually safe to ignore if tables exist.", migrateEx.Message);
+                }
+                else
+                {
+                    throw;
+                }
+            }
+        }
+        else
+        {
+            loggerInit.LogInformation("No pending migrations. Database is up to date.");
+        }
     }
     catch (Exception ex)
     {
         // Log lỗi nếu migration thất bại nhưng không dừng ứng dụng
         var loggerInit = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        loggerInit.LogError(ex, "Error migrating Booking database");
+        loggerInit.LogWarning(ex, "Error migrating Booking database. Service will continue but some features may not work.");
     }
 }
 

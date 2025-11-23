@@ -12,6 +12,10 @@ namespace BookingService.DTOs
         public DateTime EndTime { get; set; }
         public string Status { get; set; } = " Đã Đặt";  // <-- thêm đây
         public string? Note { get; set; }
+        public DateTime? CheckInTime { get; set; }
+        public DateTime? CheckOutTime { get; set; }
+        public decimal? DistanceKm { get; set; }
+        public decimal? Cost { get; set; }
     }
 
 }
